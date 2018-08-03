@@ -264,7 +264,7 @@ bool WebSocket::process_frame() {
 
     //TODO handle ping etc
 
-    this->_callback_data(this->current_frame->data);
+    this->_callback_data(WSMessage{(OpCode) this->current_frame->head.opcode, this->current_frame->data});
     this->current_frame.reset();
     return true;
 }

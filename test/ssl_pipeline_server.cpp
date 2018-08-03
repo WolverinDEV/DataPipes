@@ -126,7 +126,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& client) {
     {
         auto ctx = create_context();
         configure_context(ctx);
-        ssl_pipeline->initialize(shared_ptr<SSL_CTX>(ctx, SSL_CTX_free));
+        ssl_pipeline->initialize(shared_ptr<SSL_CTX>(ctx, SSL_CTX_free), pipes::SSL::SERVER);
     }
 
     ssl_pipeline->direct_process(pipes::PROCESS_DIRECTION_OUT, true);

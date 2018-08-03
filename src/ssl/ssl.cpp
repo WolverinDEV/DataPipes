@@ -11,15 +11,25 @@ using namespace std;
 pipes::SSL::SSL() : Pipeline("ssl") { }
 pipes::SSL::~SSL() { }
 
-bool pipes::SSL::initialize(const std::shared_ptr<SSL_CTX>& ctx) {
+bool pipes::SSL::initialize(const std::shared_ptr<SSL_CTX>& ctx, Type type) {
+    this->type = type;
     this->sslContext = ctx;
     this->sslLayer = SSL_new(ctx.get());
     if(!this->sslLayer) { return false; }
-
+    if(type == SERVER)
+        SSL_set_accept_state(this->sslLayer);
+    else
+        SSL_set_connect_state(this->sslLayer);
     if(!this->initializeBio()) return false;
     this->sslState = SSLSocketState::SSL_STATE_INIT;
 
     return true;
+}
+
+bool pipes::SSL::do_handshake() {
+	if(this->type != CLIENT) return false;
+	auto code = SSL_do_handshake(this->sslLayer);
+	return code == 0;
 }
 
 void pipes::SSL::finalize() {

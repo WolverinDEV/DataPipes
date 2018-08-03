@@ -5,63 +5,78 @@
 #include "pipeline.h"
 
 namespace pipes {
-    enum SSLSocketState {
-        SSL_STATE_INIT,
-        SSL_STATE_CONNECTED,
-        SSL_STATE_UNDEFINED
-    };
+	enum SSLSocketState {
+		SSL_STATE_INIT,
+		SSL_STATE_CONNECTED,
+		SSL_STATE_UNDEFINED
+	};
 
-    class SSL : public Pipeline<std::string> {
-        typedef std::function<void()>                                       InitializedHandler;
+	class SSL : public Pipeline<std::string> {
+			typedef std::function<void()> InitializedHandler;
 
-    public:
-        static bool isSSLHeader(const std::string&);
-        //static bool isSSLHandschake(const std::string&, bool full = false);
+		public:
+			enum Type {
+				SERVER,
+				CLIENT
+			};
 
-        SSL();
-        virtual ~SSL();
+			static bool isSSLHeader(const std::string &);
+			//static bool isSSLHandschake(const std::string&, bool full = false);
 
-        bool initialize(const std::shared_ptr<SSL_CTX>&);
-        void finalize();
+			SSL();
 
-        //Callbacks
-        InitializedHandler callback_initialized = [](){};
-        size_t readBufferSize = 1024;
+			virtual ~SSL();
 
-        SSLSocketState state(){ return this->sslState; }
-    private:
-        bool initializeBio();
+			bool initialize(const std::shared_ptr<SSL_CTX> &, Type /* type */);
+			bool do_handshake();
+			void finalize();
 
-    protected:
-        ProcessResult process_data_in() override;
+			//Callbacks
+			InitializedHandler callback_initialized = []() {};
+			size_t readBufferSize = 1024;
 
-        ProcessResult process_data_out() override;
+			SSLSocketState state() { return this->sslState; }
 
-    private:
+		private:
+			bool initializeBio();
 
-        std::shared_ptr<SSL_CTX> sslContext = nullptr;
-        ::SSL* sslLayer = nullptr;
-        SSLSocketState sslState = SSLSocketState::SSL_STATE_INIT;
-        std::chrono::system_clock::time_point handshakeStart;
+		protected:
+			ProcessResult process_data_in() override;
 
+			ProcessResult process_data_out() override;
 
-        static BIO_METHOD* SSLSocketBioMethods;
-        //Required methods
-        static int  (*bio_read)             (BIO *, char *, int);
-        static int  (*bio_write)            (BIO *, const char *, int);
-        static long (*bio_ctrl)             (BIO *, int, long, void *);
-        static int  (*bio_create)           (BIO *);
-        static int  (*bio_destroy)          (BIO *);
+			std::shared_ptr<SSL_CTX> sslContext = nullptr;
+			::SSL *sslLayer = nullptr;
+			Type type;
+			SSLSocketState sslState = SSLSocketState::SSL_STATE_INIT;
+			std::chrono::system_clock::time_point handshakeStart;
 
-        //"empty" methods
-        static int  (*bio_puts)             (BIO *, const char *);
-        static int  (*bio_gets)             (BIO *, char *, int);
+		private:
+			static BIO_METHOD *SSLSocketBioMethods;
+
+			//Required methods
+			static int (*bio_read)(BIO *, char *, int);
+
+			static int (*bio_write)(BIO *, const char *, int);
+
+			static long (*bio_ctrl)(BIO *, int, long, void *);
+
+			static int (*bio_create)(BIO *);
+
+			static int (*bio_destroy)(BIO *);
+
+			//"empty" methods
+			static int (*bio_puts)(BIO *, const char *);
+
+			static int (*bio_gets)(BIO *, char *, int);
 
 #ifdef USE_BORINGSSL
-        static long (*bio_callback_ctrl)    (BIO *, int, bio_info_cb);
+
+			static long (*bio_callback_ctrl)(BIO *, int, bio_info_cb);
+
 #else
-        static long (*bio_callback_ctrl)    (BIO *, int, bio_info_cb *);
+			static long (*bio_callback_ctrl)    (BIO *, int, bio_info_cb *);
 #endif
 
-    };
+	};
 }

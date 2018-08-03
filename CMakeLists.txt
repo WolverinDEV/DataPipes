@@ -5,6 +5,17 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 #set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_CXX_STANDARD 14)
 
+set(CMAKE_MACOSX_RPATH 1)
+# Custom CMake modules
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules")
+
+# Find packages
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(LibNice REQUIRED)
+find_package(UsrSCTP REQUIRED)
+
 set(HEADER_FILES
         include/pipeline.h
         include/errors.h
@@ -14,6 +25,12 @@ set(HEADER_FILES
         include/http.h
         include/endianness.h
         include/ws.h
+
+		include/sctp.h
+
+		include/rtc/NiceWrapper.h
+		include/rtc/PeerConnection.h
+		include/rtc/dtls.h
 )
 
 set(SOURCE_FILES
@@ -25,10 +42,23 @@ set(SOURCE_FILES
         src/ws/ws.cpp
 
         src/http/http.cpp
+
+		src/sctp/sctp.cpp
+
+		src/rtc/NiceWrapper.cpp
+		src/rtc/PeerConnection.cpp
+		src/rtc/dtls.cpp
 )
 
 add_library(DataPipes ${HEADER_FILES} ${SOURCE_FILES})
-
+target_link_libraries(
+		DataPipes
+		PUBLIC
+		LibNice::LibNice
+		#        SctpLab::UsrSCTP
+		usrsctp.a
+		OpenSSL::SSL
+		)
 add_definitions(-DUSE_BORINGSSL)
 include_directories(/home/wolverindev/clib/boringssl/include)
 
@@ -41,8 +71,11 @@ set(TEST_LIBRARIES
         pthread
 )
 
-add_executable(DataPipes-Test-SSL test/ssl_pipeline.cpp test/utils/socket.cpp)
+add_executable(DataPipes-Test-SSL test/ssl_pipeline_server.cpp test/utils/socket.cpp)
 target_link_libraries(DataPipes-Test-SSL ${TEST_LIBRARIES})
 
 add_executable(DataPipes-Test-WS test/ws_pipeline.cpp test/utils/socket.cpp)
 target_link_libraries(DataPipes-Test-WS ${TEST_LIBRARIES})
+
+add_executable(DataPipes-Test-rtc test/rtc/rtc_test.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
+target_link_libraries(DataPipes-Test-rtc ${TEST_LIBRARIES})

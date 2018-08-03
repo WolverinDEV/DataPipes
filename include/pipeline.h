@@ -30,14 +30,14 @@ namespace pipes {
         //fnc := function callback
         typedef std::function<void(const std::string&)> fnc_write;
         typedef std::function<void(int /* error code */, const std::string& /* additional message */)> fnc_error;
-        typedef std::function<void(const std::string& /* data */)> fnc_data;
+        using cb_data = std::function<void(const WriteType& /* data */)>;
 
-    public:
+        public:
         Pipeline(std::string name) : _name(std::move(name)) {}
 
         inline std::string name() { return this->_name; }
 
-        void callback_data(const fnc_data& callback) {
+        void callback_data(const cb_data& callback) {
             this->_callback_data = callback;
         }
 
@@ -136,7 +136,7 @@ namespace pipes {
         std::string _name;
 
         fnc_error _callback_error = [](int, const std::string&){};
-        fnc_data _callback_data = [](const std::string&){};
+        cb_data _callback_data = [](const WriteType&){};
         fnc_write _callback_write = [](const std::string&){};
 
 
