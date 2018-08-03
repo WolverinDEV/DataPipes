@@ -20,13 +20,25 @@ struct Client {
 	Json::StreamWriterBuilder json_writer;
 };
 
+auto config = []{
+	auto config = make_shared<rtc::PeerConnection::Config>();
+	config->nice_config = make_shared<rtc::NiceWrapper::Config>();
+
+	config->nice_config->ice_servers.push_back({"stun.l.google.com", 19302});
+
+	config->nice_config->main_loop = std::shared_ptr<GMainLoop>(g_main_loop_new(nullptr, false), g_main_loop_unref);
+	std::thread(g_main_loop_run, config->nice_config->main_loop.get()).detach(); //FIXME
+
+	return config;
+}();
+
 void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 	cout << "Got new client" << endl;
 
 	auto client = new Client{};
 	client->connection = connection;
 	client->websocket = make_unique<pipes::WebSocket>();
-	client->peer = make_unique<rtc::PeerConnection>();
+	client->peer = make_unique<rtc::PeerConnection>(config);
 
 	{
 		client->websocket->initialize();

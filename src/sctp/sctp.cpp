@@ -12,8 +12,19 @@
 using namespace std;
 using namespace pipes;
 
-SCTP::SCTP(uint16_t local_port, uint16_t remote_port) : Pipeline("SCTP"), remote_port(remote_port), local_port(local_port) {}
-SCTP::~SCTP() {}
+SCTP::SCTP(uint16_t local_port, uint16_t remote_port) : Pipeline("SCTP"), remote_port(remote_port), local_port(local_port) {
+	if(!global_initialized) {
+		global_initialized = true;
+		usrsctp_init(0, &pipes::SCTP::cb_send, nullptr); //May not static anymore if its even possible?
+		usrsctp_sysctl_set_sctp_ecn_enable(0);
+	}
+
+	usrsctp_register_address(this);
+}
+
+SCTP::~SCTP() {
+	usrsctp_deregister_address(this);
+}
 
 int SCTP::cb_send(void *sctp_ptr, void *data, size_t len, uint8_t tos, uint8_t set_df) {
 	if(!sctp_ptr) return -1;
@@ -54,13 +65,10 @@ static uint16_t interested_events[] = {
 		SCTP_SEND_FAILED_EVENT
 };
 
+bool SCTP::global_initialized = false;
 //TODO: error callbacks
 //NOTE Start learning what this magic here does?
 bool SCTP::initialize(std::string &error) {
-	usrsctp_init(0, &SCTP::cb_send, nullptr); //May not static anymore?
-	usrsctp_sysctl_set_sctp_ecn_enable(0);
-	usrsctp_register_address(this);
-
 	sock = usrsctp_socket(AF_CONN, SOCK_STREAM, IPPROTO_SCTP, &SCTP::cb_read, nullptr, 0, this);
 	if (!sock)
 		ERRORQ("Could not create usrsctp_socket. errno=" + to_string(errno));

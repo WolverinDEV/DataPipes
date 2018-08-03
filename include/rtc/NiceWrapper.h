@@ -32,6 +32,8 @@ namespace rtc {
 
 				std::string ice_ufrag;
 				std::string ice_pwd;
+
+				std::shared_ptr<GMainLoop> main_loop;
 			};
 
 			NiceWrapper(const std::shared_ptr<Config>& /* config */);
@@ -71,7 +73,9 @@ namespace rtc {
 			std::shared_ptr<Config> config;
 
 			std::unique_ptr<NiceAgent, void (*)(gpointer)> agent;
-			std::unique_ptr<GMainLoop, void (*)(GMainLoop *)> loop;
+			std::shared_ptr<GMainLoop> loop;
+			bool own_loop = false;
+
 			std::thread g_main_loop_thread;
 			std::unique_ptr<NiceStream> stream;
 

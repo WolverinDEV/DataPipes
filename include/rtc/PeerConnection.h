@@ -35,13 +35,19 @@ namespace rtc {
 			std::string _lable;
 			std::string _protocol;
 	};
+
 	class PeerConnection {
 		public:
+			struct Config {
+				std::shared_ptr<NiceWrapper::Config> nice_config;
+			};
+
 			typedef std::function<void(const std::shared_ptr<DataChannel>&)> cb_datachannel_new;
 
-			PeerConnection();
+			PeerConnection(const std::shared_ptr<Config>& config);
 			virtual ~PeerConnection();
 
+			std::shared_ptr<Config> configuration() { return this->config; }
 			bool initialize(std::string& /* error */);
 
 			//TODO vice versa (we create a offer and parse the answer?)
@@ -69,6 +75,8 @@ namespace rtc {
 
 			virtual void handle_datachannel_message(uint16_t /* channel id */, uint32_t /* message type */, const std::string& /* message */);
 		private:
+			std::shared_ptr<Config> config;
+
 			std::unique_ptr<NiceWrapper> nice;
 			std::unique_ptr<DTLS> dtls;
 			std::unique_ptr<pipes::SCTP> sctp;

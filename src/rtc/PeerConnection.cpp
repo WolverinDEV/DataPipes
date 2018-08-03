@@ -31,16 +31,13 @@ void DataChannel::send(const std::string &message, rtc::DataChannel::MessageType
 	this->owner->sendSctpMessage({message, this->id(), type == DataChannel::BINARY ? PPID_BINARY : PPID_STRING});
 }
 
-PeerConnection::PeerConnection() { }
+PeerConnection::PeerConnection(const std::shared_ptr<Config>& config) : config(config) { }
 PeerConnection::~PeerConnection() {}
 
 bool PeerConnection::initialize(std::string &error) {
+	assert(this->config->nice_config);
 	{
-		auto config = make_shared<NiceWrapper::Config>();
-		config->ice_servers.push_back({"stun.l.google.com", 19302});
-
-
-		this->nice = make_unique<NiceWrapper>(config);
+		this->nice = make_unique<NiceWrapper>(this->config->nice_config);
 		this->nice->set_callback_local_candidate([](const std::string& candidate){});
 		this->nice->set_callback_ready(bind(&PeerConnection::on_nice_ready, this));
 		this->nice->set_callback_recive([&](const std::string& data) {

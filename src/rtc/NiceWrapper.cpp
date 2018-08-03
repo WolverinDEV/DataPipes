@@ -11,7 +11,7 @@
 using namespace std;
 using namespace rtc;
 
-NiceWrapper::NiceWrapper(const std::shared_ptr<Config>& config) : config(config), loop(nullptr, nullptr), agent(nullptr, nullptr) {}
+NiceWrapper::NiceWrapper(const std::shared_ptr<Config>& config) : config(config), loop(nullptr), agent(nullptr, nullptr) {}
 NiceWrapper::~NiceWrapper() {}
 
 /* Static callbacks */ //TODO Test pointers for validation!
@@ -56,15 +56,18 @@ bool NiceWrapper::initialize(std::string& error) {
 	//g_log_set_handler(NULL, (GLogLevelFlags)log_flags, nice_log_handler, this);
 
 	//TODO allow other loops (May via config?)
-	this->loop = std::unique_ptr<GMainLoop, void (*)(GMainLoop *)>(g_main_loop_new(nullptr, false), g_main_loop_unref);
+	if(this->config->main_loop) {
+		this->loop = this->config->main_loop;
+		this->own_loop = false;
+	} else {
+		this->loop = std::shared_ptr<GMainLoop>(g_main_loop_new(nullptr, false), g_main_loop_unref);
+		this->own_loop = true;
+		this->g_main_loop_thread = std::thread(g_main_loop_run, this->loop.get());
+	}
 	if (!this->loop) ERRORQ("Failed to initialize GMainLoop");
 
 	this->agent = std::unique_ptr<NiceAgent, decltype(&g_object_unref)>(nice_agent_new(g_main_loop_get_context(loop.get()), NICE_COMPATIBILITY_RFC5245), g_object_unref);
 	if (!this->agent) ERRORQ("Failed to initialize nice agent");
-
-	this->g_main_loop_thread = std::thread(g_main_loop_run, this->loop.get());
-
-
 
 
 	g_object_set(G_OBJECT(agent.get()), "upnp", false, nullptr);
