@@ -40,10 +40,7 @@ bool PeerConnection::initialize(std::string &error) {
 		this->nice = make_unique<NiceWrapper>(this->config->nice_config);
 		this->nice->set_callback_local_candidate([](const std::string& candidate){});
 		this->nice->set_callback_ready(bind(&PeerConnection::on_nice_ready, this));
-		this->nice->set_callback_recive([&](const std::string& data) {
-			cout << "Got nice data: "<< data.length() << endl;
-			this->dtls->process_incoming_data(data);
-		});
+		this->nice->set_callback_recive([&](const std::string& data) { this->dtls->process_incoming_data(data); });
 		if(!this->nice->initialize(error)) {
 			error = "Failed to initialize nice (" + error + ")";
 			return false;
@@ -55,14 +52,8 @@ bool PeerConnection::initialize(std::string &error) {
 		this->dtls->direct_process(pipes::PROCESS_DIRECTION_IN, true);
 		this->dtls->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
 
-		this->dtls->callback_data([&](const string& data) {
-			cout << "Got dts data: " << data.length() << endl;
-			this->sctp->process_incoming_data(data);
-		});
-		this->dtls->callback_write([&](const string& data) {
-			cout << "[DTLS] Write to nice: " << data.length() << endl;
-			this->nice->send_data(this->nice->stream_id(), 1, data);
-		});
+		this->dtls->callback_data([&](const string& data) { this->sctp->process_incoming_data(data); });
+		this->dtls->callback_write([&](const string& data) { this->nice->send_data(this->nice->stream_id(), 1, data); });
 		this->dtls->callback_error([&](int code, const std::string& error) {
 			cerr << "[DTLS] Got error: " << error << endl;
 		});
@@ -218,6 +209,7 @@ void PeerConnection::handle_sctp_event(union sctp_notification* event) {
 			break;
 		case SCTP_STREAM_RESET_EVENT:
 			SPDLOG_TRACE(logger, "OnNotification(type=SCTP_STREAM_RESET_EVENT)");
+			this->handle_event_stream_reset(event->sn_strreset_event);
 			break;
 		case SCTP_ASSOC_RESET_EVENT:
 			SPDLOG_TRACE(logger, "OnNotification(type=SCTP_ASSOC_RESET_EVENT)");
@@ -231,6 +223,53 @@ void PeerConnection::handle_sctp_event(union sctp_notification* event) {
 	}
 }
 
+void PeerConnection::send_sctp_event(union sctp_notification* event) {
+	this->sendSctpMessage({string((const char*) event, event->sn_header.sn_length), 0, MSG_NOTIFICATION});
+}
+
+void PeerConnection::handle_event_stream_reset(struct sctp_stream_reset_event &ev) {
+	deque<shared_ptr<DataChannel>> affected_channels;
+
+	auto nelements = (ev.strreset_length - sizeof(ev)) / sizeof(uint16_t);
+	if(nelements == 0) {
+		for(const auto& entry : this->active_channels)
+			affected_channels.push_back(entry.second);
+	} else {
+		size_t index = 0;
+		while(index < nelements)
+			affected_channels.push_back(this->find_datachannel(ev.strreset_stream_list[index++]));
+	}
+
+	auto response_length = sizeof(sctp_stream_reset_event) + affected_channels.size() * 2;
+	auto response = (sctp_stream_reset_event*) malloc(sizeof(sctp_stream_reset_event) + affected_channels.size() * 2);
+	response->strreset_length = response_length;
+	response->strreset_flags = ev.strreset_flags;
+	response->strreset_assoc_id = ev.strreset_assoc_id;
+	response->strreset_type = SCTP_STREAM_RESET_EVENT;
+
+	size_t index = 0;
+	for(const auto& channel : affected_channels) {
+		if(!channel) {
+			index++;
+			continue;
+		}
+
+		channel->read &= (ev.strreset_flags & SCTP_STREAM_RESET_INCOMING_SSN) == 0;
+		channel->write &= (ev.strreset_flags & SCTP_STREAM_RESET_OUTGOING_SSN) == 0;
+
+		if(!channel->read && !channel->write) {
+			if(channel->callback_close)
+				channel->callback_close();
+			this->active_channels.erase(channel->id());
+		}
+
+		response->strreset_stream_list[index++] = channel->id();
+	}
+
+	this->send_sctp_event((sctp_notification*) response);
+	free(response);
+}
+
 void PeerConnection::handle_sctp_message(const pipes::SCTPMessage &message) {
 	cout << "Got sctp message!" << endl;
 	if (message.ppid == PPID_CONTROL) {
@@ -238,7 +277,7 @@ void PeerConnection::handle_sctp_message(const pipes::SCTPMessage &message) {
 		if (message.data[0] == DC_TYPE_OPEN) {
 			this->handle_datachannel_new(message.channel_id, message.data.substr(1));
 		} else if (message.data[0] == DC_TYPE_ACK) {
-			cout << "Got message ack!" << endl; //FIXME care about it? And create a method to open data channels?
+			this->handle_datachannel_ack(message.channel_id);
 		} else {
 			cerr << "Unknown datachannel controll type (" << (int) message.data[0] << ")" << endl;
 		}
@@ -262,7 +301,7 @@ struct dc_new {
 
 
 void PeerConnection::handle_datachannel_new(uint16_t channel_id, const std::string &message) {
-	if(this->active_channels.size() >= this->_max_data_channels) { return; } //TODO error?
+	if(this->active_channels.size() >= this->config->max_data_channels) { return; } //TODO error?
 	if(sizeof(dc_new_header) > message.length()) return;
 
 	dc_new packet{};
@@ -284,11 +323,15 @@ void PeerConnection::handle_datachannel_new(uint16_t channel_id, const std::stri
 
 	if(this->callback_datachannel_new)
 		this->callback_datachannel_new(channel);
+
+	char buffer[1];
+	buffer[0] = DC_TYPE_ACK;
+	this->sendSctpMessage({string(buffer, 1), channel_id, PPID_CONTROL}); //Acknowledge the shit
 	cout << "Got new data channel! Label: " << packet.label << " (" << packet.protocol << "). Channel id " << channel_id << " (Type: " << hex << (uint32_t) (uint8_t) packet.header.channel_type << dec << ")" << endl;
 }
 
-void PeerConnection::handle_datachannel_ack(uint16_t, const std::string &) {
-	//TODO
+void PeerConnection::handle_datachannel_ack(uint16_t) {
+	//TODO acknowledge for create
 }
 
 void PeerConnection::handle_datachannel_message(uint16_t channel_id, uint32_t type, const std::string &message) {

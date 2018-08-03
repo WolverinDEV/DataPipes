@@ -11,6 +11,7 @@ namespace rtc {
 	class DataChannel {
 		friend class PeerConnection;
 		public:
+			typedef std::function<void()> cb_close;
 			typedef std::function<void(const std::string&)> cb_text;
 			typedef std::function<void(const std::string&)> cb_binary;
 
@@ -19,6 +20,7 @@ namespace rtc {
 				TEXT
 			};
 
+			cb_close callback_close;
 			cb_text callback_text;
 			cb_binary callback_binary;
 
@@ -26,10 +28,14 @@ namespace rtc {
 			std::string lable() const;
 			std::string protocol() const;
 
+			bool readable() const { return this->read; }
+			bool writeable() const { return this->write; }
+
 			void send(const std::string& /* message */, MessageType /* type */ = BINARY);
 		private:
 			DataChannel(PeerConnection*, uint16_t id, std::string lable, std::string protocol);
 
+			bool read = true, write = true;
 			PeerConnection* owner;
 			uint16_t _id;
 			std::string _lable;
@@ -40,6 +46,8 @@ namespace rtc {
 		public:
 			struct Config {
 				std::shared_ptr<NiceWrapper::Config> nice_config;
+
+				size_t max_data_channels = 1024;
 			};
 
 			typedef std::function<void(const std::shared_ptr<DataChannel>&)> cb_datachannel_new;
@@ -69,11 +77,13 @@ namespace rtc {
 
 			virtual void handle_sctp_message(const pipes::SCTPMessage& /* message */);
 			virtual void handle_sctp_event(union sctp_notification * /* event */);
+			void send_sctp_event(union sctp_notification* /* event */);
 
 			virtual void handle_datachannel_new(uint16_t /* channel id */, const std::string& /* data */);
-			virtual void handle_datachannel_ack(uint16_t /* channel id */, const std::string& /* data */);
+			virtual void handle_datachannel_ack(uint16_t /* channel id */);
 
 			virtual void handle_datachannel_message(uint16_t /* channel id */, uint32_t /* message type */, const std::string& /* message */);
+			virtual void handle_event_stream_reset(struct sctp_stream_reset_event &);
 		private:
 			std::shared_ptr<Config> config;
 
@@ -81,7 +91,6 @@ namespace rtc {
 			std::unique_ptr<DTLS> dtls;
 			std::unique_ptr<pipes::SCTP> sctp;
 
-			size_t _max_data_channels = 1024;
 			std::map<uint16_t, std::shared_ptr<DataChannel>> active_channels;
 
 			std::string mid;

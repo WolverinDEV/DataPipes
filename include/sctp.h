@@ -17,6 +17,7 @@ namespace pipes {
 			virtual ~SCTP();
 
 			bool initialize(std::string& error);
+			void finalize();
 
 			bool connect();
 

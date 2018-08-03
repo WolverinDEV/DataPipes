@@ -23,6 +23,7 @@ SCTP::SCTP(uint16_t local_port, uint16_t remote_port) : Pipeline("SCTP"), remote
 }
 
 SCTP::~SCTP() {
+	this->finalize();
 	usrsctp_deregister_address(this);
 }
 
@@ -127,6 +128,14 @@ bool SCTP::initialize(std::string &error) {
 		ERRORQ("Could not usrsctp_bind. errno=" + to_string(errno));
 
 	return true;
+}
+
+void SCTP::finalize() {
+	if(this->sock) {
+		usrsctp_shutdown(this->sock, SHUT_RDWR);
+		usrsctp_close(this->sock);
+		this->sock = nullptr;
+	}
 }
 
 #define READ_BUFFER_SIZE 1024

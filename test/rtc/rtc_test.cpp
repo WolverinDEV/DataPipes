@@ -105,6 +105,10 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] Got text message " << message.length() << endl;
 				chan->send("Echo: " + message, rtc::DataChannel::TEXT);
 			};
+			channel->callback_close = [weak]() {
+				auto chan = weak.lock();
+				cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] got closed" << endl;
+			};
 		};
 	}
 
