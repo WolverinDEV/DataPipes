@@ -9,13 +9,15 @@
 #include "include/rtc/NiceWrapper.h"
 
 #define DEFINE_LOG_HELPERS
-#include "include/rtc/logger.h"
+#include "include/misc/logger.h"
 
 using namespace std;
 using namespace rtc;
 
 NiceWrapper::NiceWrapper(const std::shared_ptr<Config>& config) : config(config), loop(nullptr), agent(nullptr, nullptr) {}
-NiceWrapper::~NiceWrapper() {}
+NiceWrapper::~NiceWrapper() {
+	this->finalize();
+}
 
 /* Static callbacks */ //TODO Test pointers for validation!
 void NiceWrapper::cb_recived(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer user_data) {
@@ -118,10 +120,14 @@ bool NiceWrapper::initialize(std::string& error) {
 }
 
 void NiceWrapper::finalize() {
-	g_main_loop_quit(this->loop.get());
+	if(this->own_loop && this->loop) {
+		g_main_loop_quit(this->loop.get());
 
-	if (this->g_main_loop_thread.joinable())
-		this->g_main_loop_thread.join();
+		if (this->g_main_loop_thread.joinable())
+			this->g_main_loop_thread.join();
+
+		this->loop.reset();
+	}
 }
 
 void NiceWrapper::send_data(guint stream, guint component, const std::string &data) {
