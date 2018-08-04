@@ -1,9 +1,12 @@
 #include <include/errors.h>
 #include <iostream>
 #include <openssl/sha.h>
-#include <include/endianness.h>
+#include <include/misc/endianness.h>
 #include <cstring>
 #include "include/ws.h"
+
+#define DEFINE_LOG_HELPERS
+#include "include/misc/logger.h"
 
 using namespace std;
 using namespace pipes;
@@ -169,9 +172,9 @@ int WebSocket::process_handshake() {
         goto sendResponse;
     }
 
-    cout << "Got WS handshake" << endl;
-    cout << "Version: " + header.findHeader("Sec-WebSocket-Version").values[0] << endl;
-    cout << "Key    : " + header.findHeader("Sec-WebSocket-Key").values[0] << endl;
+    LOG_DEBUG(this->_logger, "WebSocket::process_handshake", "Recived WebSocket handshake!");
+    LOG_VERBOSE(this->_logger, "WebSocket::process_handshake", "Version: %s", header.findHeader("Sec-WebSocket-Version").values[0].c_str());
+	LOG_VERBOSE(this->_logger, "WebSocket::process_handshake", "Key    : %s", header.findHeader("Sec-WebSocket-Key").values[0].c_str());
     key = header.findHeader("Sec-WebSocket-Key").values[0];
     key += "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -248,8 +251,8 @@ bool WebSocket::process_frame() {
     auto read = this->buffer_read_read_bytes(buffer.get(), this->current_frame->payloadLength);
 
     if(read < this->current_frame->payloadLength) {
-        cerr << "Failed to read!" << endl;
-        //FIXME critical error handling
+    	LOG_ERROR(this->_logger, "WebSocket::process_frame", "Failed to read full payload. Only read %i out of %i, but we already ensured the availability of the data!", read, this->current_frame->payloadLength);
+        return false;
     }
     this->current_frame->data = string(buffer.get(), read);
 

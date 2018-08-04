@@ -17,24 +17,26 @@ find_package(LibNice REQUIRED)
 find_package(UsrSCTP REQUIRED)
 
 add_definitions(-DLOG_LEVEL=0) #FIXME!
-add_definitions()
 
 set(HEADER_FILES
+		#General definitions
         include/pipeline.h
         include/errors.h
 
+		#The pipes
         include/ssl.h
-
-        include/http.h
-        include/endianness.h
-        include/ws.h
-
+		include/ws.h
 		include/sctp.h
+		include/dtls.h
 
+		#Helpers
+		include/misc/http.h
+		include/misc/endianness.h
+		include/misc/logger.h
+
+		#WebRTC
 		include/rtc/NiceWrapper.h
 		include/rtc/PeerConnection.h
-		include/dtls.h
-		include/rtc/logger.h
 )
 
 set(SOURCE_FILES
@@ -55,6 +57,9 @@ set(SOURCE_FILES
 )
 
 add_library(DataPipes ${HEADER_FILES} ${SOURCE_FILES})
+install(TARGETS DataPipes DESTINATION lib)
+install(DIRECTORY include/ DESTINATION include/pipes)
+
 target_link_libraries(
 		DataPipes
 		PUBLIC
@@ -65,6 +70,7 @@ target_link_libraries(
 		)
 add_definitions(-DUSE_BORINGSSL)
 include_directories(/home/wolverindev/clib/boringssl/include)
+
 
 set(TEST_LIBRARIES
         DataPipes

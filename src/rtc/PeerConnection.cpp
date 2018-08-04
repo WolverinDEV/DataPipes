@@ -6,10 +6,10 @@
 #include <iostream>
 #include <cstring>
 #include <utility>
-#include <include/endianness.h>
+#include <include/misc/endianness.h>
 #include "include/rtc/PeerConnection.h"
 #define DEFINE_LOG_HELPERS
-#include "include/rtc/logger.h"
+#include "include/misc/logger.h"
 
 using namespace std;
 using namespace rtc;

@@ -4,7 +4,7 @@
 #include <memory>
 #include <deque>
 #include <thread>
-#include "logger.h"
+#include "../misc/logger.h"
 
 extern "C" {
 	#include <nice/agent.h>

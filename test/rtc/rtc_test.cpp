@@ -57,6 +57,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 
 	{
 		client->websocket->initialize();
+		client->websocket->logger(config->logger);
 		client->websocket->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
 		client->websocket->direct_process(pipes::PROCESS_DIRECTION_IN, true);
 
@@ -85,9 +86,9 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 
 			cout << "Got message " << message.data << endl;
 			if(client->reader.parse(message.data, root)) {
-				std::cout << "Got msg of type: " << root["type"] << "\n";
+				std::cout << "Got msg of type: " << root["type"] << endl;
 				if (root["type"] == "offer") {
-					std::cout << "Time to get the rtc party started\n";
+					cout << "Recived offer" << endl;
 
 					client->peer->apply_offer(error, root["msg"]["sdp"].asString());
 					Json::Value answer;
@@ -95,7 +96,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					answer["msg"]["sdp"] = client->peer->generate_answer(true);
 					answer["msg"]["type"] = "answer";
 
-					std::cout << "Sending Answer: " << answer << "\n";
+					std::cout << "Sending Answer: " << answer << endl;
 
 					client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, answer)});
 				} else if (root["type"] == "candidate") {

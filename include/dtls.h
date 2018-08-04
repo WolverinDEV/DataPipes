@@ -1,7 +1,7 @@
 #pragma once
 
 #include <openssl/evp.h>
-#include <include/ssl.h>
+#include "ssl.h"
 
 namespace pipes {
 	class DTLSCertificate {

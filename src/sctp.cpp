@@ -11,7 +11,7 @@
 #include "include/sctp.h"
 
 #define DEFINE_LOG_HELPERS
-#include "include/rtc/logger.h"
+#include "include/misc/logger.h"
 
 using namespace std;
 using namespace pipes;

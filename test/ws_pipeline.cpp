@@ -32,10 +32,10 @@ void initialize_client(const std::shared_ptr<Socket::Client>& client) {
         if(cl) cl->send(data);
     });
 
-    ws->callback_data([weak](const std::string& message) {
-        cout << "Got message " << message << endl;
+    ws->callback_data([weak](const pipes::WSMessage& message) {
+        cout << "Got message " << message.data << endl;
         auto cl = weak.lock();
-        if(cl) ((pipes::WebSocket*) cl->data)->send(pipes::WSMessage{pipes::TEXT, "You wrote: " + message});
+        if(cl) ((pipes::WebSocket*) cl->data)->send(pipes::WSMessage{pipes::TEXT, "You wrote: " + message.data});
     });
 
     client->data = ws;

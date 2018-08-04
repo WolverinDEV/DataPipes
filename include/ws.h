@@ -1,7 +1,7 @@
 #pragma once
 
 #include "pipeline.h"
-#include "http.h"
+#include "misc/http.h"
 
 struct WSFrame;
 namespace pipes {
