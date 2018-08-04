@@ -3,7 +3,7 @@
 #include <openssl/evp.h>
 #include <include/ssl.h>
 
-namespace rtc {
+namespace pipes {
 	class DTLSCertificate {
 		public:
 			static std::shared_ptr<DTLSCertificate> generate(const std::string& /* name */, int /* days */);

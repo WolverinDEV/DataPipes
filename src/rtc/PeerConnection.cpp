@@ -57,7 +57,7 @@ bool PeerConnection::initialize(std::string &error) {
 	}
 
 	{
-		this->dtls = make_unique<DTLS>();
+		this->dtls = make_unique<pipes::DTLS>();
 		this->dtls->direct_process(pipes::PROCESS_DIRECTION_IN, true);
 		this->dtls->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
 		this->dtls->logger(this->config->logger);
@@ -81,7 +81,7 @@ bool PeerConnection::initialize(std::string &error) {
 			}).detach();
 		};
 
-		auto certificate = DTLSCertificate::generate("DataPipes", 365);
+		auto certificate = pipes::DTLSCertificate::generate("DataPipes", 365);
 		if(!this->dtls->initialize(error, certificate)) {
 			error = "Failed to initialize dtls (" + error + ")";
 			return false;

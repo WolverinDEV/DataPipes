@@ -4,10 +4,10 @@
 
 #include <cstring>
 #include <utility>
-#include "include/rtc/dtls.h"
+#include "include/dtls.h"
 
 using namespace std;
-using namespace rtc;
+using namespace pipes;
 
 #define ERRORQ(message) \
 do { \
@@ -20,7 +20,7 @@ static int verify_peer_certificate(int ok, X509_STORE_CTX *ctx) {
 	return 1;
 }
 
-bool DTLS::initialize(std::string& error, const std::shared_ptr<rtc::DTLSCertificate> &certificate) {
+bool DTLS::initialize(std::string& error, const std::shared_ptr<DTLSCertificate> &certificate) {
 	this->certificate = certificate;
 
 

@@ -5,7 +5,7 @@
 #include "../sctp.h"
 #include "logger.h"
 #include "NiceWrapper.h"
-#include "dtls.h"
+#include "include/dtls.h"
 
 namespace rtc {
 	class PeerConnection;
@@ -72,8 +72,6 @@ namespace rtc {
 
 			std::string generate_answer(bool /* candidates */);
 
-			guint getStreamId() { return 1; }
-
 			std::shared_ptr<DataChannel> find_datachannel(uint16_t /* channel id */);
 			std::shared_ptr<DataChannel> find_datachannel(const std::string& /* channel name */);
 
@@ -98,7 +96,7 @@ namespace rtc {
 			std::shared_ptr<Config> config;
 
 			std::unique_ptr<NiceWrapper> nice;
-			std::unique_ptr<DTLS> dtls;
+			std::unique_ptr<pipes::DTLS> dtls;
 			std::unique_ptr<pipes::SCTP> sctp;
 
 			std::map<uint16_t, std::shared_ptr<DataChannel>> active_channels;
