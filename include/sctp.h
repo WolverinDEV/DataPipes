@@ -13,15 +13,19 @@ namespace pipes {
 		public:
 			typedef std::function<void(union sctp_notification*)> cb_notification;
 
-			SCTP(uint16_t local_port, uint16_t remote_port);
+			SCTP(uint16_t local_port);
 			virtual ~SCTP();
 
 			bool initialize(std::string& error);
 			void finalize();
 
-			bool connect();
+			bool connect(int32_t remote_port = -1);
 
 			cb_notification callback_notification;
+
+			uint16_t local_port() { return this->_local_port; }
+			uint16_t remote_port() { return this->_remote_port; }
+			void remote_port(uint16_t port) { this->_remote_port = port; } //Works only when its not already connected
 		protected:
 			ProcessResult process_data_in() override;
 			ProcessResult process_data_out() override;
@@ -33,8 +37,8 @@ namespace pipes {
 			static int cb_send(void *sctp_ptr, void *data, size_t len, uint8_t tos, uint8_t set_df);
 			static int cb_read(struct socket *sock, union sctp_sockstore addr, void *data, size_t len, struct sctp_rcvinfo recv_info, int flags, void *user_data);
 
-			uint16_t local_port;
-			uint16_t remote_port;
+			uint16_t _local_port;
+			uint16_t _remote_port = 0;
 
 			struct socket *sock;
 			int stream_cursor;

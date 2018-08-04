@@ -21,6 +21,13 @@
                 rtcPeerConnection = new RTCPeerConnection(config);
                 const dataChannelConfig = { ordered: false, maxRetransmits: 0 };
 
+                rtcPeerConnection.ondatachannel = channel => {
+                    console.log("Got new channel: %o", channel);
+                    channel.onmessage = function(e){console.log("DC message:" +e.data);};
+                    channel.onopen = function(){console.log("------ DATACHANNEL OPENED ------");};
+                    channel.onclose = function(){console.log("------- DC closed! -------")};
+                    channel.onerror = function(){console.log("DC ERROR!!!")};
+                }
                 dataChannel = rtcPeerConnection.createDataChannel('main', dataChannelConfig);
                 dataChannel.onmessage = function(e){console.log("DC message:" +e.data);};
                 dataChannel.onopen = function(){console.log("------ DATACHANNEL OPENED ------");};

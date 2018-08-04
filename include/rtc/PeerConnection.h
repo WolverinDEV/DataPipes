@@ -2,7 +2,8 @@
 
 #include <map>
 #include <memory>
-#include <include/sctp.h>
+#include "../sctp.h"
+#include "logger.h"
 #include "NiceWrapper.h"
 #include "dtls.h"
 
@@ -32,6 +33,7 @@ namespace rtc {
 			bool writeable() const { return this->write; }
 
 			void send(const std::string& /* message */, MessageType /* type */ = BINARY);
+			void close();
 		private:
 			DataChannel(PeerConnection*, uint16_t id, std::string lable, std::string protocol);
 
@@ -43,11 +45,17 @@ namespace rtc {
 	};
 
 	class PeerConnection {
+			friend class DataChannel;
 		public:
 			struct Config {
+				std::shared_ptr<pipes::Logger> logger;
 				std::shared_ptr<NiceWrapper::Config> nice_config;
 
 				size_t max_data_channels = 1024;
+
+				struct {
+					uint16_t local_port = 5000;
+				} sctp;
 			};
 
 			typedef std::function<void(const std::shared_ptr<DataChannel>&)> cb_datachannel_new;
@@ -77,13 +85,15 @@ namespace rtc {
 
 			virtual void handle_sctp_message(const pipes::SCTPMessage& /* message */);
 			virtual void handle_sctp_event(union sctp_notification * /* event */);
-			void send_sctp_event(union sctp_notification* /* event */);
+			void send_sctp_event(uint16_t /* channel id (useless?) */, union sctp_notification* /* event */);
 
 			virtual void handle_datachannel_new(uint16_t /* channel id */, const std::string& /* data */);
 			virtual void handle_datachannel_ack(uint16_t /* channel id */);
 
 			virtual void handle_datachannel_message(uint16_t /* channel id */, uint32_t /* message type */, const std::string& /* message */);
 			virtual void handle_event_stream_reset(struct sctp_stream_reset_event &);
+
+			virtual void close_datachannel(DataChannel* /* channel */);
 		private:
 			std::shared_ptr<Config> config;
 

@@ -7,12 +7,16 @@
 #include <cstring>
 #include <iostream>
 #include <thread>
+#include <bitset>
 #include "include/sctp.h"
+
+#define DEFINE_LOG_HELPERS
+#include "include/rtc/logger.h"
 
 using namespace std;
 using namespace pipes;
 
-SCTP::SCTP(uint16_t local_port, uint16_t remote_port) : Pipeline("SCTP"), remote_port(remote_port), local_port(local_port) {
+SCTP::SCTP(uint16_t local_port) : Pipeline("SCTP"), _local_port(local_port) {
 	if(!global_initialized) {
 		global_initialized = true;
 		usrsctp_init(0, &pipes::SCTP::cb_send, nullptr); //May not static anymore if its even possible?
@@ -118,7 +122,7 @@ bool SCTP::initialize(std::string &error) {
 
 	struct sockaddr_conn sconn{};
 	sconn.sconn_family = AF_CONN;
-	sconn.sconn_port = htons(remote_port);
+	sconn.sconn_port = htons(_local_port);
 	sconn.sconn_addr = (void *)this;
 #ifdef HAVE_SCONN_LEN
 	sconn.sconn_len = sizeof(struct sockaddr_conn);
@@ -159,13 +163,12 @@ ProcessResult SCTP::process_data_out() {
 	}
 
 	struct sctp_sendv_spa spa = {0};
-
 	// spa.sendv_flags = SCTP_SEND_SNDINFO_VALID | SCTP_SEND_PRINFO_VALID;
 	spa.sendv_flags = SCTP_SEND_SNDINFO_VALID;
 
 	spa.sendv_sndinfo.snd_sid = message.channel_id;
 	// spa.sendv_sndinfo.snd_flags = SCTP_EOR | SCTP_UNORDERED;
-	spa.sendv_sndinfo.snd_flags = SCTP_EOR;
+	//spa.sendv_sndinfo.snd_flags = SCTP_EOR;
 	spa.sendv_sndinfo.snd_ppid = htonl(message.ppid);
 
 	// spa.sendv_prinfo.pr_policy = SCTP_PR_SCTP_RTX;
@@ -182,11 +185,11 @@ int SCTP::on_data_out(const std::string &data) {
 
 //TODO error handling?
 int SCTP::on_data_in(const std::string &data, struct sctp_rcvinfo recv_info, int flags) {
-	cout << "SCTP got incoming data! " << data.length() << endl;
+	LOG_VERBOSE(this->_logger, "SCTP::on_data_in", "Got new data. Length: %i Flags: %s", data.length(), bitset<16>(flags).to_string().c_str());
 	if(flags & MSG_NOTIFICATION) {
 		auto notify = (union sctp_notification *) data.data();
 		if(notify->sn_header.sn_length != data.length()) {
-			cerr << "Invalid notification length!" << endl;
+			LOG_DEBUG(this->_logger, "SCTP::on_data_in", "Invalid notification length (%ui != %ul)", notify->sn_header.sn_length, data.length());
 			return -1;
 		}
 		if(this->callback_notification)
@@ -198,10 +201,12 @@ int SCTP::on_data_in(const std::string &data, struct sctp_rcvinfo recv_info, int
 	return 0;
 }
 
-bool SCTP::connect() {
+bool SCTP::connect(int32_t remote_port) {
+	if(remote_port > 0 && remote_port < 0xFFFF)
+		this->_remote_port = static_cast<uint16_t>(remote_port);
 	struct sockaddr_conn sconn{};
 	sconn.sconn_family = AF_CONN;
-	sconn.sconn_port = htons(remote_port);
+	sconn.sconn_port = htons(_remote_port);
 	sconn.sconn_addr = (void *)this;
 #ifdef HAVE_SCONN_LEN
 	sconn.sconn_len = sizeof((void *)this);
@@ -211,7 +216,7 @@ bool SCTP::connect() {
 	int connect_result = usrsctp_connect(sock, (struct sockaddr *)&sconn, sizeof sconn);
 	if ((connect_result < 0) && (errno != EINPROGRESS)) {
 		//TODO close still?
-		cerr << "Connect result: " << connect_result << " | " << to_string(errno) << " - " << strerror(errno) << endl;
+		LOG_INFO(this->_logger, "SCTP::connect", "Result: %i (errno: %i, message: %s)", connect_result, errno, strerror(errno));
 		return false;
 	}
 	return true;

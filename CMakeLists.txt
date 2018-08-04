@@ -16,6 +16,9 @@ find_package(OpenSSL REQUIRED)
 find_package(LibNice REQUIRED)
 find_package(UsrSCTP REQUIRED)
 
+add_definitions(-DLOG_LEVEL=0) #FIXME!
+add_definitions()
+
 set(HEADER_FILES
         include/pipeline.h
         include/errors.h
@@ -31,6 +34,7 @@ set(HEADER_FILES
 		include/rtc/NiceWrapper.h
 		include/rtc/PeerConnection.h
 		include/rtc/dtls.h
+		include/rtc/logger.h
 )
 
 set(SOURCE_FILES

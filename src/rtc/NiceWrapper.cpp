@@ -5,8 +5,11 @@
 #include <netdb.h>
 #include <iostream>
 #include <sstream>
-#include <assert.h>
+#include <cassert>
 #include "include/rtc/NiceWrapper.h"
+
+#define DEFINE_LOG_HELPERS
+#include "include/rtc/logger.h"
 
 using namespace std;
 using namespace rtc;
@@ -55,7 +58,6 @@ bool NiceWrapper::initialize(std::string& error) {
 	//int log_flags = G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION;
 	//g_log_set_handler(NULL, (GLogLevelFlags)log_flags, nice_log_handler, this);
 
-	//TODO allow other loops (May via config?)
 	if(this->config->main_loop) {
 		this->loop = this->config->main_loop;
 		this->own_loop = false;
@@ -77,8 +79,7 @@ bool NiceWrapper::initialize(std::string& error) {
 	for (const auto& ice_server : config->ice_servers) {
 		struct hostent *stun_host = gethostbyname(ice_server.host.c_str());
 		if (stun_host == nullptr) {
-			//TODO log messages!
-			//logger->warn("Failed to lookup host for server: {}", ice_server);
+			LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to lookup host for ice server %s:%i", ice_server.host, ice_server.port);
 		} else {
 			auto address = (in_addr *)stun_host->h_addr;
 			const char *ip_address = inet_ntoa(*address);
@@ -89,8 +90,7 @@ bool NiceWrapper::initialize(std::string& error) {
 		if (ice_server.port > 0) {
 			g_object_set(G_OBJECT(agent.get()), "stun-server-port", ice_server.port, NULL);
 		} else {
-			//TODO log messages!
-			//logger->error("stun port empty");
+			LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Invalid stun port! (%i)", ice_server.port);
 		}
 	}
 
@@ -124,12 +124,10 @@ void NiceWrapper::finalize() {
 		this->g_main_loop_thread.join();
 }
 
-//TODO right log messages!
 void NiceWrapper::send_data(guint stream, guint component, const std::string &data) {
 	auto result = nice_agent_send(this->agent.get(), stream, component, data.length(), data.data());
-	if(result != data.length()) {
-		cerr << "Failed to send data! (" << result << "/" << data.length() << ")" << endl;
-	}
+	if(result != data.length())
+		LOG_ERROR(this->_logger, "NiceWrapper::send_data", "Failed to send data to agent! (Expected length: %i Recived length: %i)", data.length(), result);
 }
 
 void NiceWrapper::set_callback_local_candidate(const rtc::NiceWrapper::cb_candidate &cb) {
@@ -144,62 +142,58 @@ void NiceWrapper::set_callback_ready(const rtc::NiceWrapper::cb_ready &cb) {
 	this->callback_ready = cb;
 }
 
-//TODO right log messages!
 void NiceWrapper::on_data_recived(guint stream_id, guint component_id, void* data, size_t length) {
 	if(this->stream_id() != stream_id) {
-		cerr << "Invalid stream id!" << endl;
+		LOG_ERROR(this->_logger, "NiceWrapper::on_data_recived", "Found invalid stream id! (Expected id: %i Recived id: %i)", this->stream_id(), stream_id);
 		return;
 	}
 	if(this->callback_recive)
 		this->callback_recive(string((const char*) data, length));
 }
 
-//TODO right log messages!
 void NiceWrapper::on_gathering_done() {
-	cout << "gathering completed!" << endl;
+	LOG_DEBUG(this->_logger, "NiceWrapper::on_gathering_done", "Gathering completed!");
 }
 
-//TODO right log messages!
 void NiceWrapper::on_selected_pair(guint stream_id, guint component_id, NiceCandidate *, NiceCandidate *) {
 	if(this->stream_id() != stream_id) {
-		cerr << "Invalid stream id!" << endl;
+		LOG_ERROR(this->_logger, "NiceWrapper::on_selected_pair", "Found invalid stream id! (Expected id: %i Recived id: %i)", this->stream_id(), stream_id);
 		return;
 	}
-	cout << "got ice pair!" << endl;
+	LOG_DEBUG(this->_logger, "NiceWrapper::on_selected_pair", "Got ICE pair!");
 }
 
-//TODO right log messages!
 void NiceWrapper::on_state_change(guint stream_id, guint component_id, guint state) {
 	if(this->stream_id() != stream_id) {
-		cerr << "Invalid stream id!" << endl;
+		LOG_ERROR(this->_logger, "NiceWrapper::on_state_change", "Found invalid stream id! (Expected id: %i Recived id: %i)", this->stream_id(), stream_id);
 		return;
 	}
 
 	switch (state) {
 		case (NICE_COMPONENT_STATE_DISCONNECTED):
-			cout << "ICE: DISCONNECTED" << endl;
+			LOG_INFO(this->_logger, "NiceWrapper::on_state_change", "Received new state for stream %i. State: %s", stream_id, "DISCONNECTED");
 			break;
 		case (NICE_COMPONENT_STATE_GATHERING):
-			cout << "ICE: GATHERING" << endl;
+			LOG_INFO(this->_logger, "NiceWrapper::on_state_change", "Received new state for stream %i. State: %s", stream_id, "GATHERING");
 			break;
 		case (NICE_COMPONENT_STATE_CONNECTING):
-			cout << "ICE: CONNECTING" << endl;
+			LOG_INFO(this->_logger, "NiceWrapper::on_state_change", "Received new state for stream %i. State: %s", stream_id, "CONNECTING");
 			break;
 		case (NICE_COMPONENT_STATE_CONNECTED):
-			cout << "ICE: CONNECTED (" << component_id << ")" << endl;
+			LOG_INFO(this->_logger, "NiceWrapper::on_state_change", "Received new state for stream %i. State: %s", stream_id, "CONNECTED");
 			break;
 		case (NICE_COMPONENT_STATE_READY):
-			cout << "ICE: READY (" << component_id << ")" << endl;
+			LOG_INFO(this->_logger, "NiceWrapper::on_state_change", "Received new state for stream %i. State: %s", stream_id, "READY");
 			if(!this->stream->ready) {
 				this->stream->ready = true;
 				this->on_ice_ready();
 			}
 			break;
 		case (NICE_COMPONENT_STATE_FAILED):
-			cout << "ICE FAILED: component_id=" << component_id << endl;
+			LOG_INFO(this->_logger, "NiceWrapper::on_state_change", "Received new state for stream %i. State: %s Component: %i", stream_id, "FAILED", component_id);
 			break;
 		default:
-			cout << "ICE: Unknown state: " << state << endl;
+			LOG_INFO(this->_logger, "NiceWrapper::on_state_change", "Received new unknown state for stream %i. State: %i", stream_id, state);
 			break;
 	}
 }
@@ -219,7 +213,7 @@ ssize_t NiceWrapper::apply_remote_ice_candidates(const std::deque<std::string> &
 	for (const auto& candidate_sdp : candidates) {
 		auto candidate = nice_agent_parse_remote_candidate_sdp(this->agent.get(), this->stream_id(), candidate_sdp.c_str());
 		if(!candidate) {
-			//TODO log message?
+			LOG_ERROR(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Failed to parse candidate. Ignoring it! Candidate: %s", candidate_sdp.c_str());
 			continue;
 		}
 		list = g_slist_append(list, candidate);

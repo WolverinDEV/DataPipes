@@ -102,7 +102,8 @@ ProcessResult pipes::SSL::process_data_out() {
     if(!this->sslLayer) return ProcessResult::PROCESS_RESULT_INVALID_STATE;
 
     while(!this->write_buffer.empty()) {
-        SSL_write(this->sslLayer, this->write_buffer.front().data(), this->write_buffer.front().length());
+    	auto front = std::move(this->write_buffer.front());
+        SSL_write(this->sslLayer, front.data(), front.length());
         this->write_buffer.pop_front();
     }
     return PROCESS_RESULT_OK;

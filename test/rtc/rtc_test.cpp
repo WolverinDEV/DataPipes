@@ -20,6 +20,18 @@ struct Client {
 	Json::StreamWriterBuilder json_writer;
 };
 
+void log(pipes::Logger::LogLevel level, const std::string& name, const std::string& message, ...) {
+	auto max_length = 1024 * 2;
+	char buffer[max_length];
+
+	va_list args;
+	va_start(args, message);
+	max_length = vsnprintf(buffer, max_length, message.c_str(), args);
+	va_end(args);
+
+	printf("[%i][%s] %s\n", level, name.c_str(), buffer);
+}
+
 auto config = []{
 	auto config = make_shared<rtc::PeerConnection::Config>();
 	config->nice_config = make_shared<rtc::NiceWrapper::Config>();
@@ -28,6 +40,9 @@ auto config = []{
 
 	config->nice_config->main_loop = std::shared_ptr<GMainLoop>(g_main_loop_new(nullptr, false), g_main_loop_unref);
 	std::thread(g_main_loop_run, config->nice_config->main_loop.get()).detach(); //FIXME
+
+	config->logger = make_shared<pipes::Logger>();
+	config->logger->callback_log = log;
 
 	return config;
 }();
@@ -102,8 +117,13 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 			};
 			channel->callback_text = [weak](const std::string& message) {
 				auto chan = weak.lock();
-				cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] Got text message " << message.length() << endl;
-				chan->send("Echo: " + message, rtc::DataChannel::TEXT);
+				if(message == "close") {
+					cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] closing channel" << endl;
+					chan->close();
+				} else {
+					cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] Got text message " << message.length() << endl;
+					chan->send("Echo: " + message, rtc::DataChannel::TEXT);
+				}
 			};
 			channel->callback_close = [weak]() {
 				auto chan = weak.lock();

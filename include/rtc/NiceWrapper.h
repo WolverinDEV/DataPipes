@@ -4,6 +4,7 @@
 #include <memory>
 #include <deque>
 #include <thread>
+#include "logger.h"
 
 extern "C" {
 	#include <nice/agent.h>
@@ -54,6 +55,9 @@ namespace rtc {
 			void set_callback_ready(const cb_ready& /* callback */);
 
 			uint32_t stream_id() { return this->stream ? this->stream->stream_id : 0; }
+
+			std::shared_ptr<pipes::Logger> logger() { return this->_logger; }
+			void logger(const std::shared_ptr<pipes::Logger>& logger) { this->_logger = logger; }
 		private:
 			static void cb_recived(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer user_data);
 			static void cb_candidate_gathering_done(NiceAgent *agent, guint stream_id, gpointer user_data);
@@ -70,6 +74,7 @@ namespace rtc {
 			virtual void on_state_change(guint /* stream */, guint /* component */, guint /* state */);
 			virtual void on_local_ice_candidate(const std::string& /* candidate */);
 		private:
+			std::shared_ptr<pipes::Logger> _logger;
 			std::shared_ptr<Config> config;
 
 			std::unique_ptr<NiceAgent, void (*)(gpointer)> agent;
