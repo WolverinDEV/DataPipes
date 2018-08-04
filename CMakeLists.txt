@@ -33,7 +33,7 @@ set(HEADER_FILES
 
 		include/rtc/NiceWrapper.h
 		include/rtc/PeerConnection.h
-		include/rtc/dtls.h
+		include/dtls.h
 		include/rtc/logger.h
 )
 
@@ -43,15 +43,15 @@ set(SOURCE_FILES
         src/ssl/ssl.cpp
         src/ssl/ssl_bio.cpp
 
-        src/ws/ws.cpp
+		src/ws.cpp
 
         src/http/http.cpp
 
-		src/sctp/sctp.cpp
+		src/sctp.cpp
 
 		src/rtc/NiceWrapper.cpp
 		src/rtc/PeerConnection.cpp
-		src/rtc/dtls.cpp
+		src/dtls.cpp
 )
 
 add_library(DataPipes ${HEADER_FILES} ${SOURCE_FILES})
