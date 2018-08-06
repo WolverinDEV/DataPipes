@@ -52,6 +52,7 @@ namespace pipes {
 			std::chrono::system_clock::time_point handshakeStart;
 
 		private:
+			std::mutex lock;
 			static BIO_METHOD *SSLSocketBioMethods;
 
 			//Required methods

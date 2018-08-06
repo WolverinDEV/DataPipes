@@ -12,7 +12,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules"
 # Find packages
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
-find_package(OpenSSL REQUIRED)
+#find_package(OpenSSL REQUIRED)
 find_package(LibNice REQUIRED)
 find_package(UsrSCTP REQUIRED)
 
@@ -56,7 +56,7 @@ set(SOURCE_FILES
 		src/dtls.cpp
 )
 
-add_library(DataPipes ${HEADER_FILES} ${SOURCE_FILES})
+add_library(DataPipes SHARED ${HEADER_FILES} ${SOURCE_FILES})
 install(TARGETS DataPipes DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include/pipes)
 
@@ -66,19 +66,19 @@ target_link_libraries(
 		LibNice::LibNice
 		#        SctpLab::UsrSCTP
 		usrsctp.a
-		OpenSSL::SSL
-		)
+)
+
 add_definitions(-DUSE_BORINGSSL)
 include_directories(/home/wolverindev/clib/boringssl/include)
-
-
 set(TEST_LIBRARIES
         DataPipes
         event
         event_pthreads
-        /home/wolverindev/clib/boringssl/build/ssl/libssl.so
-        /home/wolverindev/clib/boringssl/build/crypto/libcrypto.so
-        pthread
+        #/home/wolverindev/clib/boringssl/build/ssl/libssl.so
+        #/home/wolverindev/clib/boringssl/build/crypto/libcrypto.so
+		/home/wolverindev/TeaSpeak/libraries/boringssl/build/ssl/libssl.so
+		/home/wolverindev/TeaSpeak/libraries/boringssl/build/crypto/libcrypto.so
+		pthread
 )
 
 add_executable(DataPipes-Test-SSL test/ssl_pipeline_server.cpp test/utils/socket.cpp)

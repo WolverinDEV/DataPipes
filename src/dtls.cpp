@@ -23,7 +23,6 @@ static int verify_peer_certificate(int ok, X509_STORE_CTX *ctx) {
 bool DTLS::initialize(std::string& error, const std::shared_ptr<DTLSCertificate> &certificate) {
 	this->certificate = certificate;
 
-
 	auto ctx = shared_ptr<SSL_CTX>(SSL_CTX_new(DTLSv1_method()), ::SSL_CTX_free);
 	if (!ctx) ERRORQ("Could not create ctx");
 

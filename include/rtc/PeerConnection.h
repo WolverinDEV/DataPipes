@@ -57,18 +57,34 @@ namespace rtc {
 					uint16_t local_port = 5000;
 				} sctp;
 			};
-
+			struct IceCandidate {
+				IceCandidate(const std::string &candidate, const std::string &sdpMid, int sdpMLineIndex)
+						: candidate(candidate), sdpMid(sdpMid), sdpMLineIndex(sdpMLineIndex) {}
+				std::string candidate;
+				std::string sdpMid;
+				int sdpMLineIndex;
+			};
+			enum ConnectionComponent {
+				BASE,
+				NICE,
+				DTLS,
+				SCTP
+			};
 			typedef std::function<void(const std::shared_ptr<DataChannel>&)> cb_datachannel_new;
+			typedef std::function<void(const IceCandidate&)> cb_ice_candidate;
+			typedef std::function<void(ConnectionComponent /* component */, const std::string& /* reason */)> cb_setup_fail;
 
 			PeerConnection(const std::shared_ptr<Config>& config);
 			virtual ~PeerConnection();
 
 			std::shared_ptr<Config> configuration() { return this->config; }
+			void reset();
 			bool initialize(std::string& /* error */);
 
 			//TODO vice versa (we create a offer and parse the answer?)
 			bool apply_offer(std::string& /* error */, const std::string& /* offer */);
 			int apply_ice_candidates(const std::deque<std::string>& /* candidates */);
+			cb_ice_candidate callback_ice_candidate;
 
 			std::string generate_answer(bool /* candidates */);
 
@@ -76,6 +92,7 @@ namespace rtc {
 			std::shared_ptr<DataChannel> find_datachannel(const std::string& /* channel name */);
 
 			cb_datachannel_new callback_datachannel_new;
+			cb_setup_fail callback_setup_fail;
 
 			void sendSctpMessage(const pipes::SCTPMessage& /* message */);
 		protected:
@@ -92,6 +109,8 @@ namespace rtc {
 			virtual void handle_event_stream_reset(struct sctp_stream_reset_event &);
 
 			virtual void close_datachannel(DataChannel* /* channel */);
+
+			virtual void trigger_setup_fail(ConnectionComponent /* component */, const std::string& /* reason */);
 		private:
 			std::shared_ptr<Config> config;
 

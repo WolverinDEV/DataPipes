@@ -46,6 +46,11 @@ void NiceWrapper::cb_new_selected_pair(NiceAgent *agent, guint stream_id, guint 
 	wrapper->on_selected_pair(stream_id, component_id, lcandidate, rcandidate);
 }
 
+void NiceWrapper::cb_transport_writeable(NiceAgent *agent, guint sid, guint cid, gpointer user_data) {
+	auto wrapper = static_cast<NiceWrapper*>(user_data);
+	wrapper->on_transport_writeable(sid, cid);
+}
+
 //TODO some kind of cleanup!
 #define ERRORQ(message) \
 do { \
@@ -53,12 +58,20 @@ do { \
 	return false; \
 } while(0)
 
+void g_log_handler(const gchar   *log_domain,
+                   GLogLevelFlags log_level,
+                   const gchar   *message,
+                   gpointer       user_data) {
+	auto wrapper = static_cast<NiceWrapper*>(user_data);
+	LOG_VERBOSE(wrapper->logger(), "Nice::logger", message);
+}
+
 bool NiceWrapper::initialize(std::string& error) {
 	if(this->config->ice_servers.size() != 1) ERRORQ("Invalid ice server count!");
 
 	/* log setup */
-	//int log_flags = G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION;
-	//g_log_set_handler(NULL, (GLogLevelFlags)log_flags, nice_log_handler, this);
+	int log_flags = G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION;
+	g_log_set_handler(NULL, (GLogLevelFlags)~0, g_log_handler, this);
 
 	if(this->config->main_loop) {
 		this->loop = this->config->main_loop;
@@ -100,6 +113,8 @@ bool NiceWrapper::initialize(std::string& error) {
 	g_signal_connect(G_OBJECT(agent.get()), "component-state-changed", G_CALLBACK(NiceWrapper::cb_component_state_changed), this);
 	g_signal_connect(G_OBJECT(agent.get()), "new-candidate-full", G_CALLBACK(NiceWrapper::cb_new_local_candidate), this);
 	g_signal_connect(G_OBJECT(agent.get()), "new-selected-pair", G_CALLBACK(NiceWrapper::cb_new_selected_pair), this);
+	g_signal_connect(G_OBJECT(agent.get()), "reliable-transport-writable", G_CALLBACK(NiceWrapper::cb_transport_writeable), this);
+	// signal
 
 	//TODO allow multiple streams!
 	this->stream = make_unique<NiceStream>();
@@ -120,6 +135,8 @@ bool NiceWrapper::initialize(std::string& error) {
 }
 
 void NiceWrapper::finalize() {
+	this->stream.reset();
+	this->agent.reset();
 	if(this->own_loop && this->loop) {
 		g_main_loop_quit(this->loop.get());
 
@@ -148,6 +165,10 @@ void NiceWrapper::set_callback_ready(const rtc::NiceWrapper::cb_ready &cb) {
 	this->callback_ready = cb;
 }
 
+void NiceWrapper::set_callback_failed(const rtc::NiceWrapper::cb_failed &cb) {
+	this->callback_failed = cb;
+}
+
 void NiceWrapper::on_data_recived(guint stream_id, guint component_id, void* data, size_t length) {
 	if(this->stream_id() != stream_id) {
 		LOG_ERROR(this->_logger, "NiceWrapper::on_data_recived", "Found invalid stream id! (Expected id: %i Recived id: %i)", this->stream_id(), stream_id);
@@ -167,6 +188,14 @@ void NiceWrapper::on_selected_pair(guint stream_id, guint component_id, NiceCand
 		return;
 	}
 	LOG_DEBUG(this->_logger, "NiceWrapper::on_selected_pair", "Got ICE pair!");
+}
+
+void NiceWrapper::on_transport_writeable(guint stream_id, guint component) {
+	if(this->stream_id() != stream_id) {
+		LOG_ERROR(this->_logger, "NiceWrapper::on_transport_writeable", "Found invalid stream id! (Expected id: %i Recived id: %i)", this->stream_id(), stream_id);
+		return;
+	}
+	LOG_DEBUG(this->_logger, "NiceWrapper::on_transport_writeable", "We can write again?");
 }
 
 void NiceWrapper::on_state_change(guint stream_id, guint component_id, guint state) {
@@ -197,6 +226,8 @@ void NiceWrapper::on_state_change(guint stream_id, guint component_id, guint sta
 			break;
 		case (NICE_COMPONENT_STATE_FAILED):
 			LOG_INFO(this->_logger, "NiceWrapper::on_state_change", "Received new state for stream %i. State: %s Component: %i", stream_id, "FAILED", component_id);
+			if(this->callback_failed)
+				this->callback_failed();
 			break;
 		default:
 			LOG_INFO(this->_logger, "NiceWrapper::on_state_change", "Received new unknown state for stream %i. State: %i", stream_id, state);
@@ -213,7 +244,7 @@ void NiceWrapper::on_local_ice_candidate(const std::string &candidate) { this->c
 
 ssize_t NiceWrapper::apply_remote_ice_candidates(const std::deque<std::string> &candidates) {
 	if(candidates.empty()) return -1;
-	if(nice_agent_get_component_state(this->agent.get(), this->stream_id(), 1) > NICE_COMPONENT_STATE_GATHERING) return -1; //Not disconnected or gathering
+	//if(nice_agent_get_component_state(this->agent.get(), this->stream_id(), 1) > NICE_COMPONENT_STATE_CONNECTING) return -1; //Not disconnected or gathering
 
 	GSList* list = nullptr;
 	for (const auto& candidate_sdp : candidates) {

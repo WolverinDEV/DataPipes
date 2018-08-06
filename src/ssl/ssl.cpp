@@ -1,6 +1,8 @@
 #include <include/errors.h>
 #include <cstring>
 #include <iostream>
+#define DEFINE_LOG_HELPERS
+#include "include/misc/logger.h"
 #include "include/ssl.h"
 #include "OpenSSLDefinitions.h"
 
@@ -54,6 +56,7 @@ ProcessResult pipes::SSL::process_data_in() {
     if(!this->sslLayer)
         return ProcessResult::PROCESS_RESULT_INVALID_STATE;
 
+	unique_lock<mutex> lock(this->lock);
     if(this->sslState == SSLSocketState::SSL_STATE_INIT) {
         if(handshakeStart.time_since_epoch().count() == 0)
             handshakeStart = system_clock::now();
@@ -81,6 +84,8 @@ ProcessResult pipes::SSL::process_data_in() {
         }
         this->sslState = SSLSocketState::SSL_STATE_CONNECTED;
         this->callback_initialized();
+
+	    lock.unlock();
         this->process_data_in();
     } else if(this->sslState == SSLSocketState::SSL_STATE_CONNECTED) {
         auto readBuffer = new char[this->readBufferSize];
@@ -90,7 +95,9 @@ ProcessResult pipes::SSL::process_data_in() {
             read = SSL_read(this->sslLayer, readBuffer, (int) this->readBufferSize);
             if(read <= 0) break;
 
+	        lock.unlock();
             this->_callback_data(std::string(readBuffer, (size_t) read));
+	        lock.lock();
         }
         delete[] readBuffer;
     }
@@ -101,10 +108,16 @@ ProcessResult pipes::SSL::process_data_in() {
 ProcessResult pipes::SSL::process_data_out() {
     if(!this->sslLayer) return ProcessResult::PROCESS_RESULT_INVALID_STATE;
 
+    lock_guard<mutex> lock(this->lock);
     while(!this->write_buffer.empty()) {
-    	auto front = std::move(this->write_buffer.front());
-        SSL_write(this->sslLayer, front.data(), front.length());
-        this->write_buffer.pop_front();
+    	string front = this->write_buffer.front();
+	    this->write_buffer.pop_front();
+	    int index = 5;
+	    while(index-- > 0) {
+		    auto result = SSL_write(this->sslLayer, front.data(), front.length());
+		    LOG_DEBUG(this->logger(), "SSL::process_data_out", "Write (%i): %i (bytes: %i) (empty: %i)", index, result, front.length(), this->write_buffer.size());
+		    if(result > 0) break;
+	    }
     }
     return PROCESS_RESULT_OK;
 }

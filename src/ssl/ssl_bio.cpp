@@ -1,6 +1,8 @@
 #include <cstring>
 #include <assert.h>
 #include <iostream>
+#define DEFINE_LOG_HELPERS
+#include "include/misc/logger.h"
 #include "include/ssl.h"
 #include "OpenSSLDefinitions.h"
 
@@ -28,6 +30,7 @@ int(*pipes::SSL::bio_write)(BIO*, const char *, int) = [](BIO* self, const char*
 	auto handle = static_cast<SSL*>(self->ptr);
 	assert(handle);
 
+	LOG_DEBUG(handle->logger(), "SSL::bio_write", "Got %p with length %i", buffer, length);
 	handle->_callback_write(std::string(buffer, length));
 	return length;
 };

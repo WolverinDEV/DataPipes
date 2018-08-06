@@ -7,6 +7,7 @@
 #include <cstring>
 #include <utility>
 #include <include/misc/endianness.h>
+#include <cassert>
 #include "include/rtc/PeerConnection.h"
 #define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
@@ -41,15 +42,36 @@ void DataChannel::close() {
 PeerConnection::PeerConnection(const std::shared_ptr<Config>& config) : config(config) { }
 PeerConnection::~PeerConnection() {}
 
+void PeerConnection::reset() {
+	if(this->sctp) this->sctp->finalize();
+	if(this->dtls) this->dtls->finalize();
+	if(this->nice) this->nice->finalize();
+	this->mid = "";
+	this->active_channels.clear();
+}
+
 bool PeerConnection::initialize(std::string &error) {
-	assert(this->config->nice_config);
+	if(!this->config || !this->config->nice_config) {
+		error = "Invalid config!";
+		return false;
+	}
+	if(this->nice || this->dtls || this->sctp) {
+		error = "invalid state! Please call reset() first!";
+		return false;
+	}
 	{
 		this->nice = make_unique<NiceWrapper>(this->config->nice_config);
 		this->nice->logger(this->config->logger);
 
-		this->nice->set_callback_local_candidate([](const std::string& candidate){});
+		this->nice->set_callback_local_candidate([&](const std::string& candidate){
+			if(this->callback_ice_candidate)
+				this->callback_ice_candidate(IceCandidate{candidate.length() > 2 ? candidate.substr(2) : candidate, this->mid, 0});
+		});
 		this->nice->set_callback_ready(bind(&PeerConnection::on_nice_ready, this));
 		this->nice->set_callback_recive([&](const std::string& data) { this->dtls->process_incoming_data(data); });
+		this->nice->set_callback_failed([&] {
+			this->trigger_setup_fail(ConnectionComponent::NICE, "");
+		});
 		if(!this->nice->initialize(error)) {
 			error = "Failed to initialize nice (" + error + ")";
 			return false;
@@ -74,8 +96,8 @@ bool PeerConnection::initialize(std::string &error) {
 			LOG_DEBUG(this->config->logger, "PeerConnection::dtls", "Initialized!");
 			std::thread([&]{
 				if(!this->sctp->connect()) {
-					//TODO error callback here?
 					LOG_ERROR(this->config->logger, "PeerConnection::sctp", "Failed to connect");
+					this->trigger_setup_fail(ConnectionComponent::SCTP, "failed to connect");
 				} else
 					LOG_DEBUG(this->config->logger, "PeerConnection::sctp", "successful connected");
 			}).detach();
@@ -193,10 +215,6 @@ std::string PeerConnection::generate_answer(bool candidates) {
 void PeerConnection::on_nice_ready() {
 	//This is within the main gloop!
 	LOG_DEBUG(this->config->logger, "PeerConnection::nice", "successful connected");
-	std::thread([&]{
-		LOG_DEBUG(this->config->logger, "PeerConnection::dtls", "executing handshake");
-		this->dtls->do_handshake();
-	}).detach();
 }
 
 void PeerConnection::sendSctpMessage(const pipes::SCTPMessage &message) {
@@ -413,4 +431,9 @@ void PeerConnection::close_datachannel(rtc::DataChannel *channel) {
 
 	this->active_channels.erase(channel->id()); //Pointer could getting invalid after this
 
+}
+
+void PeerConnection::trigger_setup_fail(rtc::PeerConnection::ConnectionComponent comp, const std::string &reason) {
+	if(this->callback_setup_fail)
+		this->callback_setup_fail(comp, reason);
 }

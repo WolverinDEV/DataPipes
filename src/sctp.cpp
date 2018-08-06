@@ -174,8 +174,11 @@ ProcessResult SCTP::process_data_out() {
 	// spa.sendv_prinfo.pr_policy = SCTP_PR_SCTP_RTX;
 	// spa.sendv_prinfo.pr_value = 0;
 
-	if(usrsctp_sendv(this->sock, message.data.data(), message.data.length(), NULL, 0, &spa, sizeof(spa), SCTP_SENDV_SPA, 0) < 0)
+	auto send = usrsctp_sendv(this->sock, message.data.data(), message.data.length(), NULL, 0, &spa, sizeof(spa), SCTP_SENDV_SPA, 0);
+	if(send <= 0) {
+		LOG_ERROR(this->logger(), "SCTP::process_data_out", "Failed to send data! Return code %i but expected %i", send, message.data.length());
 		return ProcessResult::PROCESS_RESULT_ERROR;
+	}
 	return ProcessResult::PROCESS_RESULT_OK;
 }
 
