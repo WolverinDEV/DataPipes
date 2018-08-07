@@ -61,31 +61,35 @@ install(TARGETS DataPipes DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include/pipes)
 
 target_link_libraries(
-		DataPipes
-		PUBLIC
-		LibNice::LibNice
-		#        SctpLab::UsrSCTP
-		usrsctp.a
+        DataPipes
+        PUBLIC
+        LibNice::LibNice
+        #SctpLab::UsrSCTP
+        usrsctp.a
 )
 
-add_definitions(-DUSE_BORINGSSL)
-include_directories(/home/wolverindev/clib/boringssl/include)
-set(TEST_LIBRARIES
-        DataPipes
-        event
-        event_pthreads
-        #/home/wolverindev/clib/boringssl/build/ssl/libssl.so
-        #/home/wolverindev/clib/boringssl/build/crypto/libcrypto.so
+
+option(BUILD_TESTS ON "Build test cases")
+if(BUILD_TESTS)
+	add_definitions(-DUSE_BORINGSSL)
+	include_directories(/home/wolverindev/clib/boringssl/include)
+	set(TEST_LIBRARIES
+       		DataPipes
+        	event
+        	event_pthreads
+        	#/home/wolverindev/clib/boringssl/build/ssl/libssl.so
+        	#/home/wolverindev/clib/boringssl/build/crypto/libcrypto.so
 		/home/wolverindev/TeaSpeak/libraries/boringssl/build/ssl/libssl.so
 		/home/wolverindev/TeaSpeak/libraries/boringssl/build/crypto/libcrypto.so
 		pthread
-)
+	)
 
-add_executable(DataPipes-Test-SSL test/ssl_pipeline_server.cpp test/utils/socket.cpp)
-target_link_libraries(DataPipes-Test-SSL ${TEST_LIBRARIES})
+	add_executable(DataPipes-Test-SSL test/ssl_pipeline_server.cpp test/utils/socket.cpp)
+	target_link_libraries(DataPipes-Test-SSL ${TEST_LIBRARIES})
 
-add_executable(DataPipes-Test-WS test/ws_pipeline.cpp test/utils/socket.cpp)
-target_link_libraries(DataPipes-Test-WS ${TEST_LIBRARIES})
+	add_executable(DataPipes-Test-WS test/ws_pipeline.cpp test/utils/socket.cpp)
+	target_link_libraries(DataPipes-Test-WS ${TEST_LIBRARIES})
 
-add_executable(DataPipes-Test-rtc test/rtc/rtc_test.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
-target_link_libraries(DataPipes-Test-rtc ${TEST_LIBRARIES})
+	add_executable(DataPipes-Test-rtc test/rtc/rtc_test.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
+	target_link_libraries(DataPipes-Test-rtc ${TEST_LIBRARIES})
+endif()
