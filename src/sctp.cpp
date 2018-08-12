@@ -22,14 +22,11 @@ SCTP::SCTP(uint16_t local_port) : Pipeline("SCTP"), _local_port(local_port) {
 		usrsctp_init(0, &pipes::SCTP::cb_send, nullptr); //May not static anymore if its even possible?
 		usrsctp_sysctl_set_sctp_ecn_enable(0);
 	}
-
-	usrsctp_register_address(this);
 }
 
 SCTP::~SCTP() {
 	lock_guard<recursive_mutex> io_lock(this->io_lock);
 	this->finalize();
-	usrsctp_deregister_address(this);
 	lock_guard<recursive_mutex> connect_lock(this->connect_lock); //Just wait for the connect step
 }
 
@@ -76,6 +73,7 @@ bool SCTP::global_initialized = false;
 //TODO: error callbacks
 //NOTE Start learning what this magic here does?
 bool SCTP::initialize(std::string &error) {
+	usrsctp_register_address(this);
 	sock = usrsctp_socket(AF_CONN, SOCK_STREAM, IPPROTO_SCTP, &SCTP::cb_read, nullptr, 0, this);
 	if (!sock)
 		ERRORQ("Could not create usrsctp_socket. errno=" + to_string(errno));
@@ -137,6 +135,7 @@ bool SCTP::initialize(std::string &error) {
 }
 
 void SCTP::finalize() {
+	usrsctp_deregister_address(this);
 	if(this->sock) {
 		usrsctp_shutdown(this->sock, SHUT_RDWR);
 		usrsctp_close(this->sock);
@@ -150,8 +149,7 @@ ProcessResult SCTP::process_data_in() {
 	char buffer[READ_BUFFER_SIZE];
 
 	auto read = this->buffer_read_read_bytes(buffer, READ_BUFFER_SIZE);
-	if(read > 0)
-		usrsctp_conninput(this, buffer, read, 0);
+	if(read > 0) usrsctp_conninput(this, buffer, read, 0);
 	return ProcessResult::PROCESS_RESULT_OK;
 }
 
@@ -188,7 +186,7 @@ ProcessResult SCTP::process_data_out() {
 
 int SCTP::on_data_out(const std::string &data) {
 	this->_callback_write(data);
-	return data.length();
+	return 0;
 }
 
 //TODO error handling?
@@ -206,7 +204,7 @@ int SCTP::on_data_in(const std::string &data, struct sctp_rcvinfo recv_info, int
 		if(this->_callback_data)
 			this->_callback_data({data, recv_info.rcv_sid, ntohl(recv_info.rcv_ppid)});
 	}
-	return 0;
+	return 1;
 }
 
 bool SCTP::connect(int32_t remote_port) {
