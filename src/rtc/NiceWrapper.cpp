@@ -6,6 +6,7 @@
 #include <iostream>
 #include <sstream>
 #include <cassert>
+#include <mutex>
 #include "include/rtc/NiceWrapper.h"
 
 #define DEFINE_LOG_HELPERS
@@ -135,8 +136,9 @@ bool NiceWrapper::initialize(std::string& error) {
 }
 
 void NiceWrapper::finalize() {
-	this->stream.reset();
-	this->agent.reset();
+	std::lock_guard<std::recursive_mutex> lock(io_lock);
+	
+	g_signal_handlers_disconnect_by_data(G_OBJECT(agent.get()), this);
 	if(this->own_loop && this->loop) {
 		g_main_loop_quit(this->loop.get());
 
@@ -145,6 +147,9 @@ void NiceWrapper::finalize() {
 
 		this->loop.reset();
 	}
+
+	this->stream.reset();
+	this->agent.reset();
 }
 
 void NiceWrapper::send_data(guint stream, guint component, const std::string &data) {
@@ -170,6 +175,8 @@ void NiceWrapper::set_callback_failed(const rtc::NiceWrapper::cb_failed &cb) {
 }
 
 void NiceWrapper::on_data_recived(guint stream_id, guint component_id, void* data, size_t length) {
+	std::lock_guard<std::recursive_mutex> lock(io_lock);
+
 	if(this->stream_id() != stream_id) {
 		LOG_ERROR(this->_logger, "NiceWrapper::on_data_recived", "Found invalid stream id! (Expected id: %i Recived id: %i)", this->stream_id(), stream_id);
 		return;
@@ -243,6 +250,8 @@ void NiceWrapper::on_ice_ready() {
 void NiceWrapper::on_local_ice_candidate(const std::string &candidate) { this->callback_local_candidate(candidate); }
 
 ssize_t NiceWrapper::apply_remote_ice_candidates(const std::deque<std::string> &candidates) {
+	std::lock_guard<std::recursive_mutex> lock(io_lock);
+
 	if(candidates.empty()) return -1;
 	//if(nice_agent_get_component_state(this->agent.get(), this->stream_id(), 1) > NICE_COMPONENT_STATE_CONNECTING) return -1; //Not disconnected or gathering
 
@@ -263,6 +272,8 @@ ssize_t NiceWrapper::apply_remote_ice_candidates(const std::deque<std::string> &
 }
 
 bool NiceWrapper::apply_remote_sdp(std::string& error, std::string sdp) {
+	std::lock_guard<std::recursive_mutex> lock(io_lock);
+
 	{ //Replace \r\n to \n
 		size_t index = 0;
 		while((index = sdp.find("\r\n", index)) != string::npos)
@@ -277,6 +288,8 @@ bool NiceWrapper::apply_remote_sdp(std::string& error, std::string sdp) {
 }
 
 std::string NiceWrapper::generate_local_sdp(bool candidates) {
+	std::lock_guard<std::recursive_mutex> lock(io_lock);
+
 	std::stringstream nice_sdp;
 	std::stringstream result;
 	std::string line;

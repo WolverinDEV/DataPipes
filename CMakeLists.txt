@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_MACOSX_RPATH 1)
 # Custom CMake modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 
 # Find packages
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -69,10 +70,11 @@ target_link_libraries(
 )
 
 
+add_definitions(-DUSE_BORINGSSL)
+include_directories(/home/wolverindev/clib/boringssl/include)
+
 option(BUILD_TESTS ON "Build test cases")
 if(BUILD_TESTS)
-	add_definitions(-DUSE_BORINGSSL)
-	include_directories(/home/wolverindev/clib/boringssl/include)
 	set(TEST_LIBRARIES
        		DataPipes
         	event

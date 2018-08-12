@@ -14,7 +14,7 @@ namespace http {
 	namespace code {
 		struct HTTPCode {
 			public:
-				HTTPCode(const int code, std::string message) : code(code), message(std::move(message)) { }
+				HTTPCode(const int code, std::string message) : message(std::move(message)), code(code) { }
 
 				const std::string message;
 				const int code;

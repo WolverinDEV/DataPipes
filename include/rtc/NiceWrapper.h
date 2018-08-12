@@ -78,6 +78,7 @@ namespace rtc {
 			virtual void on_local_ice_candidate(const std::string& /* candidate */);
 			virtual void on_transport_writeable(guint /* stream */, guint /* component */);
 		private:
+			std::recursive_mutex io_lock;
 			std::shared_ptr<pipes::Logger> _logger;
 			std::shared_ptr<Config> config;
 

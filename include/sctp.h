@@ -33,6 +33,9 @@ namespace pipes {
 			virtual int on_data_out(const std::string& /* data */);
 			virtual int on_data_in(const std::string& /* data */, struct sctp_rcvinfo recv_info, int flags);
 		private:
+			std::recursive_mutex io_lock;
+			std::recursive_mutex connect_lock;
+
 			static bool global_initialized;
 			static int cb_send(void *sctp_ptr, void *data, size_t len, uint8_t tos, uint8_t set_df);
 			static int cb_read(struct socket *sock, union sctp_sockstore addr, void *data, size_t len, struct sctp_rcvinfo recv_info, int flags, void *user_data);

@@ -6,6 +6,7 @@
     <script src="jquery-3.0.0.min.js"></script>
 </head>
 <body>
+    <a href="https://localhost:1111" target="_blank">cert</a>
     <button id="connect">connect</button><br>
     <input type="text" id="message"/> <button id="send">send</button>
     <script>
@@ -32,7 +33,8 @@
                     channel.onopen = function(){console.log("------ DATACHANNEL OPENED ------");};
                     channel.onclose = function(){console.log("------- DC closed! -------")};
                     channel.onerror = function(){console.log("DC ERROR!!!")};
-                }
+                };
+
                 dataChannel = rtcPeerConnection.createDataChannel('main', dataChannelConfig);
                 dataChannel.onmessage = function(e){console.log("DC message:" +e.data);};
                 dataChannel.onopen = function(){console.log("------ DATACHANNEL OPENED ------");};

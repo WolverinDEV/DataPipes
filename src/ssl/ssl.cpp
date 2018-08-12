@@ -11,7 +11,9 @@ using namespace std::chrono;
 using namespace std;
 
 pipes::SSL::SSL() : Pipeline("ssl") { }
-pipes::SSL::~SSL() { }
+pipes::SSL::~SSL() {
+	this->finalize();
+}
 
 bool pipes::SSL::initialize(const std::shared_ptr<SSL_CTX>& ctx, Type type) {
     this->type = type;
