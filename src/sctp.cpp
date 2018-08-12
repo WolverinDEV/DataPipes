@@ -37,7 +37,13 @@ int SCTP::cb_send(void *sctp_ptr, void *data, size_t len, uint8_t tos, uint8_t s
 
 int SCTP::cb_read(struct socket *sock, union sctp_sockstore addr, void *data, size_t len, struct sctp_rcvinfo recv_info, int flags, void *user_data) {
 	if(!user_data) return -1;
-	return ((SCTP*) user_data)->on_data_in(string((const char*) data, len), recv_info, flags);
+	if(data) {
+		((SCTP*) user_data)->on_data_in(string((const char*) data, len), recv_info, flags);
+		free(data);
+	} else {
+		((SCTP*) user_data)->on_disconnect();
+	}
+	return 1;
 }
 
 //TODO some kind of cleanup
@@ -48,8 +54,8 @@ do { \
 } while(0)
 
 
-#define MAX_OUT_STREAM 256
-#define MAX_IN_STREAM 256
+#define MAX_OUT_STREAM 16
+#define MAX_IN_STREAM 2048
 static uint16_t interested_events[] = {
 		SCTP_ASSOC_CHANGE,
 		SCTP_PEER_ADDR_CHANGE,
@@ -165,19 +171,28 @@ ProcessResult SCTP::process_data_out() {
 	}
 
 	struct sctp_sendv_spa spa = {0};
+	memset(&spa, 0, sizeof(struct sctp_sendv_spa));
 	// spa.sendv_flags = SCTP_SEND_SNDINFO_VALID | SCTP_SEND_PRINFO_VALID;
-	spa.sendv_flags = SCTP_SEND_SNDINFO_VALID;
 
 	spa.sendv_sndinfo.snd_sid = message.channel_id;
-	// spa.sendv_sndinfo.snd_flags = SCTP_EOR | SCTP_UNORDERED;
-	//spa.sendv_sndinfo.snd_flags = SCTP_EOR;
 	spa.sendv_sndinfo.snd_ppid = htonl(message.ppid);
 
-	// spa.sendv_prinfo.pr_policy = SCTP_PR_SCTP_RTX;
-	// spa.sendv_prinfo.pr_value = 0;
+	// spa.sendv_sndinfo.snd_flags = SCTP_EOR | SCTP_UNORDERED;
+	spa.sendv_sndinfo.snd_flags = SCTP_EOR; //| SCTP_UNORDERED; depends on the datachannel type
+	spa.sendv_flags = SCTP_SEND_SNDINFO_VALID;
 
-	auto send = usrsctp_sendv(this->sock, message.data.data(), message.data.length(), NULL, 0, &spa, sizeof(spa), SCTP_SENDV_SPA, 0);
-	if(send <= 0) {
+/*
+	if((channel->pr_policy == SCTP_PR_SCTP_TTL) || (channel->pr_policy == SCTP_PR_SCTP_RTX)) {
+		spa.sendv_prinfo.pr_policy = channel->pr_policy;
+		spa.sendv_prinfo.pr_value = channel->pr_value;
+		spa.sendv_flags |= SCTP_SEND_PRINFO_VALID;
+	}
+*/
+	spa.sendv_prinfo.pr_policy = SCTP_PR_SCTP_RTX;
+	spa.sendv_prinfo.pr_value = 0;
+
+	auto send = usrsctp_sendv(this->sock, message.data.data(), message.data.length(), nullptr, 0, &spa, sizeof(spa), SCTP_SENDV_SPA, 0);
+	if(send < 0) {
 		LOG_ERROR(this->logger(), "SCTP::process_data_out", "Failed to send data! Return code %i but expected %i", send, message.data.length());
 		return ProcessResult::PROCESS_RESULT_ERROR;
 	}
@@ -186,6 +201,12 @@ ProcessResult SCTP::process_data_out() {
 
 int SCTP::on_data_out(const std::string &data) {
 	this->_callback_write(data);
+	return 0;
+}
+
+int SCTP::on_disconnect() {
+	this->finalize();
+	this->_callback_error(1, "Disconnected!"); //FIXME Using callback disconnected
 	return 0;
 }
 

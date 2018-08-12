@@ -137,8 +137,8 @@ bool NiceWrapper::initialize(std::string& error) {
 
 void NiceWrapper::finalize() {
 	std::lock_guard<std::recursive_mutex> lock(io_lock);
-	
-	g_signal_handlers_disconnect_by_data(G_OBJECT(agent.get()), this);
+
+	nice_agent_attach_recv(agent.get(), this->stream_id(), 1, g_main_loop_get_context(loop.get()), nullptr, nullptr); //Delete attechment
 	if(this->own_loop && this->loop) {
 		g_main_loop_quit(this->loop.get());
 

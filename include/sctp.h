@@ -32,6 +32,7 @@ namespace pipes {
 
 			virtual int on_data_out(const std::string& /* data */);
 			virtual int on_data_in(const std::string& /* data */, struct sctp_rcvinfo recv_info, int flags);
+			virtual int on_disconnect();
 		private:
 			std::recursive_mutex io_lock;
 			std::recursive_mutex connect_lock;
