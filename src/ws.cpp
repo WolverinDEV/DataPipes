@@ -195,7 +195,7 @@ int WebSocket::process_handshake() {
 		this->state = WebSocketState::CONNECTED;
 		this->on_connect();
 	}
-    //TODO here
+    return ProcessResult::PROCESS_RESULT_OK;
 }
 
 struct WSHead {
@@ -257,7 +257,7 @@ bool WebSocket::process_frame() {
     this->current_frame->data = string(buffer.get(), read);
 
     if(this->current_frame->head.mask) {
-        for(int j = 0; j < this->current_frame->data.length(); j++)
+        for(size_t j = 0; j < this->current_frame->data.length(); j++)
             this->current_frame->data[j] = this->current_frame->data[j] ^ this->current_frame->maskKey[j % 4];
     }
     if(this->current_frame->head.opcode == 0x08) { //Disconnect!

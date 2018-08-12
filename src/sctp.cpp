@@ -27,8 +27,10 @@ SCTP::SCTP(uint16_t local_port) : Pipeline("SCTP"), _local_port(local_port) {
 }
 
 SCTP::~SCTP() {
+	lock_guard<recursive_mutex> io_lock(this->io_lock);
 	this->finalize();
 	usrsctp_deregister_address(this);
+	lock_guard<recursive_mutex> connect_lock(this->connect_lock); //Just wait for the connect step
 }
 
 int SCTP::cb_send(void *sctp_ptr, void *data, size_t len, uint8_t tos, uint8_t set_df) {
@@ -144,6 +146,7 @@ void SCTP::finalize() {
 
 #define READ_BUFFER_SIZE 1024
 ProcessResult SCTP::process_data_in() {
+	lock_guard<recursive_mutex> lock(this->io_lock);
 	char buffer[READ_BUFFER_SIZE];
 
 	auto read = this->buffer_read_read_bytes(buffer, READ_BUFFER_SIZE);
@@ -153,6 +156,7 @@ ProcessResult SCTP::process_data_in() {
 }
 
 ProcessResult SCTP::process_data_out() {
+	lock_guard<recursive_mutex> lock(this->io_lock);
 	SCTPMessage message;
 	{
 		lock_guard<mutex> lock(this->buffer_lock);
@@ -184,6 +188,7 @@ ProcessResult SCTP::process_data_out() {
 
 int SCTP::on_data_out(const std::string &data) {
 	this->_callback_write(data);
+	return data.length();
 }
 
 //TODO error handling?
@@ -205,8 +210,11 @@ int SCTP::on_data_in(const std::string &data, struct sctp_rcvinfo recv_info, int
 }
 
 bool SCTP::connect(int32_t remote_port) {
+	lock_guard<recursive_mutex> lock(this->connect_lock);
+
 	if(remote_port > 0 && remote_port < 0xFFFF)
 		this->_remote_port = static_cast<uint16_t>(remote_port);
+
 	struct sockaddr_conn sconn{};
 	sconn.sconn_family = AF_CONN;
 	sconn.sconn_port = htons(_remote_port);
