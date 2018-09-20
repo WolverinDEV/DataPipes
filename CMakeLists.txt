@@ -17,6 +17,8 @@ find_package(Threads REQUIRED)
 find_package(LibNice REQUIRED)
 find_package(UsrSCTP REQUIRED)
 
+include_directories(libraries/sdptransform/include)
+
 add_definitions(-DLOG_LEVEL=0) #FIXME!
 
 set(HEADER_FILES
@@ -28,7 +30,7 @@ set(HEADER_FILES
         include/ssl.h
 		include/ws.h
 		include/sctp.h
-		include/dtls.h
+		include/tls.h
 
 		#Helpers
 		include/misc/http.h
@@ -36,8 +38,11 @@ set(HEADER_FILES
 		include/misc/logger.h
 
 		#WebRTC
+		include/rtc/Stream.h
 		include/rtc/NiceWrapper.h
 		include/rtc/PeerConnection.h
+		include/rtc/ApplicationStream.h
+		include/rtc/AudioStream.h
 )
 
 set(SOURCE_FILES
@@ -52,9 +57,12 @@ set(SOURCE_FILES
 
 		src/sctp.cpp
 
+		src/rtc/Stream.cpp
+		src/rtc/AudioStream.cpp
+		src/rtc/ApplicationChannel.cpp
 		src/rtc/NiceWrapper.cpp
 		src/rtc/PeerConnection.cpp
-		src/dtls.cpp
+		src/tls.cpp
 )
 
 add_library(DataPipes SHARED ${HEADER_FILES} ${SOURCE_FILES})
@@ -63,10 +71,12 @@ install(DIRECTORY include/ DESTINATION include/pipes)
 
 target_link_libraries(
         DataPipes
-        PUBLIC
         LibNice::LibNice
         #SctpLab::UsrSCTP
         usrsctp.a
+		sdptransform
+		srtp
+		opus
 )
 
 
@@ -81,9 +91,10 @@ if(BUILD_TESTS)
         	event_pthreads
         	#/home/wolverindev/clib/boringssl/build/ssl/libssl.so
         	#/home/wolverindev/clib/boringssl/build/crypto/libcrypto.so
-		/home/wolverindev/TeaSpeak/libraries/boringssl/build/ssl/libssl.so
-		/home/wolverindev/TeaSpeak/libraries/boringssl/build/crypto/libcrypto.so
-		pthread
+			/home/wolverindev/TeaSpeak/libraries/boringssl/build/ssl/libssl.so
+			/home/wolverindev/TeaSpeak/libraries/boringssl/build/crypto/libcrypto.so
+			pthread
+			asound
 	)
 
 	add_executable(DataPipes-Test-SSL test/ssl_pipeline_server.cpp test/utils/socket.cpp)
@@ -92,6 +103,9 @@ if(BUILD_TESTS)
 	add_executable(DataPipes-Test-WS test/ws_pipeline.cpp test/utils/socket.cpp)
 	target_link_libraries(DataPipes-Test-WS ${TEST_LIBRARIES})
 
-	add_executable(DataPipes-Test-rtc test/rtc/rtc_test.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
-	target_link_libraries(DataPipes-Test-rtc ${TEST_LIBRARIES})
+	add_executable(DataPipes-Test-rtc-data test/rtc/rtc_test_data.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
+	target_link_libraries(DataPipes-Test-rtc-data ${TEST_LIBRARIES})
+
+	add_executable(DataPipes-Test-rtc-audio test/rtc/rtc_test_audio.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
+	target_link_libraries(DataPipes-Test-rtc-audio ${TEST_LIBRARIES})
 endif()

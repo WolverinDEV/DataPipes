@@ -4,7 +4,7 @@
 
 #include <cstring>
 #include <utility>
-#include "include/dtls.h"
+#include "include/tls.h"
 
 using namespace std;
 using namespace pipes;
@@ -20,10 +20,53 @@ static int verify_peer_certificate(int ok, X509_STORE_CTX *ctx) {
 	return 1;
 }
 
-bool DTLS::initialize(std::string& error, const std::shared_ptr<DTLSCertificate> &certificate) {
+/*
+	EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+	if(ecdh == NULL) {
+		JANUS_LOG(LOG_ERR, "[%"SCNu64"]   Error creating ECDH group! (%s)\n",
+			handle->handle_id, ERR_reason_error_string(ERR_get_error()));
+		janus_refcount_decrease(&dtls->ref);
+		return NULL;
+	}
+	const long flags = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION | SSL_OP_SINGLE_ECDH_USE;
+	SSL_set_options(dtls->ssl, flags);
+	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
+	EC_KEY_free(ecdh);
+ */
+bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &certificate, TLSMode mode, const initialize_function& fn) {
 	this->certificate = certificate;
 
-	auto ctx = shared_ptr<SSL_CTX>(SSL_CTX_new(DTLSv1_method()), ::SSL_CTX_free);
+	const SSL_METHOD* method = nullptr;
+	switch(mode) {
+		case TLSMode::TLS_X:
+			method = TLS_method();
+			break;
+		case TLSMode::TLS_v1:
+			method = TLSv1_method();
+			break;
+		case TLSMode::TLS_v1_1:
+			method = TLSv1_1_method();
+			break;
+		case TLSMode::TLS_v1_2:
+			method = TLSv1_2_method();
+			break;
+
+		case DTLS_X:
+			method = DTLS_method();
+			break;
+		case DTLS_v1:
+			method = DTLSv1_method();
+			break;
+		case DTLS_v1_2:
+			method = DTLSv1_2_method();
+			break;
+
+		default:
+			error = "Invalid mode";
+			return false;
+	}
+
+	auto ctx = shared_ptr<SSL_CTX>(SSL_CTX_new(method), ::SSL_CTX_free);
 	if (!ctx) ERRORQ("Could not create ctx");
 
 	if (SSL_CTX_set_cipher_list(ctx.get(), "ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") != 1) ERRORQ("Failed to set cipher list!");
@@ -34,6 +77,7 @@ bool DTLS::initialize(std::string& error, const std::shared_ptr<DTLSCertificate>
 	SSL_CTX_use_certificate(ctx.get(), certificate->getCertificate());
 	if (SSL_CTX_check_private_key(ctx.get()) != 1)  ERRORQ("Failed to verify key!");
 
+	if(fn && !fn(ctx.get())) return false;
 	if(!SSL::initialize(ctx, SSL::CLIENT)) ERRORQ("SSL initialize failed!");
 
 	std::shared_ptr<EC_KEY> ecdh = std::shared_ptr<EC_KEY>(EC_KEY_new_by_curve_name(NID_X9_62_prime256v1), EC_KEY_free);
@@ -44,7 +88,7 @@ bool DTLS::initialize(std::string& error, const std::shared_ptr<DTLSCertificate>
 }
 
 //TODO improve with unique_ptr to return at any error
-DTLSCertificate::DTLSCertificate(const std::string &pem_certificate, const std::string &pem_key) {
+TLSCertificate::TLSCertificate(const std::string &pem_certificate, const std::string &pem_key) {
 	/* x509 */
 	BIO *bio = BIO_new(BIO_s_mem());
 	BIO_write(bio, pem_certificate.c_str(), (int)pem_certificate.length());
@@ -69,12 +113,12 @@ DTLSCertificate::DTLSCertificate(const std::string &pem_certificate, const std::
 	this->generate_fingerprint();
 }
 
-DTLSCertificate::DTLSCertificate(std::shared_ptr<X509> certificate, std::shared_ptr<EVP_PKEY> key) : certificate(std::move(certificate)), evp_key(std::move(key)) {
+TLSCertificate::TLSCertificate(std::shared_ptr<X509> certificate, std::shared_ptr<EVP_PKEY> key) : certificate(std::move(certificate)), evp_key(std::move(key)) {
 	this->generate_fingerprint();
 }
 
 #define SHA256_FINGERPRINT_SIZE (95 + 1)
-void DTLSCertificate::generate_fingerprint() {
+void TLSCertificate::generate_fingerprint() {
 	unsigned int len;
 	unsigned char buf[4096] = {0};
 	if (!X509_digest(this->certificate.get(), EVP_sha256(), buf, &len)) {
@@ -148,7 +192,7 @@ static std::shared_ptr<X509> GenerateX509(std::shared_ptr<EVP_PKEY> evp_pkey, co
 	return x509;
 }
 
-std::shared_ptr<DTLSCertificate> DTLSCertificate::generate(const std::string &common_name, int days) {
+std::shared_ptr<TLSCertificate> TLSCertificate::generate(const std::string &common_name, int days) {
 	std::shared_ptr<EVP_PKEY> pkey(EVP_PKEY_new(), EVP_PKEY_free);
 	RSA *rsa = RSA_new();
 
@@ -166,5 +210,5 @@ std::shared_ptr<DTLSCertificate> DTLSCertificate::generate(const std::string &co
 	if (!cert) {
 		throw std::runtime_error("GenerateCertificate: Error in GenerateX509");
 	}
-	return shared_ptr<DTLSCertificate>(new DTLSCertificate(cert, pkey));
+	return shared_ptr<TLSCertificate>(new TLSCertificate(cert, pkey));
 }

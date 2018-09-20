@@ -16,16 +16,40 @@ namespace rtc {
 		uint16_t port;
 	};
 
+	typedef uint32_t StreamId;
 	struct NiceStream {
-		uint32_t stream_id = 0;
+		typedef std::function<void(const std::string&)> cb_recive;
+		typedef std::function<void()> cb_ready;
+
+		uint32_t stream_id = -1;
 		bool ready = false;
+		cb_recive callback_receive;
+		cb_ready callback_ready;
+	};
+
+	struct LocalSdpEntry {
+		size_t index;
+		std::string media;
+		std::string connection;
+		std::string ice_ufrag;
+		std::string ice_pwd;
+		std::deque<std::string> candidates;
+
+		union {
+			struct {
+				bool media :1;
+				bool connection :1;
+				bool ice_ufrag :1;
+				bool ice_pwd :1;
+				bool candidates :1;
+			} has;
+			uint8_t has_bitset;
+		};
 	};
 
 	class NiceWrapper {
 		public:
-			typedef std::function<void(const std::string&)> cb_candidate;
-			typedef std::function<void(const std::string&)> cb_recive;
-			typedef std::function<void()> cb_ready;
+			typedef std::function<void(const std::shared_ptr<NiceStream>& /* stream */, const std::string& /* sdp */)> cb_candidate;
 			typedef std::function<void()> cb_failed;
 
 			struct Config {
@@ -44,19 +68,20 @@ namespace rtc {
 			bool initialize(std::string& /* error */);
 			void finalize();
 
-			ssize_t apply_remote_ice_candidates(const std::deque<std::string>& /* candidates */);
+			bool gather_candidates(const std::shared_ptr<NiceStream>& /* stream */);
+			ssize_t apply_remote_ice_candidates(const std::shared_ptr<NiceStream>& /* stream */, const std::deque<std::string>& /* candidates */);
 			bool apply_remote_sdp(std::string& /* error */, std::string /* sdp */);
-			std::string generate_local_sdp(bool /* with candidates */);
+			std::deque<std::unique_ptr<LocalSdpEntry>> generate_local_sdp(bool /* with candidates */);
 
 
 			void send_data(guint /* stream */, guint /* component */, const std::string& /* buffer */);
 
 			void set_callback_local_candidate(const cb_candidate& /* callback */);
-			void set_callback_recive(const cb_recive& /* callback */);
-			void set_callback_ready(const cb_ready& /* callback */);
 			void set_callback_failed(const cb_failed& /* callback */);
 
-			uint32_t stream_id() { return this->stream ? this->stream->stream_id : 0; }
+			std::shared_ptr<NiceStream> find_stream(StreamId /* id */);
+			std::shared_ptr<NiceStream> add_stream(const std::string& /* name */);
+			std::deque<std::shared_ptr<NiceStream>> available_streams();
 
 			std::shared_ptr<pipes::Logger> logger() { return this->_logger; }
 			void logger(const std::shared_ptr<pipes::Logger>& logger) { this->_logger = logger; }
@@ -72,7 +97,6 @@ namespace rtc {
 			virtual void on_data_recived(guint /* stream */, guint /* component */, void* /* buffer */, size_t /* length */);
 
 			virtual void on_gathering_done();
-			virtual void on_ice_ready();
 			virtual void on_selected_pair(guint /* stream */, guint /* component */, NiceCandidate* /* local candidate */, NiceCandidate* /* remote candidate */);
 			virtual void on_state_change(guint /* stream */, guint /* component */, guint /* state */);
 			virtual void on_local_ice_candidate(const std::string& /* candidate */);
@@ -87,10 +111,9 @@ namespace rtc {
 			bool own_loop = false;
 
 			std::thread g_main_loop_thread;
-			std::unique_ptr<NiceStream> stream;
+			std::recursive_mutex streams_lock;
+			std::deque<std::shared_ptr<NiceStream>> streams;
 
-			cb_recive callback_recive;
-			cb_ready callback_ready;
 			cb_candidate callback_local_candidate;
 			cb_failed callback_failed;
 	};

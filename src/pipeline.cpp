@@ -34,7 +34,8 @@ size_t impl::buffer_read_bytes(deque<string> &queue, char* result, size_t length
     size_t read = 0;
     auto it = queue.begin();
     while(read < length && it != queue.end()) {
-        if(length - read >= it->length()) {
+        if(it->length() == 0) it++;
+        else if(length - read >= it->length()) {
             memcpy(result + read, it->data(), it->length());
             read += it->length();
             it++;

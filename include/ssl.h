@@ -37,6 +37,7 @@ namespace pipes {
 
 			SSLSocketState state() { return this->sslState; }
 
+			inline ::SSL *ssl_handle() { return this->sslLayer; }
 		private:
 			bool initializeBio();
 

@@ -13,7 +13,7 @@ namespace pipes {
 		public:
 			typedef std::function<void(union sctp_notification*)> cb_notification;
 
-			SCTP(uint16_t local_port);
+			explicit SCTP(uint16_t local_port);
 			virtual ~SCTP();
 
 			bool initialize(std::string& error);

@@ -2,50 +2,25 @@
 
 #include <map>
 #include <memory>
+#include <utility>
 #include "../sctp.h"
-#include "../dtls.h"
+#include "include/tls.h"
 #include "../misc/logger.h"
 #include "NiceWrapper.h"
+#include "Stream.h"
 
 namespace rtc {
-	class PeerConnection;
-	class DataChannel {
-		friend class PeerConnection;
-		public:
-			typedef std::function<void()> cb_close;
-			typedef std::function<void(const std::string&)> cb_text;
-			typedef std::function<void(const std::string&)> cb_binary;
+	class ApplicationStream;
+	class AudioStream;
 
-			enum MessageType {
-				BINARY,
-				TEXT
-			};
-
-			cb_close callback_close;
-			cb_text callback_text;
-			cb_binary callback_binary;
-
-			uint16_t id() const;
-			std::string lable() const;
-			std::string protocol() const;
-
-			bool readable() const { return this->read; }
-			bool writeable() const { return this->write; }
-
-			void send(const std::string& /* message */, MessageType /* type */ = BINARY);
-			void close();
-		private:
-			DataChannel(PeerConnection*, uint16_t id, std::string lable, std::string protocol);
-
-			bool read = true, write = true;
-			PeerConnection* owner;
-			uint16_t _id;
-			std::string _lable;
-			std::string _protocol;
+	struct IceCandidate {
+		std::string candidate;
+		std::string sdpMid;
+		std::string sdpMLineIndex;
 	};
 
 	class PeerConnection {
-			friend class DataChannel;
+			friend class Stream;
 		public:
 			struct Config {
 				std::shared_ptr<pipes::Logger> logger;
@@ -58,8 +33,8 @@ namespace rtc {
 				} sctp;
 			};
 			struct IceCandidate {
-				IceCandidate(const std::string &candidate, const std::string &sdpMid, int sdpMLineIndex)
-						: candidate(candidate), sdpMid(sdpMid), sdpMLineIndex(sdpMLineIndex) {}
+				IceCandidate(std::string candidate, std::string sdpMid, int sdpMLineIndex)
+						: candidate(std::move(candidate)), sdpMid(std::move(sdpMid)), sdpMLineIndex(sdpMLineIndex) {}
 				std::string candidate;
 				std::string sdpMid;
 				int sdpMLineIndex;
@@ -70,9 +45,10 @@ namespace rtc {
 				DTLS,
 				SCTP
 			};
-			typedef std::function<void(const std::shared_ptr<DataChannel>&)> cb_datachannel_new;
 			typedef std::function<void(const IceCandidate&)> cb_ice_candidate;
 			typedef std::function<void(ConnectionComponent /* component */, const std::string& /* reason */)> cb_setup_fail;
+
+			typedef std::function<void(const std::shared_ptr<Stream>& /* stream */)> cb_new_stream;
 
 			PeerConnection(const std::shared_ptr<Config>& config);
 			virtual ~PeerConnection();
@@ -83,44 +59,35 @@ namespace rtc {
 
 			//TODO vice versa (we create a offer and parse the answer?)
 			bool apply_offer(std::string& /* error */, const std::string& /* offer */);
-			int apply_ice_candidates(const std::deque<std::string>& /* candidates */);
+			int apply_ice_candidates(const std::deque<std::shared_ptr<IceCandidate>>& /* candidates */);
 			cb_ice_candidate callback_ice_candidate;
 
 			std::string generate_answer(bool /* candidates */);
 
-			std::shared_ptr<DataChannel> find_datachannel(uint16_t /* channel id */);
-			std::shared_ptr<DataChannel> find_datachannel(const std::string& /* channel name */);
-
-			cb_datachannel_new callback_datachannel_new;
 			cb_setup_fail callback_setup_fail;
+			cb_new_stream callback_new_stream;
 
-			void sendSctpMessage(const pipes::SCTPMessage& /* message */);
+			std::deque<std::shared_ptr<Stream>> availible_streams(); /* only valid result after apply_offer(...) */
 		protected:
 			virtual void on_nice_ready();
-
-			virtual void handle_sctp_message(const pipes::SCTPMessage& /* message */);
-			virtual void handle_sctp_event(union sctp_notification * /* event */);
-			void send_sctp_event(uint16_t /* channel id (useless?) */, union sctp_notification* /* event */);
-
-			virtual void handle_datachannel_new(uint16_t /* channel id */, const std::string& /* data */);
-			virtual void handle_datachannel_ack(uint16_t /* channel id */);
-
-			virtual void handle_datachannel_message(uint16_t /* channel id */, uint32_t /* message type */, const std::string& /* message */);
-			virtual void handle_event_stream_reset(struct sctp_stream_reset_event &);
-
-			virtual void close_datachannel(DataChannel* /* channel */);
-
 			virtual void trigger_setup_fail(ConnectionComponent /* component */, const std::string& /* reason */);
 		private:
 			std::shared_ptr<Config> config;
 
 			std::unique_ptr<NiceWrapper> nice;
-			std::unique_ptr<pipes::DTLS> dtls;
-			std::unique_ptr<pipes::SCTP> sctp;
+			std::shared_ptr<ApplicationStream> stream_application;
+			std::shared_ptr<AudioStream> stream_audio;
 
-			std::map<uint16_t, std::shared_ptr<DataChannel>> active_channels;
+			std::deque<std::shared_ptr<Stream>> sdp_media_lines;
+			inline ssize_t sdp_mline_index(const std::shared_ptr<Stream>& stream) {
+				size_t index = 0;
+				for(const auto& entry : sdp_media_lines)
+					if(entry == stream) return index;
+					else index++;
+				return -1;
+			}
 
-			std::string mid;
-			enum Role { Client, Server } role = Client;
+			bool create_application_stream(std::string& error);
+			bool create_audio_stream(std::string& error);
 	};
 }

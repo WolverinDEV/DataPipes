@@ -7,6 +7,8 @@
 #include <cstring>
 #include <include/ws.h>
 #include <include/rtc/PeerConnection.h>
+#include <include/rtc/Stream.h>
+#include <include/rtc/ApplicationStream.h>
 #include "test/json/json.h"
 
 using namespace std;
@@ -190,6 +192,49 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 	}
 
 	{
+		client->peer->callback_ice_candidate = [client](const rtc::PeerConnection::IceCandidate& ice) {
+			Json::Value jsonCandidate;
+			jsonCandidate["type"] = "candidate";
+			jsonCandidate["msg"]["candidate"] = ice.candidate;
+			jsonCandidate["msg"]["sdpMid"] = ice.sdpMid;
+			jsonCandidate["msg"]["sdpMLineIndex"] = ice.sdpMLineIndex;
+
+			//std::cout << "Sending Answer: " << jsonCandidate << endl;
+
+			client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, jsonCandidate)});
+		};
+
+		client->peer->callback_new_stream = [](const std::shared_ptr<rtc::Stream>& stream) {
+			cout << "[Stream] Got new stream of type " << stream->type() << " | " << stream->stream_id() << endl;
+			if(stream->type() == rtc::CHANTYPE_APPLICATION) {
+				auto data_channel = dynamic_pointer_cast<rtc::ApplicationStream>(stream);
+				data_channel->callback_datachannel_new = [](const std::shared_ptr<rtc::DataChannel>& channel) {
+					weak_ptr<rtc::DataChannel> weak = channel;
+					channel->callback_binary = [weak](const std::string& message) {
+						auto chan = weak.lock();
+						cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] Got binary message " << message.length() << endl;
+						chan->send("Echo: " + message, rtc::DataChannel::BINARY);
+					};
+					channel->callback_text = [weak](const std::string& message) {
+						auto chan = weak.lock();
+						if(message == "close") {
+							cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] closing channel" << endl;
+							chan->close();
+						} else {
+							cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] Got text message " << message.length() << endl;
+							chan->send("Echo: " + message, rtc::DataChannel::TEXT);
+						}
+					};
+					channel->callback_close = [weak]() {
+						auto chan = weak.lock();
+						cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] got closed" << endl;
+					};
+				};
+			}
+		};
+	}
+
+	{
 		string error;
 		if(!client->peer->initialize(error)) {
 			cerr << "Failed to initialize client! (" << error << ")" << endl; //TODO error handling?
@@ -222,43 +267,6 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				cerr << "Failed to parse json" << endl;
 			}
 		});
-	}
-
-	{
-		client->peer->callback_ice_candidate = [client](const rtc::PeerConnection::IceCandidate& ice) {
-			Json::Value jsonCandidate;
-			jsonCandidate["type"] = "candidate";
-			jsonCandidate["msg"]["candidate"] = ice.candidate;
-			jsonCandidate["msg"]["sdpMid"] = ice.sdpMid;
-			jsonCandidate["msg"]["sdpMLineIndex"] = ice.sdpMLineIndex;
-
-			//std::cout << "Sending Answer: " << jsonCandidate << endl;
-
-			client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, jsonCandidate)});
-		};
-
-		client->peer->callback_datachannel_new = [](const std::shared_ptr<rtc::DataChannel>& channel) {
-			weak_ptr<rtc::DataChannel> weak = channel;
-			channel->callback_binary = [weak](const std::string& message) {
-				auto chan = weak.lock();
-				cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] Got binary message " << message.length() << endl;
-				chan->send("Echo: " + message, rtc::DataChannel::BINARY);
-			};
-			channel->callback_text = [weak](const std::string& message) {
-				auto chan = weak.lock();
-				if(message == "close") {
-					cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] closing channel" << endl;
-					chan->close();
-				} else {
-					cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] Got text message " << message.length() << endl;
-					chan->send("Echo: " + message, rtc::DataChannel::TEXT);
-				}
-			};
-			channel->callback_close = [weak]() {
-				auto chan = weak.lock();
-				cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] got closed" << endl;
-			};
-		};
 	}
 
 	connection->data = client;
