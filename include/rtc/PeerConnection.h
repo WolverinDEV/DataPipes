@@ -4,7 +4,7 @@
 #include <memory>
 #include <utility>
 #include "../sctp.h"
-#include "include/tls.h"
+#include "../tls.h"
 #include "../misc/logger.h"
 #include "NiceWrapper.h"
 #include "Stream.h"
@@ -14,11 +14,12 @@ namespace rtc {
 	class AudioStream;
 
 	struct IceCandidate {
+		IceCandidate(std::string candidate, std::string sdpMid, int sdpMLineIndex)
+				: candidate(std::move(candidate)), sdpMid(std::move(sdpMid)), sdpMLineIndex(sdpMLineIndex) {}
 		std::string candidate;
 		std::string sdpMid;
-		std::string sdpMLineIndex;
+		int sdpMLineIndex;
 	};
-
 	class PeerConnection {
 			friend class Stream;
 		public:
@@ -31,13 +32,6 @@ namespace rtc {
 				struct {
 					uint16_t local_port = 5000;
 				} sctp;
-			};
-			struct IceCandidate {
-				IceCandidate(std::string candidate, std::string sdpMid, int sdpMLineIndex)
-						: candidate(std::move(candidate)), sdpMid(std::move(sdpMid)), sdpMLineIndex(sdpMLineIndex) {}
-				std::string candidate;
-				std::string sdpMid;
-				int sdpMLineIndex;
 			};
 			enum ConnectionComponent {
 				BASE,

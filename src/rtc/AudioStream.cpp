@@ -452,10 +452,6 @@ string AudioStream::generate_sdp() {
 		sdp << "a=ssrc:" << channel->ssrc << " mslabel:" << channel->stream_id << "\r\n";
 		sdp << "a=ssrc:" << channel->ssrc << " label:" << channel->track_id << "\r\n";
 	}
-	int error;
-	this->opus_decoder = opus_decoder_create(48000, 2, &error);
-	assert(error == 0);
-
 	sdp << "a=ice-options:trickle\r\n"; //FIXME trickle only when you send the ICE candidates later
 	return sdp.str();
 }
@@ -464,6 +460,18 @@ bool AudioStream::reset(std::string &string) {
 	if(this->dtls) this->dtls->finalize();
 	this->dtls = nullptr;
 	dtls_initialized = false;
+
+	this->srtp_out_ready = false;
+	if(this->srtp_out) {
+		if(srtp_dealloc(this->srtp_out) != srtp_err_status_ok); //TODO error handling?
+		this->srtp_out = NULL;
+	}
+
+	this->srtp_in_ready = false;
+	if(this->srtp_in) {
+		if(srtp_dealloc(this->srtp_in) != srtp_err_status_ok); //TODO error handling?
+		this->srtp_in = NULL;
+	}
 	return true;
 }
 

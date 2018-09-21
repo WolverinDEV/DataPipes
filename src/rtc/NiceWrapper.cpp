@@ -160,22 +160,22 @@ void NiceWrapper::finalize() {
 	std::unique_lock<std::recursive_mutex> lock(io_lock);
 
 	{
-		for(const auto& stream : this->available_streams()) {
-			auto context = g_main_loop_get_context(loop.get());
-			if(!g_main_context_ref(context)) {
-				//TODO error
-			}
-
-			nice_agent_attach_recv(agent.get(), stream->stream_id, 1, context, nullptr, nullptr);
-			{ //Let the other thread so something with IO
-				lock.unlock();
-				if(!g_main_context_iteration(context, false)) {
-					//TODO log error (cant flush ip!)
-				}
-				lock.lock();
-			}
-			g_main_context_unref(context);
+		auto context = g_main_loop_get_context(loop.get());
+		if(!g_main_context_ref(context)) {
+			//TODO error
 		}
+
+		for(const auto& stream : this->available_streams()) {
+			nice_agent_attach_recv(agent.get(), stream->stream_id, 1, context, nullptr, nullptr);
+		}
+		{ //Let the other thread so something with IO
+			lock.unlock();
+			if(!g_main_context_iteration(context, false)) {
+				//TODO log error (cant flush ip!)
+			}
+			lock.lock();
+		}
+		g_main_context_unref(context);
 		this->streams.clear();
 	}
 

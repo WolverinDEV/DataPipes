@@ -1,7 +1,7 @@
 #pragma once
 
 #include <memory>
-#include <include/sctp.h>
+#include "../sctp.h"
 
 namespace pipes {
 	class TLS;

@@ -1,10 +1,9 @@
 #pragma once
 
 #include <map>
+#include <atomic>
 #include <srtp/srtp.h>
 #include "Stream.h"
-#include <opus/opus.h>
-#include <atomic>
 
 namespace rtc {
 	/* Most copied from janus */
@@ -71,7 +70,7 @@ namespace rtc {
 		};
 
 		inline bool is_rtcp(void* buf) {
-			auto header = (protocol::rtcp_header *) buf;
+			auto header = (protocol::rtp_header *) buf;
 			return ((header->type >= 64) && (header->type < 96));
 		}
 
@@ -199,8 +198,6 @@ namespace rtc {
 
 			std::string mid;
 			enum Role { Client, Server } role = Client;
-
-			OpusDecoder* opus_decoder = nullptr;
 
 			std::deque<std::shared_ptr<codec::TypedAudio>> offered_codecs;
 
