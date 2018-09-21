@@ -13,7 +13,7 @@
 using namespace std;
 using namespace std::chrono;
 using namespace rtc;
-using namespace rtc::rtp;
+using namespace rtc::codec;
 
 #define srtp_err_status_t err_status_t
 #define srtp_err_status_ok err_status_ok
@@ -45,7 +45,7 @@ cipher_salt_length:  112
 #define srtp_crypto_policy_set_aes_gcm_256_16_auth crypto_policy_set_aes_gcm_256_16_auth
 #define srtp_crypto_policy_set_aes_gcm_128_16_auth crypto_policy_set_aes_gcm_128_16_auth
 
-std::shared_ptr<TypedAudio> rtp::create(const nlohmann::json& sdp) {
+std::shared_ptr<TypedAudio> codec::create(const nlohmann::json& sdp) {
 	std::shared_ptr<TypedAudio> result;
 	if(sdp["codec"] == "opus") {
 		auto _result = make_shared<OpusAudio>();
@@ -76,8 +76,8 @@ bool OpusAudio::local_supported() const { return true; }
 bool UnknownAudio::write_sdp(std::ostringstream &) { return true; }
 bool UnknownAudio::local_supported() const { return false; }
 
-std::deque<std::shared_ptr<rtp::TypedAudio>> AudioStream::find_codec_by_name(const std::string &name) {
-	deque<shared_ptr<rtp::TypedAudio>> result;
+std::deque<std::shared_ptr<codec::TypedAudio>> AudioStream::find_codec_by_name(const std::string &name) {
+	deque<shared_ptr<codec::TypedAudio>> result;
 
 	for(const auto& codec : this->offered_codecs)
 		if(codec->codec == name) result.push_back(codec);
@@ -85,7 +85,7 @@ std::deque<std::shared_ptr<rtp::TypedAudio>> AudioStream::find_codec_by_name(con
 	return result;
 }
 
-void AudioStream::register_local_channel(const std::string &stream_id, const std::string &track_id, const shared_ptr<rtc::rtp::TypedAudio> &type) {
+void AudioStream::register_local_channel(const std::string &stream_id, const std::string &track_id, const shared_ptr<rtc::codec::TypedAudio> &type) {
 	auto channel = make_shared<AudioChannel>();
 	channel->stream_id = stream_id;
 	channel->track_id = track_id;
@@ -397,7 +397,7 @@ bool AudioStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& med
 		size_t supported = 0;
 		const nlohmann::json& rtp = media_entry["rtp"];
 		for (const auto &index : rtp) {
-			auto map = rtp::create(index);
+			auto map = codec::create(index);
 			if(!map) {
 				//TODO log error
 				continue;
@@ -406,16 +406,6 @@ bool AudioStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& med
 			this->offered_codecs.push_back(map);
 		}
 		LOG_DEBUG(this->config->logger, "AudioStream::apply_sdp", "Got %u remote offered codecs. (%u locally supported)", this->offered_codecs.size(), supported);
-	}
-
-	{
-		auto codec = make_shared<rtp::OpusAudio>();
-		codec->type = rtp::TypedAudio::OPUS;
-		codec->codec = "opus";
-		codec->encoding = "1";
-		codec->sample_rate = 48000;
-		codec->id = 123;
-		this->offered_codecs.push_back(codec);
 	}
 
 	return true;
@@ -486,53 +476,42 @@ void AudioStream::process_incoming_data(const std::string &in) {
 		LOG_VERBOSE(this->config->logger, "AudioStream::dtls", "incoming %i bytes", in.length());
 		this->dtls->process_incoming_data(in);
 	} else {
-		this->process_srtp_data(in);
+		//FIXME len check
+		if(in.length() >= sizeof(protocol::rtp_header) && protocol::is_rtp((void*) in.data())) {
+			this->process_rtp_data(in);
+		} else if(in.length() >= sizeof(protocol::rtcp_header) && protocol::is_rtcp((void*) in.data()))
+			this->process_rtcp_data(in);
+		else {
+			LOG_ERROR(this->config->logger, "AudioStream::process_incoming_data", "Got invalid packet (Unknown type)!");
+			return;
+		}
 	}
 }
-static bool is_rtcp(void* buf) {
-	auto header = (RTPHeader *)buf;
-	return ((header->type >= 64) && (header->type < 96));
-}
-
-static bool is_rtp(void* buf) {
-	auto header = (RTPHeader *)buf;
-	return ((header->type < 64) || (header->type >= 96));
-}
-
-ssize_t rtp_payload_offset(const std::string& data, size_t max_length) {
+ssize_t protocol::rtp_payload_offset(const std::string& data, size_t max_length) {
 	if(data.length() < 12) return -1;
 
-	auto header = (RTPHeader *) data.data();
-	int header_length = 12; /* without variable ssrc and extentions */
+	auto header = (protocol::rtp_header *) data.data();
+	size_t header_length = 12; /* without variable ssrc and extentions */
 	if(header->csrccount > 0)
 		header_length += header->csrccount * 4;
 	if(header->extension) {
-		auto header_extension = (RTPHeaderExtension*) &data.data()[header_length];
+		auto header_extension = (protocol::rtp_header_extension*) &data.data()[header_length];
 		auto extension_length = be16toh(header_extension->length);
-		header_length += extension_length * 4 + sizeof(RTPHeaderExtension);
+		header_length += extension_length * 4 + sizeof(protocol::rtp_header_extension);
 	}
 
 	return header_length > max_length ? -1 : header_length;
 }
 
-//#define ENABLE_LOGGING
+//#define ENABLE_PROTOCOL_LOGGING
 extern void alsa_replay(void* data, size_t length);
-void AudioStream::process_srtp_data(const std::string &in) {
-	//LOG_VERBOSE(this->config->logger, "AudioStream::srtp", "incoming %i bytes", in.length());
-	if(!is_rtp((void*) in.data())) {
-		if(is_rtcp((void*) in.data())) {
-			this->process_srtp_rtcp_data(in); //FIXME move the packet type detection one layer up!
-			return;
-		}
-		LOG_ERROR(this->config->logger, "AudioStream::srtp", "Got invalid srtp packet! (RTCP: %i)", is_rtcp((void*) in.data()));
-		return;
-	}
+void AudioStream::process_rtp_data(const std::string &in) {
 	if(!this->srtp_in_ready) {
 		LOG_ERROR(this->config->logger, "AudioStream::srtp", "Got too early packet!");
 		return;
 	}
 
-	auto header = (RTPHeader*) in.data();
+	auto header = (protocol::rtp_header*) in.data();
 	int buflen = in.length();
 	srtp_err_status_t res = srtp_unprotect(this->srtp_in, (void*) in.data(), &buflen);
 	if(res != srtp_err_status_ok) {
@@ -540,20 +519,20 @@ void AudioStream::process_srtp_data(const std::string &in) {
 			/* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */
 			guint32 timestamp = ntohl(header->timestamp);
 			guint16 seq = ntohs(header->seq_number);
-			LOG_ERROR(this->config->logger, "AudioStream::process_srtp_data", "Failed to unprotect srtp packet. Error: %i (len=%i --> %i ts=%u, seq=%i)", res, in.length(), buflen, timestamp, seq);
+			LOG_ERROR(this->config->logger, "AudioStream::process_rtp_data", "Failed to unprotect srtp packet. Error: %i (len=%i --> %i ts=%u, seq=%i)", res, in.length(), buflen, timestamp, seq);
 			return;
 		}
 	}
 
-#ifdef ENABLE_LOGGING
-	LOG_VERBOSE(this->config->logger, "AudioStream::srtp", "incoming %i --> %i decrypted bytes. Type %i Version %i SSRC: %u => %i Seq: %u Pad: %u Ext: %u Ver: %u Mark: %u Count: %u", in.length(), buflen, (unsigned int) header->type, (unsigned int) header->version, be32toh(header->ssrc), (unsigned int) header->csrccount, ntohs(header->seq_number), (int) header->padding, (int) header->extension, (int) header->version, (int) header->markerbit, (int) header->csrccount);
-#endif
+#ifdef ENABLE_PROTOCOL_LOGGING
+	LOG_VERBOSE(this->config->logger, "AudioStream::process_rtp_data", "incoming %i --> %i decrypted bytes. Type %i Version %i SSRC: %u => %i Seq: %u Pad: %u Ext: %u Ver: %u Mark: %u Count: %u", in.length(), buflen, (unsigned int) header->type, (unsigned int) header->version, be32toh(header->ssrc), (unsigned int) header->csrccount, ntohs(header->seq_number), (int) header->padding, (int) header->extension, (int) header->version, (int) header->markerbit, (int) header->csrccount);
 	if(header->extension) {
-		auto ext = (RTPHeaderExtension*) (in.data() + 12);
-		//LOG_VERBOSE(this->config->logger, "XX", "Extenstion bytes (%x %u) %x %x %x %x", be16toh(ext->type), be16toh(ext->length), ext->data[0], ext->data[1], ext->data[2], ext->data[3]);
+		auto ext = (protocol::rtp_header_extension*) (in.data() + 12);
+		LOG_VERBOSE(this->config->logger, "XX", "Extenstion bytes (%x %u) %x %x %x %x", be16toh(ext->type), be16toh(ext->length), ext->data[0], ext->data[1], ext->data[2], ext->data[3]);
 	}
+#endif
 
-	auto payload_offset = rtp_payload_offset(in, buflen);
+	auto payload_offset = protocol::rtp_payload_offset(in, buflen);
 	if(payload_offset > buflen); //FIXME break here
 
 	shared_ptr<AudioChannel> channel;
@@ -596,16 +575,23 @@ void AudioStream::process_srtp_data(const std::string &in) {
 		this->incoming_data_handler(channel, in.substr(0, buflen), payload_offset); //TODO Avoid copy here? Use C++17 std::string_view?
 }
 
-void AudioStream::send_rtp_data(const shared_ptr<AudioChannel> &stream, const std::string &data, uint32_t timestamp) {
-	static_assert(sizeof(RTPHeader) == 12, "Invalid structure size");
-	static_assert(sizeof(RTPHeaderExtension) == 4, "Invalid structure size");
-	assert(stream->codec);
+bool AudioStream::send_rtp_data(const shared_ptr<AudioChannel> &stream, const std::string &data, uint32_t timestamp) {
+	static_assert(sizeof(protocol::rtp_header) == 12, "Invalid structure size");
+	static_assert(sizeof(protocol::rtp_header_extension) == 4, "Invalid structure size");
+	if(!this->srtp_out_ready) {
+		LOG_ERROR(this->config->logger, "AudioStream::send_rtp_data", "Srtp not ready yet!");
+		return false;
+	}
+	if(!stream || !stream->codec) {
+		LOG_ERROR(this->config->logger, "AudioStream::send_rtp_data", "Stream hasn't a codec yet or is null!");
+		return false;
+	}
 
-	auto allocated = sizeof(RTPHeader) + (sizeof(RTPHeaderExtension) + 4) + data.length() + SRTP_MAX_TRAILER_LEN;
+	auto allocated = sizeof(protocol::rtp_header) + (sizeof(protocol::rtp_header_extension) + 4) + data.length() + SRTP_MAX_TRAILER_LEN;
 	allocated += allocated % 4; //Align 32 bits
 
 	auto buffer = string(allocated, '\0');
-	auto header = (RTPHeader*) buffer.data();
+	auto header = (protocol::rtp_header*) buffer.data();
 
 	header->type = stream->codec->id;
 	header->ssrc = htobe32(stream->ssrc);
@@ -618,11 +604,11 @@ void AudioStream::send_rtp_data(const shared_ptr<AudioChannel> &stream, const st
 	header->seq_number = htobe16(stream->index_packet_send);
 	stream->index_packet_send += 1;
 
-	int offset_payload = sizeof(RTPHeader);
+	int offset_payload = sizeof(protocol::rtp_header);
 
 	if(header->extension) { //FIXME make this configurable?
-		offset_payload += 4 + sizeof(RTPHeaderExtension);
-		auto extension = (RTPHeaderExtension*) &buffer.data()[sizeof(RTPHeader)];
+		offset_payload += 4 + sizeof(protocol::rtp_header_extension);
+		auto extension = (protocol::rtp_header_extension*) &buffer.data()[sizeof(protocol::rtp_header)];
 		extension->length = htobe16(1);
 		extension->type = htobe16(0xBEDE);
 		extension->data[0] = 0x10; //upper: type lower: len
@@ -633,35 +619,36 @@ void AudioStream::send_rtp_data(const shared_ptr<AudioChannel> &stream, const st
 
 	memcpy((void*) &buffer.data()[offset_payload], data.data(), data.length());
 
-	int org_buflen = offset_payload + data.length();
-	int buflen = org_buflen; //SRTP_MAX_TRAILER_LEN
-	srtp_err_status_t res = srtp_protect(this->srtp_out, (void*) buffer.data(), &buflen);
+	auto org_buflen = offset_payload + data.length();
+	auto buflen = org_buflen; //SRTP_MAX_TRAILER_LEN
+	srtp_err_status_t res = srtp_protect(this->srtp_out, (void*) buffer.data(), (int*) &buflen);
 	if(res != srtp_err_status_ok) {
 		if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
-			LOG_ERROR(this->config->logger, "AudioStream::process_srtp_data", "Failed to protect srtp packet. Error: %i (len=%i --> %i)", res, buffer.length(), buflen);
-			return;
+			LOG_ERROR(this->config->logger, "AudioStream::process_rtp_data", "Failed to protect srtp packet. Error: %i (len=%i --> %i)", res, buffer.length(), buflen);
+			return false;
 		}
 	}
 	assert(buffer.size() >= buflen);
-#ifdef ENABLE_LOGGING
+#ifdef ENABLE_PROTOCOL_LOGGING
 	LOG_ERROR(this->config->logger, "AudioStream::process_srtp_data", "Protect succeeed %i (len=%i --> %i | len_org=%i)", res, buffer.length(), buflen, org_buflen);
 #endif
 	this->send_data(buffer.substr(0, buflen)); //TODO Avoid copy here? Use C++17 std::string_view?
+	return true;
 }
 
-void AudioStream::process_srtp_rtcp_data(const std::string &in) {
-	auto header = (rtcp::rtcp_header*) in.data();
+void AudioStream::process_rtcp_data(const std::string &in) {
+	auto header = (protocol::rtcp_header*) in.data();
 
-	int buflen = in.length();
-	srtp_err_status_t res = srtp_unprotect_rtcp(this->srtp_in, (void*) in.data(), &buflen);
+	auto buflen = in.length();
+	srtp_err_status_t res = srtp_unprotect_rtcp(this->srtp_in, (void*) in.data(), (int*) &buflen);
 	if(res != srtp_err_status_ok) {
 		if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 			/* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */
-			LOG_DEBUG(this->config->logger, "AudioStream::process_srtp_rtcp_data", "Failed to unprotect  RTCP packet. Error %i (len=%i --> %i)", buflen, in.length(), buflen);
+			LOG_ERROR(this->config->logger, "AudioStream::process_rtcp_data", "Failed to unprotect  RTCP packet. Error %i (len=%i --> %i)", buflen, in.length(), buflen);
 			return;
 		}
 	}
-	LOG_DEBUG(this->config->logger, "AudioStream::process_srtp_rtcp_data", "Got RTCP packet of type %i and length %i", (int) header->type, (int) header->length);
+	LOG_DEBUG(this->config->logger, "AudioStream::process_rtcp_data", "Got RTCP packet of type %i and length %i", (int) header->type, (int) header->length);
 }
 
 void AudioStream::on_nice_ready() {

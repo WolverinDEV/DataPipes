@@ -140,7 +140,7 @@ bool http::parse_request(const std::string &header, HttpRequest &result, const s
 	//Read the version
 	result.version = request;
 
-    for(int idx = 1; idx < lines.size(); idx++) {
+    for(size_t idx = 1; idx < lines.size(); idx++) {
         if(lines[idx].empty()) continue;
         HttpHeaderEntry e;
         if(!parse_header_entry(lines[idx], e, noParsing))

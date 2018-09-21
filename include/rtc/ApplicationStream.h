@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <thread>
 #include "Stream.h"
 
 namespace rtc {
@@ -97,5 +98,6 @@ namespace rtc {
 
 			std::unique_ptr<pipes::TLS> dtls;
 			std::unique_ptr<pipes::SCTP> sctp;
+			std::thread sctp_connect_thread;
 	};
 }

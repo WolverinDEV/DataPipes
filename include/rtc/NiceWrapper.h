@@ -21,14 +21,14 @@ namespace rtc {
 		typedef std::function<void(const std::string&)> cb_recive;
 		typedef std::function<void()> cb_ready;
 
-		uint32_t stream_id = -1;
+		uint32_t stream_id = 0xFFFF;
 		bool ready = false;
 		cb_recive callback_receive;
 		cb_ready callback_ready;
 	};
 
 	struct LocalSdpEntry {
-		size_t index;
+		int index;
 		std::string media;
 		std::string connection;
 		std::string ice_ufrag;
@@ -62,7 +62,7 @@ namespace rtc {
 				std::shared_ptr<GMainLoop> main_loop;
 			};
 
-			NiceWrapper(const std::shared_ptr<Config>& /* config */);
+			explicit NiceWrapper(const std::shared_ptr<Config>& /* config */);
 			virtual ~NiceWrapper();
 
 			bool initialize(std::string& /* error */);
@@ -86,7 +86,7 @@ namespace rtc {
 			std::shared_ptr<pipes::Logger> logger() { return this->_logger; }
 			void logger(const std::shared_ptr<pipes::Logger>& logger) { this->_logger = logger; }
 		private:
-			static void cb_recived(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer user_data);
+			static void cb_received(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer user_data);
 			static void cb_candidate_gathering_done(NiceAgent *agent, guint stream_id, gpointer user_data);
 			static void cb_component_state_changed(NiceAgent *agent, guint stream_id, guint component_id, guint state, gpointer user_data);
 			static void cb_new_local_candidate(NiceAgent *agent, NiceCandidate *candidate, gpointer user_data);
@@ -94,7 +94,7 @@ namespace rtc {
 			static void cb_transport_writeable(NiceAgent *agent, guint sid, guint cid, gpointer data);
 
 		protected:
-			virtual void on_data_recived(guint /* stream */, guint /* component */, void* /* buffer */, size_t /* length */);
+			virtual void on_data_received(guint /* stream */, guint /* component */, void * /* buffer */, size_t /* length */);
 
 			virtual void on_gathering_done();
 			virtual void on_selected_pair(guint /* stream */, guint /* component */, NiceCandidate* /* local candidate */, NiceCandidate* /* remote candidate */);

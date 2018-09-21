@@ -79,8 +79,8 @@ namespace rtc {
 			std::shared_ptr<AudioStream> stream_audio;
 
 			std::deque<std::shared_ptr<Stream>> sdp_media_lines;
-			inline ssize_t sdp_mline_index(const std::shared_ptr<Stream>& stream) {
-				size_t index = 0;
+			inline int sdp_mline_index(const std::shared_ptr<Stream>& stream) {
+				int index = 0;
 				for(const auto& entry : sdp_media_lines)
 					if(entry == stream) return index;
 					else index++;

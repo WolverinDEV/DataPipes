@@ -76,7 +76,6 @@ target_link_libraries(
         usrsctp.a
 		sdptransform
 		srtp
-		opus
 )
 
 
@@ -95,6 +94,7 @@ if(BUILD_TESTS)
 			/home/wolverindev/TeaSpeak/libraries/boringssl/build/crypto/libcrypto.so
 			pthread
 			asound
+			opus
 	)
 
 	add_executable(DataPipes-Test-SSL test/ssl_pipeline_server.cpp test/utils/socket.cpp)

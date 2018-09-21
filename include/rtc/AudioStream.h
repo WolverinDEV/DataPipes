@@ -7,41 +7,40 @@
 #include <atomic>
 
 namespace rtc {
-	/*! \brief RTP Header (http://tools.ietf.org/html/rfc3550#section-5.1) */
-	/* Copied from janus */
-	struct RTPHeader
-	{
+	/* Most copied from janus */
+	namespace protocol {
+		/*! \brief RTP Header (http://tools.ietf.org/html/rfc3550#section-5.1) */
+		struct rtp_header
+		{
 #if __BYTE_ORDER == __BIG_ENDIAN
-		uint16_t version:2;
+			uint16_t version:2;
 		uint16_t padding:1;
 		uint16_t extension:1;
 		uint16_t csrccount:4;
 		uint16_t markerbit:1;
 		uint16_t type:7;
 #elif __BYTE_ORDER == __LITTLE_ENDIAN
-		uint16_t csrccount:4;
-		uint16_t extension:1;
-		uint16_t padding:1;
-		uint16_t version:2;
-		uint16_t type:7;
-		uint16_t markerbit:1;
+			uint16_t csrccount:4;
+			uint16_t extension:1;
+			uint16_t padding:1;
+			uint16_t version:2;
+			uint16_t type:7;
+			uint16_t markerbit:1;
 #endif
-		uint16_t seq_number;
-		uint32_t timestamp;
-		uint32_t ssrc;
-		uint32_t csrc[0];
-	};
+			uint16_t seq_number;
+			uint32_t timestamp;
+			uint32_t ssrc;
+			uint32_t csrc[0];
+		};
 
-	struct RTPHeaderExtension {
-		uint16_t type;
-		uint16_t length;
-		uint8_t data[0];
-	};
+		struct rtp_header_extension {
+			uint16_t type;
+			uint16_t length;
+			uint8_t data[0];
+		};
 
-	namespace rtcp {
 		/*! \brief RTCP Packet Types (http://www.networksorcery.com/enp/protocol/rtcp.htm) */
-		/* Copied from janus */
-		typedef enum {
+		enum rtcp_type : uint8_t {
 			RTCP_FIR = 192,
 			RTCP_SR = 200, /* SR, sender report */
 			RTCP_RR = 201, /* RR, receiver report */
@@ -51,18 +50,17 @@ namespace rtc {
 			RTCP_RTPFB = 205,
 			RTCP_PSFB = 206,
 			RTCP_XR = 207,
-		} rtcp_type;
+		};
 
 
 /*! \brief RTCP Header (http://tools.ietf.org/html/rfc3550#section-6.1) */
-/* Copied from janus */
-		typedef struct rtcp_header
+		struct rtcp_header
 		{
 #if __BYTE_ORDER == __BIG_ENDIAN
 			uint16_t version:2;
-	uint16_t padding:1;
-	uint16_t rc:5;
-	uint16_t type:8;
+			uint16_t padding:1;
+			uint16_t rc:5;
+			uint16_t type:8;
 #elif __BYTE_ORDER == __LITTLE_ENDIAN
 			uint16_t rc:5;
 			uint16_t padding:1;
@@ -70,11 +68,22 @@ namespace rtc {
 			uint16_t type:8;
 #endif
 			uint16_t length:16;
-		} rtcp_header;
+		};
+
+		inline bool is_rtcp(void* buf) {
+			auto header = (protocol::rtcp_header *) buf;
+			return ((header->type >= 64) && (header->type < 96));
+		}
+
+		inline bool is_rtp(void* buf) {
+			auto header = (protocol::rtp_header *) buf;
+			return ((header->type < 64) || (header->type >= 96));
+		}
+
+		extern ssize_t rtp_payload_offset(const std::string& /* data */, size_t /* max_length */);
 	}
 
-
-	namespace rtp { //FIXME wrong namespace name?
+	namespace codec {
 		struct TypedAudio {
 			enum {
 				UNSET = 0,
@@ -110,7 +119,7 @@ namespace rtc {
 		bool local = false;
 
 		uint32_t ssrc = 0;
-		std::shared_ptr<rtp::TypedAudio> codec;
+		std::shared_ptr<codec::TypedAudio> codec;
 
 		std::string stream_id;
 		std::string track_id;
@@ -149,12 +158,12 @@ namespace rtc {
 			StreamType type() const override;
 
 
-			void send_rtp_data(const std::shared_ptr<AudioChannel>& /* channel */, const std::string& /* data */, uint32_t /* timestamp */);
+			bool send_rtp_data(const std::shared_ptr<AudioChannel>& /* channel */, const std::string& /* data */, uint32_t /* timestamp */);
 			callback_data incoming_data_handler;
 
-			std::deque<std::shared_ptr<rtp::TypedAudio>> find_codec_by_name(const std::string& /* name */);
+			std::deque<std::shared_ptr<codec::TypedAudio>> find_codec_by_name(const std::string& /* name */);
 
-			void register_local_channel(const std::string& /* stream id */, const std::string& /* track id */, const std::shared_ptr<rtp::TypedAudio>& /* type */);
+			void register_local_channel(const std::string& /* stream id */, const std::string& /* track id */, const std::shared_ptr<codec::TypedAudio>& /* type */);
 			/**
 			 * @param direction mask:
 			 * 		first byte: incoming
@@ -173,8 +182,8 @@ namespace rtc {
 
 		protected:
 			void process_incoming_data(const std::string &string) override;
-			void process_srtp_data(const std::string& /* data */);
-			void process_srtp_rtcp_data(const std::string& /* data */);
+			void process_rtp_data(const std::string & /* data */);
+			void process_rtcp_data(const std::string & /* data */);
 		private:
 			std::shared_ptr<Configuration> config;
 
@@ -193,7 +202,7 @@ namespace rtc {
 
 			OpusDecoder* opus_decoder = nullptr;
 
-			std::deque<std::shared_ptr<rtp::TypedAudio>> offered_codecs;
+			std::deque<std::shared_ptr<codec::TypedAudio>> offered_codecs;
 
 			std::mutex channel_lock;
 			std::vector<std::shared_ptr<AudioChannel>> remote_channels;

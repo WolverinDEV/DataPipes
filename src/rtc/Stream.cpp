@@ -12,8 +12,10 @@ Stream::Stream(rtc::PeerConnection *_owner, rtc::StreamId _stream_id) : _owner(_
 
 void Stream::send_data(const std::string &data) {
 	assert(this->_owner);
-	assert(this->_owner->nice);
 	assert(this->_stream_id > 0);
 
-	this->_owner->nice->send_data(this->_stream_id, 1, data);
+	auto& nice = this->_owner->nice;
+	if(!nice) return;
+
+	nice->send_data(this->_stream_id, 1, data);
 }

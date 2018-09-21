@@ -156,7 +156,6 @@ std::string PeerConnection::generate_answer(bool candidates) {
 	/* General header */
 	sdp << "v=0\r\n";
 	//FIXME Copy username from request
-	//FIXME sessionVersion? Was 2 now 1!
 	sdp << "o=mozilla...THIS_IS_SDPARTA-61.0.1 " << session_id << " 2 IN IP4 0.0.0.0\r\n";
 	sdp << "s=AudioBridge 1234\r\n"; //Username?
 	sdp << "t=0 0\r\n";

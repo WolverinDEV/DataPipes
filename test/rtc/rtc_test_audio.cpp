@@ -163,7 +163,7 @@ std::pair<EVP_PKEY*, X509*> createCerts(pem_password_cb* password) {
 };
 
 void configure_context(SSL_CTX *ctx) {
-	SSL_CTX_set_ecdh_auto(ctx, 1);
+	assert(SSL_CTX_set_ecdh_auto(ctx, 1));
 	if(!certs.first || !certs.second)
 		certs = createCerts([](char* buffer, int length, int rwflag, void* data) -> int {
 			std::string password = "markus";
@@ -317,10 +317,6 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 	}
 
 	connection->data = client;
-}
-
-int udp_setup() {
-	auto fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 }
 
 int main() {

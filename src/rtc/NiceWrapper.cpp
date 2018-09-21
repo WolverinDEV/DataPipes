@@ -13,15 +13,15 @@
 using namespace std;
 using namespace rtc;
 
-NiceWrapper::NiceWrapper(const std::shared_ptr<Config>& config) : config(config), loop(nullptr), agent(nullptr, nullptr) {}
+NiceWrapper::NiceWrapper(const std::shared_ptr<Config>& config) : config(config), agent(nullptr, nullptr), loop(nullptr) {}
 NiceWrapper::~NiceWrapper() {
 	this->finalize();
 }
 
 /* Static callbacks */ //TODO Test pointers for validation!
-void NiceWrapper::cb_recived(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer user_data) {
+void NiceWrapper::cb_received(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer user_data) {
 	auto wrapper = static_cast<NiceWrapper*>(user_data);
-	wrapper->on_data_recived(stream_id, component_id, buf, len);
+	wrapper->on_data_received(stream_id, component_id, buf, len);
 }
 
 void NiceWrapper::cb_candidate_gathering_done(NiceAgent *agent, guint stream_id, gpointer user_data) {
@@ -70,7 +70,7 @@ bool NiceWrapper::initialize(std::string& error) {
 
 	/* log setup */
 	int log_flags = G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION;
-	g_log_set_handler(NULL, (GLogLevelFlags)~0, g_log_handler, this);
+	g_log_set_handler(NULL, (GLogLevelFlags) log_flags, g_log_handler, this);
 
 	if(this->config->main_loop) {
 		this->loop = this->config->main_loop;
@@ -135,7 +135,7 @@ std::shared_ptr<NiceStream> NiceWrapper::add_stream(const string& name) { //TODO
 		lock_guard<recursive_mutex> lock(this->streams_lock);
 		this->streams.push_back(stream);
 	}
-	if(!nice_agent_attach_recv(agent.get(), stream->stream_id, 1, g_main_loop_get_context(loop.get()), NiceWrapper::cb_recived, this)) {
+	if(!nice_agent_attach_recv(agent.get(), stream->stream_id, 1, g_main_loop_get_context(loop.get()), NiceWrapper::cb_received, this)) {
 		lock_guard<recursive_mutex> lock(this->streams_lock);
 		this->streams.erase(find(this->streams.begin(), this->streams.end(), stream));
 		return nullptr;
@@ -195,7 +195,7 @@ void NiceWrapper::send_data(guint stream, guint component, const std::string &da
 	//LOG_DEBUG(this->_logger, "NiceWrapper::send_data", "Sending on stream %i component %i", stream, component);
 
 	auto result = nice_agent_send(this->agent.get(), stream, component, data.length(), data.data());
-	if(result != data.length())
+	if(result < 0 || (size_t) result != data.length())
 		LOG_ERROR(this->_logger, "NiceWrapper::send_data", "Failed to send data to agent! (Expected length: %i Recived length: %i)", data.length(), result);
 }
 
@@ -207,12 +207,12 @@ void NiceWrapper::set_callback_failed(const rtc::NiceWrapper::cb_failed &cb) {
 	this->callback_failed = cb;
 }
 
-void NiceWrapper::on_data_recived(guint stream_id, guint component_id, void* data, size_t length) {
+void NiceWrapper::on_data_received(guint stream_id, guint component_id, void *data, size_t length) {
 	std::lock_guard<std::recursive_mutex> lock(io_lock);
 
 	auto stream = this->find_stream(stream_id);
 	if(!stream) {
-		LOG_ERROR(this->_logger, "NiceWrapper::on_data_recived", "Missing stream %i", stream_id);
+		LOG_ERROR(this->_logger, "NiceWrapper::on_data_received", "Missing stream %i", stream_id);
 		return;
 	}
 	if(stream->callback_receive)
@@ -345,14 +345,15 @@ std::deque<std::unique_ptr<LocalSdpEntry>> NiceWrapper::generate_local_sdp(bool 
 			if(current)
 				result.push_back(std::move(current));
 			current.reset(new LocalSdpEntry());
-			current->index = result.size();
+			current->index = (int) result.size();
 			current->has_bitset = 0;
 
 			current->media = line.substr(2, line.find(' ', 2) - 2);
 			current->has.media = true;
 		} else {
 			if(!current || !current->has.media) {
-				//TODO log error
+				LOG_ERROR(this->_logger, "NiceWrapper::generate_local_sdp", "SDP unexpected line! Expected m=, but got: %s", line.c_str());
+				continue;
 			} else if(g_str_has_prefix(line.c_str(), "a=ice-ufrag:")) {
 				current->ice_ufrag = line.substr(line.find(':') + 1); //Example: a=ice-ufrag:N7KM
 				current->has.ice_ufrag = true;
@@ -366,7 +367,7 @@ std::deque<std::unique_ptr<LocalSdpEntry>> NiceWrapper::generate_local_sdp(bool 
 				current->candidates.push_back(line.substr(line.find(':') + 1)); //Example: a=candidate:25 1 UDP 2013266431 fe80::f822:34ff:febd:6c7a 37691 typ host
 				current->has.candidates = true;
 			} else {
-				//TODO unknown entry -> log error (may just debug?)
+				LOG_DEBUG(this->_logger, "NiceWrapper::generate_local_sdp", "Received unknown sdp line: %s", line.c_str());
 			}
 		}
 	}

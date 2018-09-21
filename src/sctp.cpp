@@ -163,7 +163,7 @@ ProcessResult SCTP::process_data_out() {
 	lock_guard<recursive_mutex> lock(this->io_lock);
 	SCTPMessage message;
 	{
-		lock_guard<mutex> lock(this->buffer_lock);
+		lock_guard<mutex> buffer_lock(this->buffer_lock);
 		if(this->write_buffer.empty()) return PROCESS_RESULT_OK;
 
 		message = std::move(this->write_buffer[0]);
@@ -213,7 +213,7 @@ int SCTP::on_disconnect() {
 //TODO error handling?
 int SCTP::on_data_in(const std::string &data, struct sctp_rcvinfo recv_info, int flags) {
 	LOG_VERBOSE(this->_logger, "SCTP::on_data_in", "Got new data. Length: %i Flags: %s", data.length(), bitset<16>(flags).to_string().c_str());
-	if(flags & MSG_NOTIFICATION) {
+	if((flags & MSG_NOTIFICATION) > 0) {
 		auto notify = (union sctp_notification *) data.data();
 		if(notify->sn_header.sn_length != data.length()) {
 			LOG_DEBUG(this->_logger, "SCTP::on_data_in", "Invalid notification length (%ui != %ul)", notify->sn_header.sn_length, data.length());

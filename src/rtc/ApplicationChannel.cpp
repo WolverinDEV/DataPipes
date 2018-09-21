@@ -28,7 +28,15 @@ std::string DataChannel::lable() const { return this->_lable; }
 DataChannel::DataChannel(ApplicationStream* owner, uint16_t id, std::string lable, std::string protocol) : owner(owner), _id(id), _lable(std::move(lable)), _protocol(std::move(protocol)) {}
 
 void DataChannel::send(const std::string &message, rtc::DataChannel::MessageType type) {
-	this->owner->send_sctp({message, this->id(), type == DataChannel::BINARY ? PPID_BINARY : PPID_STRING});
+	int ppid_type = 0;
+	if(type == DataChannel::BINARY)
+		ppid_type = message.empty() ? PPID_BINARY_EMPTY : PPID_BINARY;
+	else if(type == DataChannel::TEXT)
+		ppid_type = message.empty() ? PPID_STRING_EMPTY : PPID_STRING;
+	else {
+		return; //Should nevber happen
+	}
+	this->owner->send_sctp({message, this->id(), (uint32_t) ppid_type});
 }
 
 void DataChannel::close() {
@@ -60,15 +68,15 @@ bool ApplicationStream::initialize(std::string &error) {
 			LOG_ERROR(this->config->logger, "ApplicationStream::dtls", "Got error (%i): %s", code, error.c_str());
 		});
 		this->dtls->callback_initialized = [&](){
-			LOG_DEBUG(this->config->logger, "ApplicationStream::dtls", "Initialized!");
-			std::thread([&]{
+			LOG_DEBUG(this->config->logger, "ApplicationStream::dtls", "Initialized! Starting SCTP connect");
+			this->sctp_connect_thread = std::thread([&]{
 				if(!this->sctp->connect()) {
 					LOG_ERROR(this->config->logger, "ApplicationStream::sctp", "Failed to connect");
 					//this->trigger_setup_fail(ConnectionComponent::SCTP, "failed to connect");
 					//FIXME!
 				} else
 					LOG_DEBUG(this->config->logger, "ApplicationStream::sctp", "successful connected");
-			}).detach();
+			});
 		};
 
 		auto certificate = pipes::TLSCertificate::generate("DataPipes", 365);
@@ -352,6 +360,8 @@ bool ApplicationStream::reset(std::string &) {
 	if(this->sctp) this->sctp->finalize();
 	if(this->dtls) this->dtls->finalize();
 
+	if(this->sctp_connect_thread.joinable())
+		this->sctp_connect_thread.join();
 	return true;
 }
 
