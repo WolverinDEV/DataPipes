@@ -117,7 +117,7 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 }
 
 //FIXME test stream index and mid?
-int PeerConnection::apply_ice_candidates(const std::deque<std::shared_ptr<rtc::PeerConnection::IceCandidate>> &candidates) {
+int PeerConnection::apply_ice_candidates(const std::deque<std::shared_ptr<rtc::IceCandidate>> &candidates) {
 	int success_counter = 0;
 	for(const auto& stream : this->availible_streams()) {
 		for(const auto& candidate : candidates) {

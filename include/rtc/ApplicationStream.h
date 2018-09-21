@@ -68,7 +68,7 @@ namespace rtc {
 			std::shared_ptr<DataChannel> find_datachannel(uint16_t /* channel id */);
 			std::shared_ptr<DataChannel> find_datachannel(const std::string& /* channel name */);
 
-			cb_datachannel_new callback_datachannel_new;
+			cb_datachannel_new callback_datachannel_new = nullptr;
 		private:
 		protected:
 			void on_nice_ready() override;

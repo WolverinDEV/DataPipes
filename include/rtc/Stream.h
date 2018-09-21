@@ -45,5 +45,9 @@ namespace rtc {
 
 			PeerConnection* _owner = nullptr;
 			StreamId _stream_id = 0;
+
+			bool buffer_fails = true;
+			std::deque<std::string> fail_buffer;
+			virtual bool resend_buffer();
 	};
 }

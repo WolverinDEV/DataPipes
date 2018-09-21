@@ -74,7 +74,7 @@ namespace rtc {
 			std::deque<std::unique_ptr<LocalSdpEntry>> generate_local_sdp(bool /* with candidates */);
 
 
-			void send_data(guint /* stream */, guint /* component */, const std::string& /* buffer */);
+			bool send_data(guint /* stream */, guint /* component */, const std::string& /* buffer */);
 
 			void set_callback_local_candidate(const cb_candidate& /* callback */);
 			void set_callback_failed(const cb_failed& /* callback */);

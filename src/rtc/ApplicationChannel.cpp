@@ -586,6 +586,7 @@ void ApplicationStream::close_datachannel(rtc::DataChannel *channel) {
 }
 
 void ApplicationStream::on_nice_ready() {
+	this->resend_buffer();
 	if(this->role == Client)
 		this->dtls->do_handshake();
 }

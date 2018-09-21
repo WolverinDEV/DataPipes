@@ -158,7 +158,7 @@ namespace rtc {
 
 
 			bool send_rtp_data(const std::shared_ptr<AudioChannel>& /* channel */, const std::string& /* data */, uint32_t /* timestamp */);
-			callback_data incoming_data_handler;
+			callback_data incoming_data_handler = nullptr;
 
 			std::deque<std::shared_ptr<codec::TypedAudio>> find_codec_by_name(const std::string& /* name */);
 
@@ -189,9 +189,9 @@ namespace rtc {
 			bool dtls_initialized = false;
 			std::unique_ptr<pipes::TLS> dtls;
 
-			srtp_t srtp_in;
+			srtp_t srtp_in = nullptr;
 			bool srtp_in_ready = false;
-			srtp_t srtp_out;
+			srtp_t srtp_out = nullptr;
 			bool srtp_out_ready = false;
 			srtp_policy_t remote_policy;
 			srtp_policy_t local_policy;

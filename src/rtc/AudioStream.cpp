@@ -660,6 +660,7 @@ void AudioStream::process_rtcp_data(const std::string &in) {
 }
 
 void AudioStream::on_nice_ready() {
+	this->resend_buffer();
 	if(this->role == Client)
 		this->dtls->do_handshake();
 }

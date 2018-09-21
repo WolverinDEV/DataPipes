@@ -259,7 +259,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, answer)});
 				} else if (root["type"] == "candidate") {
 					cout << "Apply candidates: " << client->peer->apply_ice_candidates(
-							deque<shared_ptr<rtc::PeerConnection::IceCandidate>> { make_shared<rtc::PeerConnection::IceCandidate>(root["msg"]["candidate"].asString(), root["msg"]["sdpMid"].asString(), root["msg"]["sdpMLineIndex"].asInt()) }
+							deque<shared_ptr<rtc::IceCandidate>> { make_shared<rtc::IceCandidate>(root["msg"]["candidate"].asString(), root["msg"]["sdpMid"].asString(), root["msg"]["sdpMLineIndex"].asInt()) }
 					) << endl;
 				}
 			} else {
@@ -269,7 +269,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 	}
 
 	{
-		client->peer->callback_ice_candidate = [client](const rtc::PeerConnection::IceCandidate& ice) {
+		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice) {
 			Json::Value jsonCandidate;
 			jsonCandidate["type"] = "candidate";
 			jsonCandidate["msg"]["candidate"] = ice.candidate;

@@ -191,12 +191,15 @@ void NiceWrapper::finalize() {
 	this->agent.reset();
 }
 
-void NiceWrapper::send_data(guint stream, guint component, const std::string &data) {
+bool NiceWrapper::send_data(guint stream, guint component, const std::string &data) {
 	//LOG_DEBUG(this->_logger, "NiceWrapper::send_data", "Sending on stream %i component %i", stream, component);
 
 	auto result = nice_agent_send(this->agent.get(), stream, component, data.length(), data.data());
-	if(result < 0 || (size_t) result != data.length())
+	if(result < 0 || (size_t) result != data.length()) {
 		LOG_ERROR(this->_logger, "NiceWrapper::send_data", "Failed to send data to agent! (Expected length: %i Recived length: %i)", data.length(), result);
+		return false;
+	}
+	return true;
 }
 
 void NiceWrapper::set_callback_local_candidate(const rtc::NiceWrapper::cb_candidate &cb) {
