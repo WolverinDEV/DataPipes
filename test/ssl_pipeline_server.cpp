@@ -99,7 +99,7 @@ std::pair<EVP_PKEY*, X509*> createCerts(pem_password_cb* password) {
 };
 
 void configure_context(SSL_CTX *ctx) {
-    SSL_CTX_set_ecdh_auto(ctx, 1);
+    assert(SSL_CTX_set_ecdh_auto(ctx, 1));
     auto certs = createCerts([](char* buffer, int length, int rwflag, void* data) -> int {
         std::string password = "markus";
         memcpy(buffer, password.data(), password.length());

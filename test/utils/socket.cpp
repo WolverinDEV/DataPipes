@@ -158,7 +158,7 @@ void Socket::Client::on_write(int fd) {
     auto& buffer = this->buffer_write[0];
 
     auto wrote = ::write(fd, buffer.data(), buffer.length());
-    if(wrote < buffer.length())
+    if(wrote > 0 && (size_t) wrote < buffer.length())
         buffer = buffer.substr(wrote);
     else
         this->buffer_write.pop_front();

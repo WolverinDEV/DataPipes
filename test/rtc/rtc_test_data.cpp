@@ -118,7 +118,7 @@ std::pair<EVP_PKEY*, X509*> createCerts(pem_password_cb* password) {
 };
 
 void configure_context(SSL_CTX *ctx) {
-	SSL_CTX_set_ecdh_auto(ctx, 1);
+	assert(SSL_CTX_set_ecdh_auto(ctx, 1));
 	if(!certs.first || !certs.second)
 		certs = createCerts([](char* buffer, int length, int rwflag, void* data) -> int {
 			std::string password = "markus";
@@ -192,7 +192,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 	}
 
 	{
-		client->peer->callback_ice_candidate = [client](const rtc::PeerConnection::IceCandidate& ice) {
+		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice) {
 			Json::Value jsonCandidate;
 			jsonCandidate["type"] = "candidate";
 			jsonCandidate["msg"]["candidate"] = ice.candidate;
@@ -261,7 +261,9 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 
 					client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, answer)});
 				} else if (root["type"] == "candidate") {
-					cout << "Apply candidates: " << client->peer->apply_ice_candidates({"a=" + root["msg"]["candidate"].asString()}) << endl;
+					cout << "Apply candidates: " << client->peer->apply_ice_candidates(
+							deque<shared_ptr<rtc::IceCandidate>> { make_shared<rtc::IceCandidate>(root["msg"]["candidate"].asString(), root["msg"]["sdpMid"].asString(), root["msg"]["sdpMLineIndex"].asInt()) }
+					) << endl;
 				}
 			} else {
 				cerr << "Failed to parse json" << endl;
