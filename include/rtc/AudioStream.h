@@ -80,7 +80,15 @@ namespace rtc {
 		}
 
 		extern ssize_t rtp_payload_offset(const std::string& /* data */, size_t /* max_length */);
+		extern int rtp_header_extension_find(const std::string& /* buffer */, int id, uint8_t *byte, uint32_t *word, char **ref);
+		extern int rtp_header_extension_parse_audio_level(const std::string& /* buffer */, int id, int *level);
 	}
+
+	struct HeaderExtension {
+		std::string name;
+		uint8_t id;
+		std::unique_ptr<nlohmann::json> data;
+	};
 
 	namespace codec {
 		struct TypedAudio {
@@ -176,6 +184,7 @@ namespace rtc {
 			 */
 			std::deque<std::shared_ptr<AudioChannel>> list_channels(uint8_t /* direction mask */ = 3);
 
+			const std::vector<std::shared_ptr<HeaderExtension>>& list_offered_extensions();
 		protected:
 			void on_nice_ready() override;
 
@@ -200,6 +209,7 @@ namespace rtc {
 			enum Role { Client, Server } role = Client;
 
 			std::deque<std::shared_ptr<codec::TypedAudio>> offered_codecs;
+			std::vector<std::shared_ptr<HeaderExtension>> offered_extensions;
 
 			std::mutex channel_lock;
 			std::vector<std::shared_ptr<AudioChannel>> remote_channels;

@@ -125,6 +125,10 @@ std::deque<std::shared_ptr<AudioChannel>> AudioStream::list_channels(uint8_t dir
 	return result;
 }
 
+const std::vector<std::shared_ptr<HeaderExtension>>& AudioStream::list_offered_extensions() {
+	return this->offered_extensions;
+}
+
 static bool srtp_initialized = false;
 AudioStream::AudioStream(rtc::PeerConnection *owner, rtc::StreamId id, const std::shared_ptr<rtc::AudioStream::Configuration> &config) : Stream(owner, id), config(config) {
 	memset(&this->remote_policy, 0, sizeof(remote_policy));
@@ -408,6 +412,23 @@ bool AudioStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& med
 		LOG_DEBUG(this->config->logger, "AudioStream::apply_sdp", "Got %u remote offered codecs. (%u locally supported)", this->offered_codecs.size(), supported);
 	}
 
+	{
+		if(media_entry.count("ext") > 0) {
+			this->offered_extensions.reserve(media_entry.count("ext"));
+
+			const nlohmann::json& exts = media_entry["ext"];
+			for (const nlohmann::json &ext : exts) {
+				auto extension = make_shared<HeaderExtension>();
+				extension->id = ext["value"];
+				extension->name = ext["uri"];
+
+				if(ext.size() > 2)
+					extension->data.reset(new nlohmann::json(std::move(ext)));
+
+				this->offered_extensions.push_back(std::move(extension));
+			}
+		}
+	}
 	return true;
 }
 
@@ -509,6 +530,64 @@ ssize_t protocol::rtp_payload_offset(const std::string& data, size_t max_length)
 	}
 
 	return header_length > max_length ? -1 : header_length;
+}
+
+int protocol::rtp_header_extension_parse_audio_level(const std::string& buffer, int id, int *level) {
+	uint8_t byte = 0;
+	if(protocol::rtp_header_extension_find(buffer, id, &byte, NULL, NULL) < 0)
+		return -1;
+	/* a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
+	int v = (byte & 0x80) >> 7;
+	int value = byte & 0x7F;
+	if(level)
+		*level = value;
+	return 0;
+}
+
+/* Static helper to quickly find the extension data */
+int protocol::rtp_header_extension_find(const std::string& buffer, int id, uint8_t *byte, uint32_t *word, char **ref) {
+	if(buffer.length() < 12)
+		return -1;
+	auto* rtp = (protocol::rtp_header *) buffer.data();
+	int hlen = 12;
+	if(rtp->csrccount)	/* Skip CSRC if needed */
+		hlen += rtp->csrccount*4;
+	if(rtp->extension) {
+		auto ext = (protocol::rtp_header_extension *)(buffer.data() + hlen);
+		int extlen = ntohs(ext->length)*4;
+		hlen += 4;
+		if(buffer.length() > (hlen + extlen)) {
+			/* 1-Byte extension */
+			if(ntohs(ext->type) == 0xBEDE) {
+				const uint8_t padding = 0x00, reserved = 0xF;
+				uint8_t extid = 0, idlen;
+				int i = 0;
+				while(i < extlen) {
+					extid = buffer[hlen+i] >> 4;
+					if(extid == reserved) {
+						break;
+					} else if(extid == padding) {
+						i++;
+						continue;
+					}
+					idlen = (buffer[hlen+i] & 0xF)+1;
+					if(extid == id) {
+						/* Found! */
+						if(byte)
+							*byte = buffer[hlen+i+1];
+						if(word)
+							*word = ntohl(*(uint32_t *)(buffer.data()+hlen+i));
+						if(ref)
+							*ref = (char*) &buffer[hlen+i];
+						return 0;
+					}
+					i += 1 + idlen;
+				}
+			}
+			hlen += extlen;
+		}
+	}
+	return -1;
 }
 
 //#define ENABLE_PROTOCOL_LOGGING
