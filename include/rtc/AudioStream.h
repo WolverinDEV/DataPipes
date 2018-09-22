@@ -85,9 +85,12 @@ namespace rtc {
 	}
 
 	struct HeaderExtension {
+		bool local = false;
+
 		std::string name;
 		uint8_t id;
-		std::unique_ptr<nlohmann::json> data;
+		std::string direction;
+		std::string config;
 	};
 
 	namespace codec {
@@ -169,12 +172,13 @@ namespace rtc {
 			callback_data incoming_data_handler = nullptr;
 
 			std::deque<std::shared_ptr<codec::TypedAudio>> find_codec_by_name(const std::string& /* name */);
-
-			void register_local_channel(const std::string& /* stream id */, const std::string& /* track id */, const std::shared_ptr<codec::TypedAudio>& /* type */);
 			/**
 			 * @param direction mask:
 			 * 		first byte: incoming
 			 * 		second byte: outgoing
+			 *
+		 	 * @attention
+		 	 * 		If mask := 3, local channels will be scanned first and may override remote channels
 			 */
 			std::shared_ptr<AudioChannel> find_channel_by_id(uint32_t /* src */, uint8_t /* direction mask */ = 3);
 			/**
@@ -183,8 +187,24 @@ namespace rtc {
 			 * 		second byte: outgoing
 			 */
 			std::deque<std::shared_ptr<AudioChannel>> list_channels(uint8_t /* direction mask */ = 3);
+			/**
+			 * @param direction mask:
+			 * 		first byte: incoming
+			 * 		second byte: outgoing
+			 *
+		 	 * @attention
+		 	 * 		If mask := 3, local extensions will be scanned first and may override remote channels
+			 */
+			std::shared_ptr<HeaderExtension> find_extension_by_id(uint8_t /* id */,uint8_t /* direction mask */ = 3);
+			/**
+			 * @param direction mask:
+			 * 		first byte: incoming
+			 * 		second byte: outgoing
+			 */
+			std::deque<std::shared_ptr<HeaderExtension>> list_extensions( uint8_t /* direction mask */ = 3);
 
-			const std::vector<std::shared_ptr<HeaderExtension>>& list_offered_extensions();
+			void register_local_channel(const std::string& /* stream id */, const std::string& /* track id */, const std::shared_ptr<codec::TypedAudio>& /* type */);
+			std::shared_ptr<HeaderExtension> register_local_extension(const std::string& /* name/uri */, const std::string& /* direction */ = "", const std::string& /* config */ = "");
 		protected:
 			void on_nice_ready() override;
 
@@ -209,7 +229,8 @@ namespace rtc {
 			enum Role { Client, Server } role = Client;
 
 			std::deque<std::shared_ptr<codec::TypedAudio>> offered_codecs;
-			std::vector<std::shared_ptr<HeaderExtension>> offered_extensions;
+			std::vector<std::shared_ptr<HeaderExtension>> remote_extensions;
+			std::vector<std::shared_ptr<HeaderExtension>> local_extensions;
 
 			std::mutex channel_lock;
 			std::vector<std::shared_ptr<AudioChannel>> remote_channels;

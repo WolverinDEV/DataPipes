@@ -296,10 +296,22 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				for(const auto& codec: opus_codec)
 					astream->register_local_channel("voice_bridge_" + to_string(codec->id), "client_" + to_string(codec->id), opus_codec.back());
 			}
+			astream->register_local_extension("urn:ietf:params:rtp-hdrext:ssrc-audio-level");
+
 			weak_ptr<rtc::AudioStream> weak_astream = astream;
 			astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::AudioChannel>& channel, const std::string& buffer, size_t payload_offset) {
 				auto as = weak_astream.lock();
 				if(!as) return;
+
+				for(const auto& ext : as->list_extensions(0x02)) {
+					if(ext->name == "urn:ietf:params:rtp-hdrext:ssrc-audio-level") {
+						int level;
+						if(rtc::protocol::rtp_header_extension_parse_audio_level(buffer, ext->id, &level) == 0) {
+							cout << "Audio level " << level << endl;
+						}
+						break;
+					}
+				}
 
 				auto buf = buffer.substr(payload_offset);
 				auto channels = as->list_channels();

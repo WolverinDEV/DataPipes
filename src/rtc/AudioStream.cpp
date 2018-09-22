@@ -100,6 +100,22 @@ void AudioStream::register_local_channel(const std::string &stream_id, const std
 	this->local_channels.push_back(channel);
 }
 
+std::shared_ptr<HeaderExtension> AudioStream::register_local_extension(const std::string &name, const std::string & direction, const std::string & config) {
+	for(const auto& ext : this->local_extensions)
+		if(ext->name == name) return ext;
+
+	auto extension = make_shared<HeaderExtension>();
+	extension->local = true;
+	extension->name = name;
+	extension->direction = direction;
+	extension->config = config;
+	extension->id = 1;
+	while(this->find_extension_by_id(extension->id, 0x01)) extension->id++;
+
+	this->local_extensions.push_back(extension);
+	return extension;
+}
+
 std::shared_ptr<AudioChannel> AudioStream::find_channel_by_id(uint32_t id, uint8_t direction) {
 	if(direction & 0x01) {
 		for(const auto& channel : this->local_channels)
@@ -125,8 +141,29 @@ std::deque<std::shared_ptr<AudioChannel>> AudioStream::list_channels(uint8_t dir
 	return result;
 }
 
-const std::vector<std::shared_ptr<HeaderExtension>>& AudioStream::list_offered_extensions() {
-	return this->offered_extensions;
+std::shared_ptr<HeaderExtension> AudioStream::find_extension_by_id(uint8_t id, uint8_t direction) {
+	if(direction & 0x01) {
+		for(const auto& ext : this->local_extensions)
+			if(ext->id == id) return ext;
+	}
+	if(direction & 0x02) {
+		for(const auto& ext : this->remote_extensions)
+			if(ext->id == id) return ext;
+	}
+	return nullptr;
+}
+
+std::deque<std::shared_ptr<HeaderExtension>> AudioStream::list_extensions(uint8_t direction) {
+	std::deque<std::shared_ptr<HeaderExtension>> result;
+	if(direction & 0x01) {
+		for(const auto& ext : this->local_extensions)
+			result.push_back(ext);
+	}
+	if(direction & 0x02) {
+		for(const auto& ext : this->remote_extensions)
+			result.push_back(ext);
+	}
+	return result;
 }
 
 static bool srtp_initialized = false;
@@ -414,18 +451,19 @@ bool AudioStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& med
 
 	{
 		if(media_entry.count("ext") > 0) {
-			this->offered_extensions.reserve(media_entry.count("ext"));
+			this->remote_extensions.reserve(media_entry.count("ext"));
 
 			const nlohmann::json& exts = media_entry["ext"];
 			for (const nlohmann::json &ext : exts) {
 				auto extension = make_shared<HeaderExtension>();
+
+				extension->local = false;
 				extension->id = ext["value"];
 				extension->name = ext["uri"];
+				extension->config = ext.count("config") > 0 ? ext["config"] : "";
+				extension->direction = ext.count("direction") > 0 ? ext["direction"] : "";
 
-				if(ext.size() > 2)
-					extension->data.reset(new nlohmann::json(std::move(ext)));
-
-				this->offered_extensions.push_back(std::move(extension));
+				this->remote_extensions.push_back(std::move(extension));
 			}
 		}
 	}
@@ -457,7 +495,16 @@ string AudioStream::generate_sdp() {
 	}
 	sdp << "a=mid:" << this->mid << "\r\n";
 	sdp << "a=rtcp-mux\r\n";
-	sdp << "a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level\r\n";
+
+	for(const auto& extension : this->local_extensions) {
+		sdp << "a=extmap:" << (int) extension->id;
+		if(!extension->direction.empty())
+			sdp << "/" << extension->direction;
+		sdp << " " << extension->name;
+		if(!extension->config.empty())
+			sdp << " " << extension->config;
+		sdp << "\r\n";
+	}
 
 	for(const auto& codec : this->offered_codecs) {
 		if(!codec->local_supported()) continue;
