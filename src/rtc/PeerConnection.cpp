@@ -16,7 +16,9 @@ using namespace std;
 using namespace rtc;
 
 PeerConnection::PeerConnection(const std::shared_ptr<Config>& config) : config(config) { }
-PeerConnection::~PeerConnection() {}
+PeerConnection::~PeerConnection() {
+	this->reset();
+}
 
 void PeerConnection::reset() {
 	if(this->nice) this->nice->finalize();

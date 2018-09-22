@@ -192,6 +192,7 @@ void NiceWrapper::finalize() {
 }
 
 bool NiceWrapper::send_data(guint stream, guint component, const std::string &data) {
+	if(!this->agent.get()) return false;
 	//LOG_DEBUG(this->_logger, "NiceWrapper::send_data", "Sending on stream %i component %i", stream, component);
 
 	auto result = nice_agent_send(this->agent.get(), stream, component, data.length(), data.data());
