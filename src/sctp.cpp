@@ -238,7 +238,8 @@ bool SCTP::connect(int32_t remote_port) {
 	sconn.sconn_family = AF_CONN;
 	sconn.sconn_port = htons(_remote_port);
 	sconn.sconn_addr = (void *)this;
-#ifdef HAVE_SCONN_LEN
+
+#if defined(__APPLE__) || defined(__Bitrig__) || defined(__DragonFly__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
 	sconn.sconn_len = sizeof((void *)this);
 #endif
 

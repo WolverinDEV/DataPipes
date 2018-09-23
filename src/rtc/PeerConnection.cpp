@@ -4,6 +4,7 @@
 #include <utility>
 #include <include/misc/endianness.h>
 #include <cassert>
+#include <include/rtc/NiceWrapper.h>
 #include "sdptransform.hpp"
 #include "include/rtc/ApplicationStream.h"
 #include "include/rtc/AudioStream.h"
@@ -41,7 +42,7 @@ bool PeerConnection::initialize(std::string &error) {
 
 		this->nice->set_callback_local_candidate([&](const std::shared_ptr<NiceStream>& stream, const std::string& candidate){
 			std::shared_ptr<Stream> handle;
-			for(const auto& s : this->availible_streams()) {
+			for(const auto& s : this->available_streams()) {
 				if(s->stream_id() == stream->stream_id) {
 					handle = s;
 					break;
@@ -57,9 +58,12 @@ bool PeerConnection::initialize(std::string &error) {
 				this->callback_ice_candidate(IceCandidate{candidate.length() > 2 ? candidate.substr(2) : candidate, handle->get_mid(), this->sdp_mline_index(handle)});
 		});
 
+		//FIXME!
+		/*
 		this->nice->set_callback_failed([&] {
 			this->trigger_setup_fail(ConnectionComponent::NICE, "");
 		});
+		 */
 		if(!this->nice->initialize(error)) {
 			error = "Failed to initialize nice (" + error + ")";
 			return false;
@@ -113,15 +117,17 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 		this->callback_new_stream(lines);
 
 	if(!nice->apply_remote_sdp(error, raw_sdp)) return false;
+
 	for(const auto& stream : nice->available_streams())
 		nice->gather_candidates(stream);
+
 	return true;
 }
 
 //FIXME test stream index and mid?
 int PeerConnection::apply_ice_candidates(const std::deque<std::shared_ptr<rtc::IceCandidate>> &candidates) {
 	int success_counter = 0;
-	for(const auto& stream : this->availible_streams()) {
+	for(const auto& stream : this->available_streams()) {
 		for(const auto& candidate : candidates) {
 			if(stream->get_mid() == candidate->sdpMid) {
 				auto nice_handle = this->nice->find_stream(stream->stream_id());
@@ -158,9 +164,19 @@ std::string PeerConnection::generate_answer(bool candidates) {
 	/* General header */
 	sdp << "v=0\r\n";
 	//FIXME Copy username from request
-	sdp << "o=mozilla...THIS_IS_SDPARTA-61.0.1 " << session_id << " 2 IN IP4 0.0.0.0\r\n";
-	sdp << "s=AudioBridge 1234\r\n"; //Username?
+	sdp << "o=- " << session_id << " 2 IN IP4 0.0.0.0\r\n";
+	sdp << "s=-\r\n"; //Username?
 	sdp << "t=0 0\r\n";
+
+
+	{
+		sdp << "a=group:BUNDLE";
+		for(const auto& entry : this->sdp_media_lines) {
+			sdp << " " << entry->get_mid();
+		}
+		sdp << "\r\n";
+	}
+	sdp << "a=msid-semantic: WMS DataPipes\r\n";
 
 	auto nice_entries = this->nice->generate_local_sdp(candidates);
 
@@ -169,18 +185,31 @@ std::string PeerConnection::generate_answer(bool candidates) {
 
 		for(const auto& nice_entry : nice_entries) {
 			if(nice_entry->index != this->sdp_mline_index(entry)) continue;
-			//TODO if data is available
+			if(!nice_entry->has.ice_ufrag) {
+				LOG_ERROR(this->config->logger, "PeerConnection::generate_answer", "Media stream %s (%u) missing ice ufrag!", entry->get_mid().c_str(), entry->stream_id());
+				continue;
+			}
+			if(!nice_entry->has.ice_pwd) {
+				LOG_ERROR(this->config->logger, "PeerConnection::generate_answer", "Media stream %s (%u) missing ice pwd!", entry->get_mid().c_str(), entry->stream_id());
+				continue;
+			}
+			if(!nice_entry->has.candidates && candidates) {
+				LOG_ERROR(this->config->logger, "PeerConnection::generate_answer", "Media stream %s (%u) missing ice candidates, but its requested!", entry->get_mid().c_str(), entry->stream_id());
+				continue;
+			}
 
 			sdp << "a=ice-ufrag:" << nice_entry->ice_ufrag << "\r\n";
 			sdp << "a=ice-pwd:" << nice_entry->ice_pwd << "\r\n";
+			//if(!candidates) //We send the candidates later
+			sdp << "a=ice-options:trickle\r\n";
+
 			for(const auto& candidate : nice_entry->candidates)
 				sdp << "a=candidate:" << candidate << "\r\n";
+			if(candidates)
+				sdp << "a=end-of-candidates\r\n";
 			break;
 		}
-		if(candidates)
-			sdp << "a=end-of-candidates\r\n";
 	}
-	this->sdp_media_lines.clear();
 
 	return sdp.str();
 }
@@ -232,7 +261,7 @@ bool PeerConnection::create_audio_stream(std::string &error) {
 	return true;
 }
 
-std::deque<std::shared_ptr<Stream>> PeerConnection::availible_streams() {
+std::deque<std::shared_ptr<Stream>> PeerConnection::available_streams() {
 	std::deque<std::shared_ptr<Stream>> result;
 
 	if(this->stream_audio)

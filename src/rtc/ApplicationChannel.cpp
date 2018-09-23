@@ -80,6 +80,7 @@ bool ApplicationStream::initialize(std::string &error) {
 		this->dtls->callback_initialized = [&](){
 			LOG_DEBUG(this->config->logger, "ApplicationStream::dtls", "Initialized! Starting SCTP connect");
 			this->sctp_connect_thread = std::thread([&]{
+				while(this->sctp && !this->sctp->connect());
 				if(!this->sctp->connect()) {
 					LOG_ERROR(this->config->logger, "ApplicationStream::sctp", "Failed to connect");
 					//this->trigger_setup_fail(ConnectionComponent::SCTP, "failed to connect");
@@ -367,10 +368,9 @@ std::string ApplicationStream::generate_sdp() {
 	sdp << "c=IN IP4 0.0.0.0\r\n";
 
 	sdp << "a=fingerprint:sha-256 " << dtls->getCertificate()->getFingerprint() << "\r\n";
-	sdp << "a=ice-options:trickle\r\n"; //FIXME trickle only when you send the ICE candidates later
 	sdp << "a=setup:" << (this->role == Client ? "active" : "passive") << "\r\n";
 	sdp << "a=mid:" << this->mid << "\r\n";
-	sdp << "a=sctpmap:5000 webrtc-datachannel 1024\r\n";
+	sdp << "a=sctpmap:" << to_string(this->sctp->local_port()) << " webrtc-datachannel 1024\r\n";
 
 	return sdp.str();
 }

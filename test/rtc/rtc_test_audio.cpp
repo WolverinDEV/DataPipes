@@ -86,6 +86,8 @@ auto config = []{
 	//config->sctp.local_port = 49203; //Currently audio part only!
 	//config->nice_config->ice_servers.push_back({"stun.l.google.com", 19302});
 
+	//config->nice_config->ice_pwd = "asdasdasasdasdasdasdasdasddasdasdasd";
+	//config->nice_config->ice_ufrag = "asdasd";
 	config->nice_config->main_loop = std::shared_ptr<GMainLoop>(g_main_loop_new(nullptr, false), g_main_loop_unref);
 	std::thread(g_main_loop_run, config->nice_config->main_loop.get()).detach(); //FIXME
 
@@ -194,7 +196,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 
 	{
 		client->ssl = make_unique<pipes::SSL>();
-		client->ssl->logger(config->logger);
+		//client->ssl->logger(config->logger);
 		client->ssl->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
 		client->ssl->direct_process(pipes::PROCESS_DIRECTION_IN, true);
 
@@ -249,18 +251,22 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 
 					client->peer->apply_offer(error, root["msg"]["sdp"].asString());
 
-					Json::Value answer;
-					answer["type"] = "answer";
-					answer["msg"]["sdp"] = client->peer->generate_answer(true);
-					answer["msg"]["type"] = "answer";
+					{
+						Json::Value answer;
+						answer["type"] = "answer";
+						answer["msg"]["sdp"] = client->peer->generate_answer(true);
+						answer["msg"]["type"] = "answer";
 
-					std::cout << "Sending Answer: " << answer << endl;
+						std::cout << "Sending Answer: " << answer << endl;
 
-					client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, answer)});
+						client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, answer)});
+					}
 				} else if (root["type"] == "candidate") {
 					cout << "Apply candidates: " << client->peer->apply_ice_candidates(
 							deque<shared_ptr<rtc::IceCandidate>> { make_shared<rtc::IceCandidate>(root["msg"]["candidate"].asString(), root["msg"]["sdpMid"].asString(), root["msg"]["sdpMLineIndex"].asInt()) }
 					) << endl;
+				} else if (root["type"] == "candidate_finish") {
+					//client->peer->gather();
 				}
 			} else {
 				cerr << "Failed to parse json" << endl;
@@ -276,8 +282,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 			jsonCandidate["msg"]["sdpMid"] = ice.sdpMid;
 			jsonCandidate["msg"]["sdpMLineIndex"] = ice.sdpMLineIndex;
 
-			//std::cout << "Sending Answer: " << jsonCandidate << endl;
-			client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, jsonCandidate)});
+			cout << "Sending ice candidate " << ice.candidate << " (" << ice.sdpMid << " | " << ice.sdpMLineIndex << ")" << endl;
+			//client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, jsonCandidate)});
 		};
 
 		client->peer->callback_new_stream = [client](const shared_ptr<rtc::Stream>& stream) {
@@ -307,7 +313,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					if(ext->name == "urn:ietf:params:rtp-hdrext:ssrc-audio-level") {
 						int level;
 						if(rtc::protocol::rtp_header_extension_parse_audio_level(buffer, ext->id, &level) == 0) {
-							cout << "Audio level " << level << endl;
+							//cout << "Audio level " << level << endl;
 						}
 						break;
 					}

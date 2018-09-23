@@ -44,7 +44,7 @@ namespace rtc {
 
 			typedef std::function<void(const std::shared_ptr<Stream>& /* stream */)> cb_new_stream;
 
-			PeerConnection(const std::shared_ptr<Config>& config);
+			explicit PeerConnection(const std::shared_ptr<Config>& /* config */);
 			virtual ~PeerConnection();
 
 			std::shared_ptr<Config> configuration() { return this->config; }
@@ -61,7 +61,8 @@ namespace rtc {
 			cb_setup_fail callback_setup_fail;
 			cb_new_stream callback_new_stream;
 
-			std::deque<std::shared_ptr<Stream>> availible_streams(); /* only valid result after apply_offer(...) */
+			std::deque<std::shared_ptr<Stream>> available_streams(); /* only valid result after apply_offer(...) */
+
 		protected:
 			virtual void on_nice_ready();
 			virtual void trigger_setup_fail(ConnectionComponent /* component */, const std::string& /* reason */);

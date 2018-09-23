@@ -23,7 +23,7 @@ button.on('click', () => {
 
     let config = new PeerConnectionConfig();
     config.open_data_channel = true;
-    config.open_audio_channel = false;
+    config.open_audio_channel = true;
 
     connect_peer(config).then(c => connection = c, error => {
         console.log("Got connect error %o", error);
@@ -102,11 +102,16 @@ class PeerConnection {
         };
         this.peer.onicecandidate = (event) => {
             console.log("[RTC][ICE][LOCAL] Got new candidate %s (%o)", event.candidate, event);
-            if (event && event.candidate) {
-                this.socket.send(JSON.stringify({
-                    type: 'candidate',
-                    msg: event.candidate
-                }));
+            if (event) {
+                if(event.candidate)
+                    this.socket.send(JSON.stringify({
+                        type: 'candidate',
+                        msg: event.candidate
+                    }));
+                else
+                    this.socket.send(JSON.stringify({
+                        type: 'candidate_finish'
+                    }));
             }
         };
 
@@ -193,16 +198,15 @@ class PeerConnection {
 
                 this.peer.createOffer(sdp => {
                     console.log("Got SDP: %s", sdp.sdp);
-                    this.peer.setLocalDescription(sdp);
-
-                    console.log("[RTC] Got local sdp. Sending to partner");
-                    this.socket.send(JSON.stringify({
-                        type: "offer",
-                        msg: sdp
-                    }));
+                    this.peer.setLocalDescription(sdp).then(() => {
+                        console.log("[RTC] Got local sdp. Sending to partner");
+                        this.socket.send(JSON.stringify({
+                            type: "offer",
+                            msg: sdp
+                        }));
+                    });
                 }, () => {
-                    if(!disable_console)
-                        console.log("[RTC] Failed to setup peer!");
+                    console.log("[RTC] Failed to setup peer!");
                 }, sdpConstraints);
                 //this.socket.send("{\"type\":\"offer\",\"msg\":{\"type\":\"offer\",\"sdp\":\"v=0\\r\\no=- 1888071622049759001 2 IN IP4 127.0.0.1\\r\\ns=-\\r\\nt=0 0\\r\\na=group:BUNDLE audio\\r\\na=msid-semantic: WMS ZvXdMRbHVcLyKalfYtrscxAklY10K43U6pKv\\r\\nm=audio 9 UDP/TLS/RTP/SAVPF 111 103 104 9 0 8 106 105 13 110 112 113 126\\r\\nc=IN IP4 0.0.0.0\\r\\na=rtcp:9 IN IP4 0.0.0.0\\r\\na=ice-ufrag:aiGa\\r\\na=ice-pwd:5vwLM/YTL5jQuNgjjRrWvSZk\\r\\na=ice-options:trickle\\r\\na=fingerprint:sha-256 9A:9D:A2:D2:03:24:17:8C:DD:CA:57:4D:FA:37:FA:A0:E6:9D:A9:69:16:F6:B4:57:5C:01:B3:18:DF:26:13:C0\\r\\na=setup:actpass\\r\\na=mid:audio\\r\\na=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level\\r\\na=sendrecv\\r\\na=rtcp-mux\\r\\na=rtpmap:111 opus/48000/2\\r\\na=rtcp-fb:111 transport-cc\\r\\na=fmtp:111 minptime=10;useinbandfec=1\\r\\na=rtpmap:103 ISAC/16000\\r\\na=rtpmap:104 ISAC/32000\\r\\na=rtpmap:9 G722/8000\\r\\na=rtpmap:0 PCMU/8000\\r\\na=rtpmap:8 PCMA/8000\\r\\na=rtpmap:106 CN/32000\\r\\na=rtpmap:105 CN/16000\\r\\na=rtpmap:13 CN/8000\\r\\na=rtpmap:110 telephone-event/48000\\r\\na=rtpmap:112 telephone-event/32000\\r\\na=rtpmap:113 telephone-event/16000\\r\\na=rtpmap:126 telephone-event/8000\\r\\na=ssrc:1400629516 cname:733FgV192u7s4UXr\\r\\na=ssrc:1400629516 msid:ZvXdMRbHVcLyKalfYtrscxAklY10K43U6pKv de691b09-d102-41c3-b197-e373e4e0db37\\r\\na=ssrc:1400629516 mslabel:ZvXdMRbHVcLyKalfYtrscxAklY10K43U6pKv\\r\\na=ssrc:1400629516 label:de691b09-d102-41c3-b197-e373e4e0db37\\r\\n\"}}");
                 //this.peer.addStream(stream);
@@ -261,7 +265,7 @@ function connect_peer(config?: PeerConnectionConfig) : Promise<PeerConnection> {
         let candidate_buffer = [];
         let candidate_apply = candidate => {
             result.peer.addIceCandidate(candidate).then(any => {
-                console.log("[RTC][ICE][REMOTE] Sucessfully setuped candidate %o", candidate);
+                console.log("[RTC][ICE][REMOTE] Sucessfully setupped candidate %o", candidate);
             }).catch(error => {
                 console.log("[RTC][ICE][REMOTE] Failed to add candidate %o", error);
             });
@@ -274,11 +278,14 @@ function connect_peer(config?: PeerConnectionConfig) : Promise<PeerConnection> {
                 } else candidate_apply(new RTCIceCandidate(data["msg"]));
             } else if(data["type"] == "answer") {
                 console.log("[RTC][SDP] Setting remote answer!");
-                result.peer.setRemoteDescription(new RTCSessionDescription(data["msg"]));
-                console.log("[RTC][SDP] Remote answer set!");
-                for(let can of candidate_buffer)
-                    candidate_apply(can);
-                candidate_buffer = undefined;
+                result.peer.setRemoteDescription(new RTCSessionDescription(data["msg"])).then(() => {
+                    console.log("[RTC][SDP] Remote answer set!");
+                    for(let can of candidate_buffer)
+                        candidate_apply(can);
+                    candidate_buffer = undefined;
+                }).catch(error => {
+                    console.log("Failed to set remote exception %o", error);
+                });
             } else {
                 console.log("Invalid message type %o", data["type"]);
             }

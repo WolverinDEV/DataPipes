@@ -515,9 +515,6 @@ bool AudioStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& med
 string AudioStream::generate_sdp() {
 	ostringstream sdp;
 
-	sdp << "a=group:BUNDLE audio\r\n"; //FIXME Bundle dynamic from request? Was "audio" before
-	sdp << "a=msid-semantic: WMS DataPipes\r\n";
-
 	string ids;
 	for(const auto& codec : this->offered_codecs) {
 		if(!codec->local_supported()) continue;
@@ -562,7 +559,6 @@ string AudioStream::generate_sdp() {
 		sdp << "a=ssrc:" << channel->ssrc << " mslabel:" << channel->stream_id << "\r\n";
 		sdp << "a=ssrc:" << channel->ssrc << " label:" << channel->track_id << "\r\n";
 	}
-	sdp << "a=ice-options:trickle\r\n"; //FIXME trickle only when you send the ICE candidates later
 	return sdp.str();
 }
 
@@ -589,12 +585,19 @@ StreamType AudioStream::type() const {
 	return CHANTYPE_AUDIO;
 }
 
+/* Helpers to demultiplex protocols */
+static gboolean janus_is_dtls(gchar *buf) {
+	return ((*buf >= 20) && (*buf <= 64));
+}
+
 void AudioStream::process_incoming_data(const std::string &in) {
+	if (janus_is_dtls((gchar*) in.data()) || (!protocol::is_rtp((void*) in.data()) && !protocol::is_rtcp((void*) in.data()))) {
+		cout << "XXX" << endl; //FIXME move to log
+	}
 	if(!this->dtls_initialized) {
 		LOG_VERBOSE(this->config->logger, "AudioStream::dtls", "incoming %i bytes", in.length());
 		this->dtls->process_incoming_data(in);
 	} else {
-		//FIXME len check
 		if(in.length() >= sizeof(protocol::rtp_header) && protocol::is_rtp((void*) in.data())) {
 			this->process_rtp_data(in);
 		} else if(in.length() >= sizeof(protocol::rtcp_header) && protocol::is_rtcp((void*) in.data()))
@@ -683,7 +686,7 @@ int protocol::rtp_header_extension_find(const std::string& buffer, int id, uint8
 extern void alsa_replay(void* data, size_t length);
 void AudioStream::process_rtp_data(const std::string &in) {
 	if(!this->srtp_in_ready) {
-		LOG_ERROR(this->config->logger, "AudioStream::srtp", "Got too early packet!");
+		LOG_ERROR(this->config->logger, "AudioStream::process_rtp_data", "Got too early packet!");
 		return;
 	}
 
@@ -695,7 +698,7 @@ void AudioStream::process_rtp_data(const std::string &in) {
 			/* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */
 			guint32 timestamp = ntohl(header->timestamp);
 			guint16 seq = ntohs(header->seq_number);
-			LOG_ERROR(this->config->logger, "AudioStream::process_rtp_data", "Failed to unprotect srtp packet. Error: %i (len=%i --> %i ts=%u, seq=%i)", res, in.length(), buflen, timestamp, seq);
+			LOG_ERROR(this->config->logger, "AudioStream::process_rtp_data", "Failed to unprotect rtp packet. Error: %i (len=%i --> %i ts=%u, seq=%i)", res, in.length(), buflen, timestamp, seq);
 			return;
 		}
 	}
@@ -723,7 +726,7 @@ void AudioStream::process_rtp_data(const std::string &in) {
 		}
 	}
 	if(!channel) {
-		LOG_VERBOSE(this->config->logger, "AudioStream::srtp", "Got ssrc for an unknown channel (%u:%u)", be32toh(header->ssrc), (int) header->type);
+		LOG_VERBOSE(this->config->logger, "AudioStream::process_rtp_data", "Got ssrc for an unknown channel (%u:%u)", be32toh(header->ssrc), (int) header->type);
 		return;
 	}
 
@@ -737,13 +740,13 @@ void AudioStream::process_rtp_data(const std::string &in) {
 			}
 		}
 		if(!channel->codec) {
-			LOG_ERROR(this->config->logger, "AudioStream::srtp", "Channel %u (%s -> %s) does not contains a codec which is locally supported!", be32toh(header->ssrc), channel->stream_id.c_str(), channel->track_id.c_str());
+			LOG_ERROR(this->config->logger, "AudioStream::process_rtp_data", "Channel %u (%s -> %s) does not contains a codec which is locally supported!", be32toh(header->ssrc), channel->stream_id.c_str(), channel->track_id.c_str());
 			return;
 		}
 	}
 
 	if(channel->codec->id != header->type) {
-		LOG_ERROR(this->config->logger, "AudioStream::srtp", "Received type %u for channel %u (%s -> %s) does not match predefined type %u (%s)!", (int) header->type, be32toh(header->ssrc), channel->stream_id.c_str(), channel->track_id.c_str(), (int) channel->codec->id, channel->codec->codec.c_str());
+		LOG_ERROR(this->config->logger, "AudioStream::process_rtp_data", "Received type %u for channel %u (%s -> %s) does not match predefined type %u (%s)!", (int) header->type, be32toh(header->ssrc), channel->stream_id.c_str(), channel->track_id.c_str(), (int) channel->codec->id, channel->codec->codec.c_str());
 		return;
 	}
 

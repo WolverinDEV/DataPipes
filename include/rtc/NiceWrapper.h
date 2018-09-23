@@ -4,6 +4,7 @@
 #include <memory>
 #include <deque>
 #include <thread>
+#include <mutex>
 #include "../misc/logger.h"
 
 extern "C" {
@@ -50,7 +51,7 @@ namespace rtc {
 	class NiceWrapper {
 		public:
 			typedef std::function<void(const std::shared_ptr<NiceStream>& /* stream */, const std::string& /* sdp */)> cb_candidate;
-			typedef std::function<void()> cb_failed;
+			typedef std::function<void(const std::shared_ptr<NiceStream>& /* stream */)> cb_failed;
 
 			struct Config {
 				std::deque<RTCIceServer> ice_servers;
@@ -89,17 +90,17 @@ namespace rtc {
 			static void cb_received(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer user_data);
 			static void cb_candidate_gathering_done(NiceAgent *agent, guint stream_id, gpointer user_data);
 			static void cb_component_state_changed(NiceAgent *agent, guint stream_id, guint component_id, guint state, gpointer user_data);
-			static void cb_new_local_candidate(NiceAgent *agent, NiceCandidate *candidate, gpointer user_data);
+			static void cb_new_local_candidate(NiceAgent *agent, guint stream_id, guint component_id, gchar* foundation, gpointer user_data);
 			static void cb_new_selected_pair(NiceAgent *agent, guint stream_id, guint component_id, NiceCandidate *lcandidate, NiceCandidate *rcandidate, gpointer user_data);
 			static void cb_transport_writeable(NiceAgent *agent, guint sid, guint cid, gpointer data);
 
 		protected:
 			virtual void on_data_received(guint /* stream */, guint /* component */, void * /* buffer */, size_t /* length */);
 
-			virtual void on_gathering_done();
+			virtual void on_gathering_done(guint stream_id);
 			virtual void on_selected_pair(guint /* stream */, guint /* component */, NiceCandidate* /* local candidate */, NiceCandidate* /* remote candidate */);
 			virtual void on_state_change(guint /* stream */, guint /* component */, guint /* state */);
-			virtual void on_local_ice_candidate(const std::string& /* candidate */);
+			virtual void on_local_ice_candidate(guint /* stream */, guint /* component */, gchar* /* foundation */);
 			virtual void on_transport_writeable(guint /* stream */, guint /* component */);
 		private:
 			std::recursive_mutex io_lock;
