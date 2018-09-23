@@ -22,6 +22,16 @@ using namespace rtc;
 #define DC_TYPE_OPEN 0x03
 #define DC_TYPE_ACK 0x02
 
+#define TEST_AV_TYPE(json, key, type, action, ...) \
+if(json.count(key) <= 0) { \
+	LOG_ERROR(this->config->logger, __VA_ARGS__); \
+	action; \
+} \
+if(!json[key].type()) { \
+	LOG_ERROR(this->config->logger, __VA_ARGS__); \
+	action; \
+}
+
 uint16_t DataChannel::id() const { return this->_id; }
 std::string DataChannel::protocol() const { return this->_protocol; }
 std::string DataChannel::lable() const { return this->_lable; }
@@ -113,19 +123,28 @@ bool ApplicationStream::initialize(std::string &error) {
 }
 
 bool ApplicationStream::apply_sdp(const nlohmann::json &, const nlohmann::json &media_entry) {
-	string setup_type = media_entry["setup"];
-	LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "Stream setup type: %s", setup_type.c_str());
-	if(setup_type == "active")
-		this->role = Server;
-	else if(setup_type == "passive")
-		this->role = Client;
+	{
+		TEST_AV_TYPE(media_entry, "setup", is_string, return false, "ApplicationStream::apply_sdp", "Entry contains invalid/missing setup type");
+		string setup_type = media_entry["setup"];
+		LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "Stream setup type: %s", setup_type.c_str());
+		if(setup_type == "active")
+			this->role = Server;
+		else if(setup_type == "passive")
+			this->role = Client;
+	}
 
-	this->mid = media_entry["mid"];
-	LOG_DEBUG(this->config->logger, "PeerConnection::apply_offer", "Got mid type %s", this->mid.c_str());
+	{
+		TEST_AV_TYPE(media_entry, "mid", is_string, return false, "ApplicationStream::apply_sdp", "Entry contains invalid/missing id");
+		this->mid = media_entry["mid"];
+		LOG_DEBUG(this->config->logger, "PeerConnection::apply_offer", "Got mid type %s", this->mid.c_str());
+	}
 
-	string payload = media_entry["payloads"];
-	this->sctp->remote_port(static_cast<uint16_t>(stoi(payload)));
-	LOG_DEBUG(this->config->logger, "ApplicationStream::apply_sdp", "Apply sctp port %s", payload.c_str());
+	{
+		TEST_AV_TYPE(media_entry, "payloads", is_string, return false, "ApplicationStream::apply_sdp", "Entry contains invalid/missing payloads");
+		string payload = media_entry["payloads"];
+		this->sctp->remote_port(static_cast<uint16_t>(stoi(payload)));
+		LOG_DEBUG(this->config->logger, "ApplicationStream::apply_sdp", "Apply sctp port %s", payload.c_str());
+	}
 
 	return true;
 }

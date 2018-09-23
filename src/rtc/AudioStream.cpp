@@ -45,9 +45,25 @@ cipher_salt_length:  112
 #define srtp_crypto_policy_set_aes_gcm_256_16_auth crypto_policy_set_aes_gcm_256_16_auth
 #define srtp_crypto_policy_set_aes_gcm_128_16_auth crypto_policy_set_aes_gcm_128_16_auth
 
+#define TEST_AV_TYPE(json, key, type, action, ...) \
+if(json.count(key) <= 0) { \
+	LOG_ERROR(this->config->logger, __VA_ARGS__); \
+	action; \
+} \
+if(!json[key].type()) { \
+	LOG_ERROR(this->config->logger, __VA_ARGS__); \
+	action; \
+}
+
 std::shared_ptr<TypedAudio> codec::create(const nlohmann::json& sdp) {
+	if(sdp.count("codec") <= 0 || !sdp["codec"].is_string()) return nullptr;
+	if(sdp.count("payload") <= 0 || !sdp["payload"].is_number_unsigned()) return nullptr;
+
 	std::shared_ptr<TypedAudio> result;
 	if(sdp["codec"] == "opus") {
+		if(sdp.count("rate") <= 0 || !sdp["rate"].is_number_unsigned()) return nullptr;
+		if(sdp.count("encoding") <= 0 || !sdp["encoding"].is_string()) return nullptr;
+
 		auto _result = make_shared<OpusAudio>();
 		_result->type = TypedAudio::OPUS;
 		_result->sample_rate = sdp["rate"];
@@ -394,20 +410,32 @@ bool AudioStream::initialize(std::string &error) {
 	return true;
 }
 
-bool AudioStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& media_entry) {
-	string setup_type = media_entry["setup"];
-	LOG_VERBOSE(this->config->logger, "AudioStream::apply_sdp", "Stream setup type: %s", setup_type.c_str());
-	if(setup_type == "active")
-		this->role = Server;
-	else if(setup_type == "passive")
-		this->role = Client;
 
-	this->mid = media_entry["mid"];
-	LOG_DEBUG(this->config->logger, "AudioStream::apply_sdp", "Got mid type %s", this->mid.c_str());
+bool AudioStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& media_entry) {
+	{
+		TEST_AV_TYPE(media_entry, "setup", is_string, return false, "AudioStream::apply_sdp", "Entry contains invalid/missing setup type");
+		string setup_type = media_entry["setup"];
+		LOG_VERBOSE(this->config->logger, "AudioStream::apply_sdp", "Stream setup type: %s", setup_type.c_str());
+		if(setup_type == "active")
+			this->role = Server;
+		else if(setup_type == "passive")
+			this->role = Client;
+	}
 
 	{
+		TEST_AV_TYPE(media_entry, "mid", is_string, return false, "AudioStream::apply_sdp", "Entry contains invalid/missing mid");
+		this->mid = media_entry["mid"];
+		LOG_DEBUG(this->config->logger, "AudioStream::apply_sdp", "Got mid type %s", this->mid.c_str());
+	}
+
+	if(media_entry.count("ssrcs") > 0) { //Parse remote streams
 		const nlohmann::json& ssrcs = media_entry["ssrcs"];
-		for (const auto &ssrc : ssrcs) {
+		if(!ssrcs.is_array()) return false;
+
+		for (const nlohmann::json &ssrc : ssrcs) {
+			TEST_AV_TYPE(ssrc, "attribute", is_string, continue, "AudioStream::apply_sdp", "SSRC contains invalid/missing attribute");
+			TEST_AV_TYPE(ssrc, "id", is_number_unsigned, continue, "AudioStream::apply_sdp", "SSRC contains invalid/missing id");
+
 			string attribute = ssrc["attribute"];
 			uint32_t ssrc_id = ssrc["id"];
 			shared_ptr<AudioChannel> channel;
@@ -426,17 +454,21 @@ bool AudioStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& med
 				}
 			}
 			if(attribute == "mslabel") {
+				TEST_AV_TYPE(ssrc, "value", is_string, continue, "AudioStream::apply_sdp", "SSRC contains invalid/missing value");
 				channel->stream_id = ssrc["value"];
 			} else if(attribute == "label") {
+				TEST_AV_TYPE(ssrc, "value", is_string, continue, "AudioStream::apply_sdp", "SSRC contains invalid/missing value");
 				channel->track_id = ssrc["value"];
 			}
 		}
 		LOG_DEBUG(this->config->logger, "AudioStream::apply_sdp", "Got %u remote channels", this->remote_channels.size());
 	}
 
-	{
+	if(media_entry.count("rtp") > 0) { //Parse rtp
 		size_t supported = 0;
 		const nlohmann::json& rtp = media_entry["rtp"];
+		if(!rtp.is_array()) return false;
+
 		for (const auto &index : rtp) {
 			auto map = codec::create(index);
 			if(!map) {
@@ -449,22 +481,30 @@ bool AudioStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& med
 		LOG_DEBUG(this->config->logger, "AudioStream::apply_sdp", "Got %u remote offered codecs. (%u locally supported)", this->offered_codecs.size(), supported);
 	}
 
-	{
-		if(media_entry.count("ext") > 0) {
-			this->remote_extensions.reserve(media_entry.count("ext"));
+	if(media_entry.count("ext") > 0) { //Parse extensions
+		this->remote_extensions.reserve(media_entry.count("ext"));
 
-			const nlohmann::json& exts = media_entry["ext"];
-			for (const nlohmann::json &ext : exts) {
-				auto extension = make_shared<HeaderExtension>();
+		const nlohmann::json& exts = media_entry["ext"];
+		if(!exts.is_array()) return false;
 
-				extension->local = false;
-				extension->id = ext["value"];
-				extension->name = ext["uri"];
-				extension->config = ext.count("config") > 0 ? ext["config"] : "";
-				extension->direction = ext.count("direction") > 0 ? ext["direction"] : "";
+		for (const nlohmann::json &ext : exts) {
+			auto extension = make_shared<HeaderExtension>();
+			TEST_AV_TYPE(ext, "value", is_number_unsigned, continue, "AudioStream::apply_sdp", "Extension contains invalid/missing value");
+			TEST_AV_TYPE(ext, "uri", is_string, continue, "AudioStream::apply_sdp", "Extension contains invalid/missing uri");
 
-				this->remote_extensions.push_back(std::move(extension));
+			extension->local = false;
+			extension->id = ext["value"];
+			extension->name = ext["uri"];
+			extension->config = "";
+			extension->direction = "";
+			if(ext.count("config") > 0 && ext["config"].is_string()) {
+				extension->config = ext["config"];
 			}
+			if(ext.count("direction") > 0 && ext["direction"].is_string()) {
+				extension->config = ext["direction"];
+			}
+
+			this->remote_extensions.push_back(std::move(extension));
 		}
 	}
 	return true;
