@@ -2,7 +2,7 @@
 
 #include <map>
 #include <atomic>
-#include <srtp/srtp.h>
+#include <srtp2/srtp.h>
 #include "Stream.h"
 
 namespace rtc {

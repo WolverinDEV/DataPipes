@@ -7,7 +7,6 @@
 
 #define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
-#include <srtp/srtp.h>
 #include <openssl/srtp.h>
 
 using namespace std;
@@ -15,11 +14,22 @@ using namespace std::chrono;
 using namespace rtc;
 using namespace rtc::codec;
 
-#define srtp_err_status_t err_status_t
-#define srtp_err_status_ok err_status_ok
-#define srtp_err_status_replay_fail err_status_replay_fail
-#define srtp_err_status_replay_old err_status_replay_old
+#ifndef LEGACY_SRTP
+	#include <srtp2/srtp.h>
+#else
+	#include <srtp/srtp.h>
 
+	#define srtp_err_status_t err_status_t
+	#define srtp_err_status_ok err_status_ok
+	#define srtp_err_status_replay_fail err_status_replay_fail
+	#define srtp_err_status_replay_old err_status_replay_old
+
+	#define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32 crypto_policy_set_aes_cm_128_hmac_sha1_32
+	#define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80 crypto_policy_set_aes_cm_128_hmac_sha1_80
+	#define srtp_crypto_policy_set_aes_gcm_256_16_auth crypto_policy_set_aes_gcm_256_16_auth
+	#define srtp_crypto_policy_set_aes_gcm_128_16_auth crypto_policy_set_aes_gcm_128_16_auth
+
+#endif
 /* SRTP stuff (http://tools.ietf.org/html/rfc3711) */
 /*
 cipher_key_length:  128
@@ -40,10 +50,6 @@ cipher_salt_length:  112
 #define SRTP_AESGCM256_MASTER_KEY_LENGTH	32
 #define SRTP_AESGCM256_MASTER_SALT_LENGTH	12
 #define SRTP_AESGCM256_MASTER_LENGTH (SRTP_AESGCM256_MASTER_KEY_LENGTH + SRTP_AESGCM256_MASTER_SALT_LENGTH)
-#define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32 crypto_policy_set_aes_cm_128_hmac_sha1_32
-#define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80 crypto_policy_set_aes_cm_128_hmac_sha1_80
-#define srtp_crypto_policy_set_aes_gcm_256_16_auth crypto_policy_set_aes_gcm_256_16_auth
-#define srtp_crypto_policy_set_aes_gcm_128_16_auth crypto_policy_set_aes_gcm_128_16_auth
 
 #define TEST_AV_TYPE(json, key, type, action, ...) \
 if(json.count(key) <= 0) { \
