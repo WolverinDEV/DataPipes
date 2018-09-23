@@ -1,4 +1,5 @@
-#include <include/rtc/PeerConnection.h>
+#include <assert.h>
+#include "include/rtc/PeerConnection.h"
 #include "include/misc/endianness.h"
 #include "include/rtc/Stream.h"
 
