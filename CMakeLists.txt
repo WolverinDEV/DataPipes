@@ -74,8 +74,9 @@ target_link_libraries(
         LibNice::LibNice
         #SctpLab::UsrSCTP
         usrsctp.a
-		sdptransform
-		srtp
+	sdptransform
+	#srtp
+	${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
 )
 
 
