@@ -3,7 +3,7 @@ if [ -d build ]; then
 	rm -r build
 fi
 mkdir build && cd build
-./configure
+../configure
 if [ $? -ne 0 ]; then
 	echo "Configure failed"
 	exit 1
