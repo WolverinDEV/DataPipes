@@ -57,11 +57,11 @@ if(!json[key].type()) { \
 
 std::shared_ptr<TypedAudio> codec::create(const nlohmann::json& sdp) {
 	if(sdp.count("codec") <= 0 || !sdp["codec"].is_string()) return nullptr;
-	if(sdp.count("payload") <= 0 || !sdp["payload"].is_number_unsigned()) return nullptr;
+	if(sdp.count("payload") <= 0 || !sdp["payload"].is_number()) return nullptr;
 
 	std::shared_ptr<TypedAudio> result;
 	if(sdp["codec"] == "opus") {
-		if(sdp.count("rate") <= 0 || !sdp["rate"].is_number_unsigned()) return nullptr;
+		if(sdp.count("rate") <= 0 || !sdp["rate"].is_number()) return nullptr;
 		if(sdp.count("encoding") <= 0 || !sdp["encoding"].is_string()) return nullptr;
 
 		auto _result = make_shared<OpusAudio>();
@@ -434,7 +434,7 @@ bool AudioStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& med
 
 		for (const nlohmann::json &ssrc : ssrcs) {
 			TEST_AV_TYPE(ssrc, "attribute", is_string, continue, "AudioStream::apply_sdp", "SSRC contains invalid/missing attribute");
-			TEST_AV_TYPE(ssrc, "id", is_number_unsigned, continue, "AudioStream::apply_sdp", "SSRC contains invalid/missing id");
+			TEST_AV_TYPE(ssrc, "id", is_number, continue, "AudioStream::apply_sdp", "SSRC contains invalid/missing id");
 
 			string attribute = ssrc["attribute"];
 			uint32_t ssrc_id = ssrc["id"];
@@ -464,19 +464,21 @@ bool AudioStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& med
 		LOG_DEBUG(this->config->logger, "AudioStream::apply_sdp", "Got %u remote channels", this->remote_channels.size());
 	}
 
-	if(media_entry.count("rtp") > 0) { //Parse rtp
+	{
 		size_t supported = 0;
-		const nlohmann::json& rtp = media_entry["rtp"];
-		if(!rtp.is_array()) return false;
+		if(media_entry.count("rtp") > 0) { //Parse rtp
+			const nlohmann::json& rtp = media_entry["rtp"];
+			if(!rtp.is_array()) return false;
 
-		for (const auto &index : rtp) {
-			auto map = codec::create(index);
-			if(!map) {
-				//TODO log error
-				continue;
+			for (const auto &index : rtp) {
+				auto map = codec::create(index);
+				if(!map) {
+					//TODO log error
+					continue;
+				}
+				if(map->local_supported()) supported += 1;
+				this->offered_codecs.push_back(map);
 			}
-			if(map->local_supported()) supported += 1;
-			this->offered_codecs.push_back(map);
 		}
 		LOG_DEBUG(this->config->logger, "AudioStream::apply_sdp", "Got %u remote offered codecs. (%u locally supported)", this->offered_codecs.size(), supported);
 	}
@@ -489,7 +491,7 @@ bool AudioStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& med
 
 		for (const nlohmann::json &ext : exts) {
 			auto extension = make_shared<HeaderExtension>();
-			TEST_AV_TYPE(ext, "value", is_number_unsigned, continue, "AudioStream::apply_sdp", "Extension contains invalid/missing value");
+			TEST_AV_TYPE(ext, "value", is_number, continue, "AudioStream::apply_sdp", "Extension contains invalid/missing value");
 			TEST_AV_TYPE(ext, "uri", is_string, continue, "AudioStream::apply_sdp", "Extension contains invalid/missing uri");
 
 			extension->local = false;
