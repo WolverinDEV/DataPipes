@@ -12,7 +12,7 @@ using namespace rtc;
 Stream::Stream(rtc::PeerConnection *_owner, rtc::StreamId _stream_id) : _owner(_owner), _stream_id(_stream_id) {}
 
 void Stream::send_data(const std::string &data) {
-	assert(this->_owner);
+	if(!this->_owner) return; //Should never happen
 	assert(this->_stream_id > 0);
 
 	if(!this->fail_buffer.empty() && !this->resend_buffer()) { //First try to resend everything to keep the order
@@ -28,9 +28,8 @@ void Stream::send_data(const std::string &data) {
 }
 
 void Stream::send_data_merged(const std::string &data, bool dtls) {
-	assert(this->_owner);
-	assert(this->_owner->merged_stream);
-	assert(this->_owner->merged_stream.get() != this);
+	if(!this->_owner) return; //Should never happen
+	if(!this->_owner->merged_stream) return; //Should never happen
 	assert(this->_stream_id == 0);
 
 	if(dtls)
@@ -41,10 +40,12 @@ void Stream::send_data_merged(const std::string &data, bool dtls) {
 
 bool Stream::resend_buffer() {
 	if(this->_stream_id == 0) {
-		assert(this->_owner->merged_stream);
+		if(!this->_owner) return false;
+		if(!this->_owner->merged_stream) return false;
+
 		return this->_owner->merged_stream->resend_buffer();
 	}
-	assert(this->_owner);
+	if(!this->_owner) return false; //Should never happen
 
 	auto& nice = this->_owner->nice;
 	if(!nice) return false;
