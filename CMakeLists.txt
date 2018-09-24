@@ -43,6 +43,7 @@ set(HEADER_FILES
 		include/rtc/PeerConnection.h
 		include/rtc/ApplicationStream.h
 		include/rtc/AudioStream.h
+		include/rtc/MergedStream.h
 )
 
 set(SOURCE_FILES
@@ -62,6 +63,7 @@ set(SOURCE_FILES
 		src/rtc/ApplicationChannel.cpp
 		src/rtc/NiceWrapper.cpp
 		src/rtc/PeerConnection.cpp
+		src/rtc/MergedStream.cpp
 		src/tls.cpp
 )
 

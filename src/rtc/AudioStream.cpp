@@ -206,7 +206,7 @@ AudioStream::~AudioStream() {
 
 //TODO Allow AES
 bool AudioStream::initialize(std::string &error) {
-	{
+	if(this->_stream_id > 0) {
 		this->dtls = make_unique<pipes::TLS>();
 		this->dtls->direct_process(pipes::PROCESS_DIRECTION_IN, true);
 		this->dtls->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
@@ -224,183 +224,16 @@ bool AudioStream::initialize(std::string &error) {
 		});
 		this->dtls->callback_initialized = [&](){
 			this->dtls_initialized = true;
+
 			LOG_DEBUG(this->config->logger, "AudioStream::dtls", "Initialized!");
 
 			{
 				/* Check the remote fingerprint */
-
-				X509 *rcert = SSL_get_peer_certificate(this->dtls->ssl_handle());
-				if(!rcert) {
-					LOG_ERROR(this->config->logger, "AudioStream::srtp", "Failed to verify remote certificate (certificate missing)");
-					return;
-				} else {
-					unsigned int rsize;
-					unsigned char rfingerprint[EVP_MAX_MD_SIZE];
-					char remote_fingerprint[160];
-					char *rfp = (char *) &remote_fingerprint;
-					if (false) {
-						X509_digest(rcert, EVP_sha1(), (unsigned char *) rfingerprint, &rsize);
-					} else {
-						X509_digest(rcert, EVP_sha256(), (unsigned char *) rfingerprint, &rsize);
-					}
-					X509_free(rcert);
-					rcert = NULL;
-					unsigned int i = 0;
-					for (i = 0; i < rsize; i++) {
-						g_snprintf(rfp, 4, "%.2X:", rfingerprint[i]);
-						rfp += 3;
-					}
-					*(rfp - 1) = 0;
-					LOG_VERBOSE(this->config->logger, "AudioStream::srtp", "Generated remote fingerprint: %s", remote_fingerprint);
-					//TODO test fingerprint!
-				}
+				//FIXME Test fingerprint
+				auto fingerprint = this->dtls->remote_fingerprint();
+				fingerprint.clear(); //Remove the unused warning
 			}
-
-			//TODO signature test etc?
-			auto profile = SSL_get_selected_srtp_profile(this->dtls->ssl_handle());
-			LOG_DEBUG(this->config->logger, "AudioStream::srtp", "Got profile @%p. Name: %s Id: %i", profile, profile->name, profile->id);
-
-			int key_length = 0, salt_length = 0, master_length = 0;
-			switch(profile->id) {
-				case SRTP_AES128_CM_SHA1_80:
-				case SRTP_AES128_CM_SHA1_32:
-					key_length = SRTP_MASTER_KEY_LENGTH;
-					salt_length = SRTP_MASTER_SALT_LENGTH;
-					master_length = SRTP_MASTER_LENGTH;
-					break;
-#ifdef HAVE_SRTP_AESGCM
-				case SRTP_AEAD_AES_256_GCM:
-						key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
-						salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
-						master_length = SRTP_AESGCM256_MASTER_LENGTH;
-						break;
-					case SRTP_AEAD_AES_128_GCM:
-						key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
-						salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
-						master_length = SRTP_AESGCM128_MASTER_LENGTH;
-						break;
-#endif
-				default:
-					/* Will never happen? */
-					LOG_DEBUG(this->config->logger, "AudioStream::srtp", "Unsupported profile %i (%s)", profile->id, profile->id);
-					break;
-			}
-			LOG_DEBUG(this->config->logger, "AudioStream::srtp", "Key/Salt/Master: %d/%d/%d", master_length, key_length, salt_length);
-
-
-			/* Complete with SRTP setup */
-			unsigned char material[master_length * 2];
-
-			memset(material, 0x00, master_length * 2);
-			unsigned char *local_key, *local_salt, *remote_key, *remote_salt;
-			/* Export keying material for SRTP */
-			if(!SSL_export_keying_material(dtls->ssl_handle(), material, master_length * 2, "EXTRACTOR-dtls_srtp", 19, nullptr, 0, 0)) {
-				LOG_ERROR(this->config->logger, "AudioStream::srtp", "Failed to setup SRTP key materinal!");
-				return; //FIXME error handling
-			}
-			/* Key derivation (http://tools.ietf.org/html/rfc5764#section-4.2) */
-			if(this->role == Client) {
-				local_key = material;
-				remote_key = local_key + key_length;
-				local_salt = remote_key + key_length;
-				remote_salt = local_salt + salt_length;
-			} else {
-				remote_key = material;
-				local_key = remote_key + key_length;
-				remote_salt = local_key + key_length;
-				local_salt = remote_salt + salt_length;
-			}
-
-			u_char remote_policy_key[master_length];
-			u_char local_policy_key[master_length];
-			{
-				/* Remote (inbound) */
-				switch(profile->id) {
-					case SRTP_AES128_CM_SHA1_80:
-						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(remote_policy.rtp));
-						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(remote_policy.rtcp));
-						break;
-					case SRTP_AES128_CM_SHA1_32:
-						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(remote_policy.rtp));
-						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(remote_policy.rtcp));
-						break;
-#ifdef HAVE_SRTP_AESGCM
-					case SRTP_AEAD_AES_256_GCM:
-						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->remote_policy.rtp));
-						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->remote_policy.rtcp));
-						break;
-					case SRTP_AEAD_AES_128_GCM:
-						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->remote_policy.rtp));
-						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->remote_policy.rtcp));
-						break;
-#endif
-					default:
-						break;
-				}
-
-				this->remote_policy.ssrc.type = ssrc_any_inbound;
-				this->remote_policy.key = (u_char*) &remote_policy_key;
-				memcpy(this->remote_policy.key, remote_key, key_length);
-				memcpy(this->remote_policy.key + key_length, remote_salt, salt_length);
-#if HAS_DTLS_WINDOW_SIZE
-				this->remote_policy.window_size = 128;
-				this->remote_policy.allow_repeat_tx = 0;
-#endif
-				this->remote_policy.next = nullptr;
-			}
-
-			{
-				/* Local (outbound) */
-				switch(profile->id) {
-					case SRTP_AES128_CM_SHA1_80:
-						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(local_policy.rtp));
-						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(local_policy.rtcp));
-						break;
-					case SRTP_AES128_CM_SHA1_32:
-						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(local_policy.rtp));
-						srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(local_policy.rtcp));
-						break;
-#ifdef HAVE_SRTP_AESGCM
-					case SRTP_AEAD_AES_256_GCM:
-						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->local_policy.rtp));
-						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->local_policy.rtcp));
-						break;
-					case SRTP_AEAD_AES_128_GCM:
-						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->local_policy.rtp));
-						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->local_policy.rtcp));
-						break;
-#endif
-					default:
-						break;
-				}
-				this->local_policy.ssrc.type = ssrc_any_outbound;
-				this->local_policy.key = (u_char*) &local_policy_key;
-				memcpy(this->local_policy.key, local_key, key_length);
-				memcpy(this->local_policy.key + key_length, local_salt, salt_length);
-#if HAS_DTLS_WINDOW_SIZE
-				this->local_policy.window_size = 128;
-				this->local_policy.allow_repeat_tx = 0;
-#endif
-				this->local_policy.next = nullptr;
-			}
-
-			{
-				/* Create SRTP sessions */
-				srtp_err_status_t res = srtp_create(&(this->srtp_in), &(this->remote_policy));
-				if(res != srtp_err_status_ok) {
-					LOG_ERROR(this->config->logger, "AudioStream::srtp", "Failed to create srtp session (remote)! Code %i", res);
-					return; //FIXME error handling
-				}
-				this->srtp_in_ready = true;
-
-				res = srtp_create(&(this->srtp_out), &(this->local_policy));
-				if(res != srtp_err_status_ok) {
-
-					LOG_ERROR(this->config->logger, "AudioStream::srtp", "Failed to create srtp session (local)! Code %i", res);
-					return; //FIXME error handling
-				}
-				this->srtp_out_ready = true;
-			}
+			this->on_dtls_initialized(this->dtls);
 		};
 
 		auto certificate = pipes::TLSCertificate::generate("DataPipes", 365);
@@ -416,6 +249,158 @@ bool AudioStream::initialize(std::string &error) {
 	return true;
 }
 
+void AudioStream::on_dtls_initialized(const std::unique_ptr<pipes::TLS> &handle) {
+	LOG_DEBUG(this->config->logger, "AudioStream::dtls", "Initialized!");
+
+	auto profile = SSL_get_selected_srtp_profile(handle->ssl_handle());
+	if(!profile) {
+		LOG_ERROR(this->config->logger, "AudioStream::dtls", "Missing remote's srtp profile!");
+		return;
+	}
+	LOG_DEBUG(this->config->logger, "AudioStream::srtp", "Got profile @%p. Name: %s Id: %i", profile, profile->name, profile->id);
+
+	int key_length = 0, salt_length = 0, master_length = 0;
+	switch(profile->id) {
+		case SRTP_AES128_CM_SHA1_80:
+		case SRTP_AES128_CM_SHA1_32:
+			key_length = SRTP_MASTER_KEY_LENGTH;
+			salt_length = SRTP_MASTER_SALT_LENGTH;
+			master_length = SRTP_MASTER_LENGTH;
+			break;
+#ifdef HAVE_SRTP_AESGCM
+		case SRTP_AEAD_AES_256_GCM:
+						key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
+						salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
+						master_length = SRTP_AESGCM256_MASTER_LENGTH;
+						break;
+					case SRTP_AEAD_AES_128_GCM:
+						key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
+						salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
+						master_length = SRTP_AESGCM128_MASTER_LENGTH;
+						break;
+#endif
+		default:
+			/* Will never happen? */
+			LOG_DEBUG(this->config->logger, "AudioStream::srtp", "Unsupported profile %i (%s)", profile->id, profile->id);
+			break;
+	}
+	LOG_DEBUG(this->config->logger, "AudioStream::srtp", "Key/Salt/Master: %d/%d/%d", master_length, key_length, salt_length);
+
+
+	/* Complete with SRTP setup */
+	unsigned char material[master_length * 2];
+
+	memset(material, 0x00, master_length * 2);
+	unsigned char *local_key, *local_salt, *remote_key, *remote_salt;
+	/* Export keying material for SRTP */
+	if(!SSL_export_keying_material(handle->ssl_handle(), material, master_length * 2, "EXTRACTOR-dtls_srtp", 19, nullptr, 0, 0)) {
+		LOG_ERROR(this->config->logger, "AudioStream::srtp", "Failed to setup SRTP key materinal!");
+		return; //FIXME error handling
+	}
+	/* Key derivation (http://tools.ietf.org/html/rfc5764#section-4.2) */
+	if(this->role == Client) {
+		local_key = material;
+		remote_key = local_key + key_length;
+		local_salt = remote_key + key_length;
+		remote_salt = local_salt + salt_length;
+	} else {
+		remote_key = material;
+		local_key = remote_key + key_length;
+		remote_salt = local_key + key_length;
+		local_salt = remote_salt + salt_length;
+	}
+
+	u_char remote_policy_key[master_length];
+	u_char local_policy_key[master_length];
+	{
+		/* Remote (inbound) */
+		switch(profile->id) {
+			case SRTP_AES128_CM_SHA1_80:
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(remote_policy.rtp));
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(remote_policy.rtcp));
+				break;
+			case SRTP_AES128_CM_SHA1_32:
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(remote_policy.rtp));
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(remote_policy.rtcp));
+				break;
+#ifdef HAVE_SRTP_AESGCM
+			case SRTP_AEAD_AES_256_GCM:
+						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->remote_policy.rtp));
+						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->remote_policy.rtcp));
+						break;
+					case SRTP_AEAD_AES_128_GCM:
+						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->remote_policy.rtp));
+						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->remote_policy.rtcp));
+						break;
+#endif
+			default:
+				break;
+		}
+
+		this->remote_policy.ssrc.type = ssrc_any_inbound;
+		this->remote_policy.key = (u_char*) &remote_policy_key;
+		memcpy(this->remote_policy.key, remote_key, key_length);
+		memcpy(this->remote_policy.key + key_length, remote_salt, salt_length);
+#if HAS_DTLS_WINDOW_SIZE
+		this->remote_policy.window_size = 128;
+				this->remote_policy.allow_repeat_tx = 0;
+#endif
+		this->remote_policy.next = nullptr;
+	}
+
+	{
+		/* Local (outbound) */
+		switch(profile->id) {
+			case SRTP_AES128_CM_SHA1_80:
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(local_policy.rtp));
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(local_policy.rtcp));
+				break;
+			case SRTP_AES128_CM_SHA1_32:
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(local_policy.rtp));
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(local_policy.rtcp));
+				break;
+#ifdef HAVE_SRTP_AESGCM
+			case SRTP_AEAD_AES_256_GCM:
+						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->local_policy.rtp));
+						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->local_policy.rtcp));
+						break;
+					case SRTP_AEAD_AES_128_GCM:
+						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->local_policy.rtp));
+						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->local_policy.rtcp));
+						break;
+#endif
+			default:
+				break;
+		}
+		this->local_policy.ssrc.type = ssrc_any_outbound;
+		this->local_policy.key = (u_char*) &local_policy_key;
+		memcpy(this->local_policy.key, local_key, key_length);
+		memcpy(this->local_policy.key + key_length, local_salt, salt_length);
+#if HAS_DTLS_WINDOW_SIZE
+		this->local_policy.window_size = 128;
+				this->local_policy.allow_repeat_tx = 0;
+#endif
+		this->local_policy.next = nullptr;
+	}
+
+	{
+		/* Create SRTP sessions */
+		srtp_err_status_t res = srtp_create(&(this->srtp_in), &(this->remote_policy));
+		if(res != srtp_err_status_ok) {
+			LOG_ERROR(this->config->logger, "AudioStream::srtp", "Failed to create srtp session (remote)! Code %i", res);
+			return; //FIXME error handling
+		}
+		this->srtp_in_ready = true;
+
+		res = srtp_create(&(this->srtp_out), &(this->local_policy));
+		if(res != srtp_err_status_ok) {
+
+			LOG_ERROR(this->config->logger, "AudioStream::srtp", "Failed to create srtp session (local)! Code %i", res);
+			return; //FIXME error handling
+		}
+		this->srtp_out_ready = true;
+	}
+}
 
 bool AudioStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& media_entry) {
 	{
@@ -556,7 +541,8 @@ string AudioStream::generate_sdp() {
 		codec->write_sdp(sdp);
 	}
 
-	sdp << "a=fingerprint:sha-256 " << dtls->getCertificate()->getFingerprint() << "\r\n";
+	if(this->dtls)
+		sdp << "a=fingerprint:sha-256 " << dtls->getCertificate()->getFingerprint() << "\r\n";
 	sdp << "a=setup:" << (this->role == Client ? "active" : "passive") << "\r\n";
 
 	for(const auto& channel : this->local_channels) {
@@ -591,17 +577,18 @@ StreamType AudioStream::type() const {
 	return CHANTYPE_AUDIO;
 }
 
-/* Helpers to demultiplex protocols */
-static gboolean janus_is_dtls(gchar *buf) {
-	return ((*buf >= 20) && (*buf <= 64));
-}
 
 void AudioStream::process_incoming_data(const std::string &in) {
-	if (janus_is_dtls((gchar*) in.data()) || (!protocol::is_rtp((void*) in.data()) && !protocol::is_rtcp((void*) in.data()))) {
-		cout << "XXX" << endl; //FIXME move to log
+	if (pipes::SSL::is_ssl((u_char*) in.data()) || (!protocol::is_rtp((void*) in.data()) && !protocol::is_rtcp((void*) in.data()))) {
+		if(!this->dtls) {
+			LOG_VERBOSE(this->config->logger, "AudioStream::process_incoming_data", "Got %i incoming bytes of dtls, which isnt supported!", in.length());
+		} else {
+			this->dtls->process_incoming_data(in);
+		}
+		return;
 	}
-	if(!this->dtls_initialized) {
-		LOG_VERBOSE(this->config->logger, "AudioStream::dtls", "incoming %i bytes", in.length());
+	if(!this->dtls_initialized && this->dtls) {
+		LOG_VERBOSE(this->config->logger, "AudioStream::process_incoming_data", "incoming %i bytes", in.length());
 		this->dtls->process_incoming_data(in);
 	} else {
 		if(in.length() >= sizeof(protocol::rtp_header) && protocol::is_rtp((void*) in.data())) {
@@ -817,7 +804,11 @@ bool AudioStream::send_rtp_data(const shared_ptr<AudioChannel> &stream, const st
 #ifdef ENABLE_PROTOCOL_LOGGING
 	LOG_ERROR(this->config->logger, "AudioStream::process_srtp_data", "Protect succeeed %i (len=%i --> %i | len_org=%i)", res, buffer.length(), buflen, org_buflen);
 #endif
-	this->send_data(buffer.substr(0, buflen)); //TODO Avoid copy here? Use C++17 std::string_view?
+
+	if(this->_stream_id > 0)
+		this->send_data(buffer.substr(0, buflen)); //TODO Avoid copy here? Use C++17 std::string_view?
+	else
+		this->send_data_merged(buffer.substr(0, buflen), false);
 	return true;
 }
 

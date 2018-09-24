@@ -155,3 +155,32 @@ bool SSLSocket::isSSLHandschake(const std::string& data, bool full = false) {
 	return true;
 }
  */
+
+std::string pipes::SSL::remote_fingerprint() {
+	X509 *rcert = SSL_get_peer_certificate(this->sslLayer);
+	if(!rcert) {
+		LOG_ERROR(this->_logger, "SSL::remote_fingerprint", "Failed to generate remote fingerprint (certificate missing)");
+		return "";
+	} else {
+		unsigned int rsize;
+		unsigned char rfingerprint[EVP_MAX_MD_SIZE];
+		char remote_fingerprint[160];
+		char *rfp = (char *) &remote_fingerprint;
+		if (false) {
+			X509_digest(rcert, EVP_sha1(), (unsigned char *) rfingerprint, &rsize);
+		} else {
+			X509_digest(rcert, EVP_sha256(), (unsigned char *) rfingerprint, &rsize);
+		}
+		X509_free(rcert);
+		rcert = NULL;
+		unsigned int i = 0;
+		for (i = 0; i < rsize; i++) {
+			snprintf(rfp, 4, "%.2X:", rfingerprint[i]);
+			rfp += 3;
+		}
+		*(rfp - 1) = 0;
+
+		LOG_VERBOSE(this->_logger, "SSL::remote_fingerprint", "Generated remote fingerprint: %s", remote_fingerprint);
+		return string(remote_fingerprint);
+	}
+}

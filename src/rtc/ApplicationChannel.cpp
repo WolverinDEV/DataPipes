@@ -60,7 +60,7 @@ ApplicationStream::~ApplicationStream() {
 }
 
 bool ApplicationStream::initialize(std::string &error) {
-	{
+	if(this->_stream_id > 0) {
 		this->dtls = make_unique<pipes::TLS>();
 		this->dtls->direct_process(pipes::PROCESS_DIRECTION_IN, true);
 		this->dtls->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
@@ -78,16 +78,7 @@ bool ApplicationStream::initialize(std::string &error) {
 			LOG_ERROR(this->config->logger, "ApplicationStream::dtls", "Got error (%i): %s", code, error.c_str());
 		});
 		this->dtls->callback_initialized = [&](){
-			LOG_DEBUG(this->config->logger, "ApplicationStream::dtls", "Initialized! Starting SCTP connect");
-			this->sctp_connect_thread = std::thread([&]{
-				while(this->sctp && !this->sctp->connect());
-				if(!this->sctp->connect()) {
-					LOG_ERROR(this->config->logger, "ApplicationStream::sctp", "Failed to connect");
-					//this->trigger_setup_fail(ConnectionComponent::SCTP, "failed to connect");
-					//FIXME!
-				} else
-					LOG_DEBUG(this->config->logger, "ApplicationStream::sctp", "successful connected");
-			});
+			this->on_dtls_initialized(this->dtls);
 		};
 
 		auto certificate = pipes::TLSCertificate::generate("DataPipes", 365);
@@ -111,7 +102,11 @@ bool ApplicationStream::initialize(std::string &error) {
 		});
 		this->sctp->callback_write([&](const std::string& data) {
 			LOG_VERBOSE(this->config->logger, "ApplicationStream::sctp", "outgoing %i bytes", data.length());
-			this->dtls->send(data);
+			if(this->dtls)
+				this->dtls->send(data);
+			else {
+				this->send_data_merged(data, true);
+			}
 		});
 
 		if(!this->sctp->initialize(error)) {
@@ -123,11 +118,23 @@ bool ApplicationStream::initialize(std::string &error) {
 	return true;
 }
 
+void ApplicationStream::on_dtls_initialized(const std::unique_ptr<pipes::TLS> &handle) {
+	LOG_DEBUG(this->config->logger, "ApplicationStream::dtls", "Initialized! Starting SCTP connect");
+	this->sctp_connect_thread = std::thread([&]{
+		if(!this->sctp->connect()) {
+			LOG_ERROR(this->config->logger, "ApplicationStream::sctp", "Failed to connect");
+			//this->trigger_setup_fail(ConnectionComponent::SCTP, "failed to connect");
+			//FIXME!
+		} else
+			LOG_DEBUG(this->config->logger, "ApplicationStream::sctp", "successful connected");
+	});
+}
+
 bool ApplicationStream::apply_sdp(const nlohmann::json &, const nlohmann::json &media_entry) {
 	{
 		TEST_AV_TYPE(media_entry, "setup", is_string, return false, "ApplicationStream::apply_sdp", "Entry contains invalid/missing setup type");
 		string setup_type = media_entry["setup"];
-		LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "Stream setup type: %s", setup_type.c_str());
+		LOG_VERBOSE(this->config->logger, "ApplicationStream::apply_offer", "Stream setup type: %s", setup_type.c_str());
 		if(setup_type == "active")
 			this->role = Server;
 		else if(setup_type == "passive")
@@ -137,7 +144,7 @@ bool ApplicationStream::apply_sdp(const nlohmann::json &, const nlohmann::json &
 	{
 		TEST_AV_TYPE(media_entry, "mid", is_string, return false, "ApplicationStream::apply_sdp", "Entry contains invalid/missing id");
 		this->mid = media_entry["mid"];
-		LOG_DEBUG(this->config->logger, "PeerConnection::apply_offer", "Got mid type %s", this->mid.c_str());
+		LOG_DEBUG(this->config->logger, "ApplicationStream::apply_offer", "Got mid type %s", this->mid.c_str());
 	}
 
 	{
@@ -367,7 +374,8 @@ std::string ApplicationStream::generate_sdp() {
 	sdp << "m=application 9 DTLS/SCTP " + to_string(this->sctp->local_port()) + "\r\n"; //The 9 is the port? https://tools.ietf.org/html/rfc4566#page-22
 	sdp << "c=IN IP4 0.0.0.0\r\n";
 
-	sdp << "a=fingerprint:sha-256 " << dtls->getCertificate()->getFingerprint() << "\r\n";
+	if(this->dtls)
+		sdp << "a=fingerprint:sha-256 " << dtls->getCertificate()->getFingerprint() << "\r\n";
 	sdp << "a=setup:" << (this->role == Client ? "active" : "passive") << "\r\n";
 	sdp << "a=mid:" << this->mid << "\r\n";
 	sdp << "a=sctpmap:" << to_string(this->sctp->local_port()) << " webrtc-datachannel 1024\r\n";
@@ -379,13 +387,18 @@ bool ApplicationStream::reset(std::string &) {
 	if(this->sctp) this->sctp->finalize();
 	if(this->dtls) this->dtls->finalize();
 
-	if(this->sctp_connect_thread.joinable())
+	if(this->sctp_connect_thread.joinable()) {
+		pthread_cancel(this->sctp_connect_thread.native_handle());
 		this->sctp_connect_thread.join();
+	}
 	return true;
 }
 
 void ApplicationStream::process_incoming_data(const std::string &data) {
-	this->dtls->process_incoming_data(data);
+	if(this->dtls)
+		this->dtls->process_incoming_data(data);
+	else
+		this->sctp->process_incoming_data(data);
 }
 
 void ApplicationStream::send_sctp(const pipes::SCTPMessage &message) {
@@ -606,6 +619,6 @@ void ApplicationStream::close_datachannel(rtc::DataChannel *channel) {
 
 void ApplicationStream::on_nice_ready() {
 	this->resend_buffer();
-	if(this->role == Client)
+	if(this->role == Client && this->dtls)
 		this->dtls->do_handshake();
 }

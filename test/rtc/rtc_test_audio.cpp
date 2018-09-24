@@ -7,6 +7,7 @@
 #include <cstring>
 #include <include/ws.h>
 #include <include/rtc/PeerConnection.h>
+#include <include/rtc/ApplicationStream.h>
 #include "include/rtc/AudioStream.h"
 #include "test/json/json.h"
 
@@ -287,44 +288,68 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 		};
 
 		client->peer->callback_new_stream = [client](const shared_ptr<rtc::Stream>& stream) {
-			if(stream->type() != rtc::CHANTYPE_AUDIO) {
+			if(stream->type() == rtc::CHANTYPE_APPLICATION) {
+				auto data_channel = dynamic_pointer_cast<rtc::ApplicationStream>(stream);
+				data_channel->callback_datachannel_new = [](const std::shared_ptr<rtc::DataChannel>& channel) {
+					weak_ptr<rtc::DataChannel> weak = channel;
+					channel->callback_binary = [weak](const std::string& message) {
+						auto chan = weak.lock();
+						cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] Got binary message " << message.length() << endl;
+						chan->send("Echo: " + message, rtc::DataChannel::BINARY);
+					};
+					channel->callback_text = [weak](const std::string& message) {
+						auto chan = weak.lock();
+						if(message == "close") {
+							cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] closing channel" << endl;
+							chan->close();
+						} else {
+							cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] Got text message " << message.length() << endl;
+							chan->send("Echo: " + message, rtc::DataChannel::TEXT);
+						}
+					};
+					channel->callback_close = [weak]() {
+						auto chan = weak.lock();
+						cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] got closed" << endl;
+					};
+				};
+			} else if(stream->type() == rtc::CHANTYPE_AUDIO) {
+				auto astream = dynamic_pointer_cast<rtc::AudioStream>(stream);
+				assert(astream);
+				{
+					auto opus_codec = astream->find_codec_by_name("opus");
+					if(opus_codec.empty()) {
+						return; //FIXME disconnect client
+					}
+					for(const auto& codec: opus_codec)
+						astream->register_local_channel("voice_bridge_" + to_string(codec->id), "client_" + to_string(codec->id), opus_codec.back());
+				}
+				astream->register_local_extension("urn:ietf:params:rtp-hdrext:ssrc-audio-level");
+
+				weak_ptr<rtc::AudioStream> weak_astream = astream;
+				astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::AudioChannel>& channel, const std::string& buffer, size_t payload_offset) {
+					auto as = weak_astream.lock();
+					if(!as) return;
+
+					for(const auto& ext : as->list_extensions(0x02)) {
+						if(ext->name == "urn:ietf:params:rtp-hdrext:ssrc-audio-level") {
+							int level;
+							if(rtc::protocol::rtp_header_extension_parse_audio_level(buffer, ext->id, &level) == 0) {
+								//cout << "Audio level " << level << endl;
+							}
+							break;
+						}
+					}
+
+					auto buf = buffer.substr(payload_offset);
+					auto channels = as->list_channels();
+					for(const auto& ch : channels)
+						if(ch->local)
+							as->send_rtp_data(ch, buf, ch->timestamp_last_send += 960); //960 = 20ms opus :)
+				};
+			} else {
 				cerr << "Remote offers invalid stream type! (" << stream->type() << ")" << endl;
 				return; //We only want audio here!
 			}
-
-			auto astream = dynamic_pointer_cast<rtc::AudioStream>(stream);
-			assert(astream);
-			{
-				auto opus_codec = astream->find_codec_by_name("opus");
-				if(opus_codec.empty()) {
-					return; //FIXME disconnect client
-				}
-				for(const auto& codec: opus_codec)
-					astream->register_local_channel("voice_bridge_" + to_string(codec->id), "client_" + to_string(codec->id), opus_codec.back());
-			}
-			astream->register_local_extension("urn:ietf:params:rtp-hdrext:ssrc-audio-level");
-
-			weak_ptr<rtc::AudioStream> weak_astream = astream;
-			astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::AudioChannel>& channel, const std::string& buffer, size_t payload_offset) {
-				auto as = weak_astream.lock();
-				if(!as) return;
-
-				for(const auto& ext : as->list_extensions(0x02)) {
-					if(ext->name == "urn:ietf:params:rtp-hdrext:ssrc-audio-level") {
-						int level;
-						if(rtc::protocol::rtp_header_extension_parse_audio_level(buffer, ext->id, &level) == 0) {
-							//cout << "Audio level " << level << endl;
-						}
-						break;
-					}
-				}
-
-				auto buf = buffer.substr(payload_offset);
-				auto channels = as->list_channels();
-				for(const auto& ch : channels)
-					if(ch->local)
-						as->send_rtp_data(ch, buf, ch->timestamp_last_send += 960); //960 = 20ms opus :)
-			};
 		};
 
 		string error;

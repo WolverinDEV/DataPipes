@@ -12,9 +12,13 @@ namespace pipes {
 	};
 
 	class SSL : public Pipeline<std::string> {
+		public:
 			typedef std::function<void()> InitializedHandler;
 
-		public:
+			static bool is_ssl(const u_char* buf) {
+				return ((*buf >= 20) && (*buf <= 64));
+			}
+
 			enum Type {
 				SERVER,
 				CLIENT
@@ -36,6 +40,8 @@ namespace pipes {
 			size_t readBufferSize = 1024;
 
 			SSLSocketState state() { return this->sslState; }
+
+			std::string remote_fingerprint();
 
 			inline ::SSL *ssl_handle() { return this->sslLayer; }
 		private:

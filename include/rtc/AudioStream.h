@@ -2,6 +2,7 @@
 
 #include <map>
 #include <atomic>
+#include <vector>
 #include <srtp2/srtp.h>
 #include "Stream.h"
 
@@ -144,8 +145,10 @@ namespace rtc {
 		void* user_ptr = nullptr;
 	};
 
+	class MergedStream;
 	class AudioStream : public Stream {
 			friend class PeerConnection;
+			friend class MergedStream;
 		public:
 			struct Configuration {
 				std::shared_ptr<pipes::Logger> logger;
@@ -207,7 +210,7 @@ namespace rtc {
 			std::shared_ptr<HeaderExtension> register_local_extension(const std::string& /* name/uri */, const std::string& /* direction */ = "", const std::string& /* config */ = "");
 		protected:
 			void on_nice_ready() override;
-
+			void on_dtls_initialized(const std::unique_ptr<pipes::TLS> &ptr) override;
 		protected:
 			void process_incoming_data(const std::string &string) override;
 			void process_rtp_data(const std::string & /* data */);

@@ -2,13 +2,14 @@
 #include <iostream>
 #include <cstring>
 #include <utility>
-#include <include/misc/endianness.h>
 #include <cassert>
-#include <include/rtc/NiceWrapper.h>
 #include "sdptransform.hpp"
+#include "include/rtc/NiceWrapper.h"
+#include "include/rtc/PeerConnection.h"
 #include "include/rtc/ApplicationStream.h"
 #include "include/rtc/AudioStream.h"
-#include "include/rtc/PeerConnection.h"
+#include "include/rtc/MergedStream.h"
+#include "include/misc/endianness.h"
 
 #define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
@@ -41,21 +42,29 @@ bool PeerConnection::initialize(std::string &error) {
 		this->nice->logger(this->config->logger);
 
 		this->nice->set_callback_local_candidate([&](const std::shared_ptr<NiceStream>& stream, const std::string& candidate){
-			std::shared_ptr<Stream> handle;
-			for(const auto& s : this->available_streams()) {
-				if(s->stream_id() == stream->stream_id) {
-					handle = s;
-					break;
+			if(this->merged_stream) {
+				for(const auto& s : this->available_streams()) {
+					if(this->callback_ice_candidate) //application
+						this->callback_ice_candidate(IceCandidate{candidate.length() > 2 ? candidate.substr(2) : candidate, s->get_mid(), this->sdp_mline_index(s)});
 				}
-			}
+			} else {
+				std::shared_ptr<Stream> handle;
 
-			if(!handle) {
-				LOG_ERROR(this->config->logger, "PeerConnection::callback_local_candidate", "Got local ice candidate for an invalid stream (id: %u)", stream->stream_id);
-				return;
-			}
+				for(const auto& s : this->available_streams()) {
+					if(s->stream_id() == stream->stream_id) {
+						handle = s;
+						break;
+					}
+				}
 
-			if(this->callback_ice_candidate) //application
-				this->callback_ice_candidate(IceCandidate{candidate.length() > 2 ? candidate.substr(2) : candidate, handle->get_mid(), this->sdp_mline_index(handle)});
+				if(!handle) {
+					LOG_ERROR(this->config->logger, "PeerConnection::callback_local_candidate", "Got local ice candidate for an invalid stream (id: %u)", stream->stream_id);
+					return;
+				}
+
+				if(this->callback_ice_candidate) //application
+					this->callback_ice_candidate(IceCandidate{candidate.length() > 2 ? candidate.substr(2) : candidate, handle->get_mid(), this->sdp_mline_index(handle)});
+			}
 		});
 
 		//FIXME!
@@ -76,11 +85,58 @@ bool PeerConnection::initialize(std::string &error) {
 
 bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp) {
 	auto sdp = sdptransform::parse(raw_sdp);
+	if(sdp.count("media") <= 0) {
+		error = "Missing media entry";
+		return false;
+	}
 
 	LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "Got sdp offer:");
 	LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "%s", sdp.dump(4).c_str());
 
-	for(json& media_entry : sdp["media"]) {
+	//merged_nice_channels
+	json& media = sdp["media"];
+	if(!media.is_array()) return false;
+
+	{
+		if(media.size() <= 1) {
+			this->merged_stream = nullptr;
+		} else {
+			string ice_ufrag, ice_pwd;
+			for(json& media_entry : media) {
+				if(media_entry.count("icePwd") <= 0) continue; //Fixme error handling
+				if(media_entry.count("iceUfrag") <= 0) continue; //Fixme error handling
+
+				if(ice_ufrag.empty() && ice_pwd.empty()) {
+					ice_ufrag = media_entry["iceUfrag"];
+					ice_pwd = media_entry["icePwd"];
+				} else if(ice_ufrag == media_entry["iceUfrag"] && ice_pwd == media_entry["icePwd"]) { //TODO May test only for Ufrag?
+					auto stream = this->nice->add_stream(media[0]["type"]);
+					assert(stream);
+
+					auto config = make_shared<MergedStream::Configuration>();
+					config->logger = this->config->logger;
+
+					this->merged_stream = make_unique<MergedStream>(this, stream->stream_id, config);
+					stream->callback_ready = [&] {
+						if(this->merged_stream)
+							this->merged_stream->on_nice_ready();
+					};
+					stream->callback_receive = [&](const std::string& data) {
+						if(this->merged_stream)
+							this->merged_stream->process_incoming_data(data);
+					};
+
+					if(!this->merged_stream->initialize(error)) {
+						error = "Failed to initialized merged stream: " + error;
+						return false;
+					}
+					break;
+				}
+			}
+		}
+	}
+
+	for(json& media_entry : media) {
 		string type = media_entry["type"];
 		if(type == "audio") {
 			if(!this->stream_audio && !this->create_audio_stream(error)) {
@@ -94,8 +150,7 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 			}
 		}
 	}
-
-	for(json& media_entry : sdp["media"]) {
+	for(json& media_entry : media) {
 		string type = media_entry["type"];
 		if(type == "audio") {
 			assert(this->stream_audio);
@@ -116,7 +171,23 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 	for(const auto& lines : this->sdp_media_lines)
 		this->callback_new_stream(lines);
 
-	if(!nice->apply_remote_sdp(error, raw_sdp)) return false;
+
+	if(this->merged_stream) {
+		this->merged_stream->apply_sdp(sdp, nullptr);
+		auto target_sdp = raw_sdp;
+		auto m_index = target_sdp.find("m=");
+		if(m_index == string::npos) {
+			error = "missing m=";
+			return false;
+		}
+		m_index = target_sdp.find("m=", m_index + 1);
+		if(m_index != string::npos) target_sdp = target_sdp.substr(0, m_index);
+
+		cout << target_sdp << endl;
+		if(!nice->apply_remote_sdp(error, target_sdp)) return false;
+	} else {
+		if(!nice->apply_remote_sdp(error, raw_sdp)) return false;
+	}
 
 	for(const auto& stream : nice->available_streams())
 		nice->gather_candidates(stream);
@@ -124,22 +195,29 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 	return true;
 }
 
-//FIXME test stream index and mid?
 int PeerConnection::apply_ice_candidates(const std::deque<std::shared_ptr<rtc::IceCandidate>> &candidates) {
 	int success_counter = 0;
-	for(const auto& stream : this->available_streams()) {
-		for(const auto& candidate : candidates) {
-			if(stream->get_mid() == candidate->sdpMid) {
-				auto nice_handle = this->nice->find_stream(stream->stream_id());
-				if(!nice_handle) {
-					LOG_ERROR(this->config->logger, "PeerConnection::apply_ice_candidates", "Failed to find nice handle for %s (%u)", stream->get_mid().c_str(), stream->stream_id());
-					continue;
+	for(const auto& candidate : candidates) {
+		std::shared_ptr<NiceStream> nice_handle;
+		if(this->merged_stream) {
+			if(candidate->sdpMLineIndex != 0) continue;
+
+			nice_handle = this->nice->find_stream(this->merged_stream->stream_id());
+		} else {
+			for(const auto& stream : this->available_streams()) {
+				if(stream->get_mid() == candidate->sdpMid) {
+					nice_handle = this->nice->find_stream(stream->stream_id());
+					break;
 				}
-				if(!this->nice->apply_remote_ice_candidates(nice_handle, {"a=" + candidate->candidate})) { //TODO may even index?
-					LOG_ERROR(this->config->logger, "PeerConnection::apply_ice_candidates", "Failed to apply candidate %s for %s (%u)", candidate->candidate.c_str(), stream->get_mid().c_str(), stream->stream_id());
-				} else success_counter++;
 			}
 		}
+		if(!nice_handle) {
+			LOG_ERROR(this->config->logger, "PeerConnection::apply_ice_candidates", "Failed to find nice handle for %s (%u)", candidate->sdpMid.c_str(), candidate->sdpMLineIndex);
+			continue;
+		}
+		if(!this->nice->apply_remote_ice_candidates(nice_handle, {"a=" + candidate->candidate})) {
+			LOG_ERROR(this->config->logger, "PeerConnection::apply_ice_candidates", "Failed to apply candidate %s for %s (%u)", candidate->candidate.c_str(), candidate->sdpMid.c_str(), candidate->sdpMLineIndex);
+		} else success_counter++;
 	}
 	return success_counter;
 }
@@ -179,12 +257,11 @@ std::string PeerConnection::generate_answer(bool candidates) {
 	sdp << "a=msid-semantic: WMS DataPipes\r\n";
 
 	auto nice_entries = this->nice->generate_local_sdp(candidates);
-
 	for(const auto& entry : this->sdp_media_lines) {
 		sdp << entry->generate_sdp();
 
 		for(const auto& nice_entry : nice_entries) {
-			if(nice_entry->index != this->sdp_mline_index(entry)) continue;
+			if(!this->merged_stream && nice_entry->index != this->sdp_mline_index(entry)) continue;
 			if(!nice_entry->has.ice_ufrag) {
 				LOG_ERROR(this->config->logger, "PeerConnection::generate_answer", "Media stream %s (%u) missing ice ufrag!", entry->get_mid().c_str(), entry->stream_id());
 				continue;
@@ -198,6 +275,9 @@ std::string PeerConnection::generate_answer(bool candidates) {
 				continue;
 			}
 
+			if(this->merged_stream) {
+				sdp << "a=fingerprint:sha-256 " << this->merged_stream->generate_local_fingerprint() << "\r\n";
+			}
 			sdp << "a=ice-ufrag:" << nice_entry->ice_ufrag << "\r\n";
 			sdp << "a=ice-pwd:" << nice_entry->ice_pwd << "\r\n";
 			//if(!candidates) //We send the candidates later
@@ -229,35 +309,61 @@ void PeerConnection::trigger_setup_fail(rtc::PeerConnection::ConnectionComponent
 bool PeerConnection::create_application_stream(std::string& error) {
 	assert(!this->stream_application);
 
-	auto stream = nice->add_stream("application"); //stream_application
-	assert(stream); //FIXME!
+	std::shared_ptr<NiceStream> stream;
+	if(!this->merged_stream) {
+		stream = nice->add_stream("application");
+		if(!stream) {
+			error = "failed to create stream!";
+			return false;
+		}
+
+		stream->callback_receive = [&](const std::string& data) {
+			if(this->stream_application)
+				this->stream_application->process_incoming_data(data);
+		};
+		stream->callback_ready = [&]{
+			if(this->stream_application)
+				this->stream_application->on_nice_ready();
+		};
+	}
 
 	{
 		auto config = make_shared<ApplicationStream::Configuration>();
 		config->logger = this->config->logger;
-		this->stream_application = make_shared<ApplicationStream>(this, stream->stream_id, config);
-		stream->callback_ready = std::bind(&ApplicationStream::on_nice_ready, this->stream_application.get());
+		this->stream_application = make_shared<ApplicationStream>(this, stream ? stream->stream_id : 0, config);
 		if(!this->stream_application->initialize(error)) return false;
 	}
-	stream->callback_receive = [&](const std::string& data) { this->stream_application->process_incoming_data(data); };
 	return true;
 }
 
 bool PeerConnection::create_audio_stream(std::string &error) {
 	assert(!this->stream_audio);
 
-	auto stream = nice->add_stream("audio");
-	assert(stream); //FIXME!
+	std::shared_ptr<NiceStream> stream;
+	if(!this->merged_stream) {
+		stream = nice->add_stream("audio");
+		if(!stream) {
+			error = "failed to create stream!";
+			return false;
+		}
+
+		stream->callback_receive = [&](const std::string& data) {
+			if(this->stream_audio)
+				this->stream_audio->process_incoming_data(data);
+		};
+		stream->callback_ready = [&]{
+			if(this->stream_audio)
+				this->stream_audio->on_nice_ready();
+		};
+	}
 
 	{
 		auto config = make_shared<AudioStream::Configuration>();
 		config->logger = this->config->logger;
-		this->stream_audio = make_shared<AudioStream>(this, stream->stream_id, config);
-		stream->callback_ready = std::bind(&AudioStream::on_nice_ready, this->stream_audio.get());
+		this->stream_audio = make_shared<AudioStream>(this, stream ? stream->stream_id : 0, config);
 		if(!this->stream_audio->initialize(error)) return false;
 	}
 
-	stream->callback_receive = [&](const std::string& data) { this->stream_audio->process_incoming_data(data); };
 	return true;
 }
 

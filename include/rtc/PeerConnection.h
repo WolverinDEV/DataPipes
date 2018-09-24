@@ -10,6 +10,7 @@
 #include "Stream.h"
 
 namespace rtc {
+	class MergedStream;
 	class ApplicationStream;
 	class AudioStream;
 
@@ -22,6 +23,7 @@ namespace rtc {
 	};
 	class PeerConnection {
 			friend class Stream;
+			friend class MergedStream;
 		public:
 			struct Config {
 				std::shared_ptr<pipes::Logger> logger;
@@ -84,5 +86,7 @@ namespace rtc {
 
 			bool create_application_stream(std::string& error);
 			bool create_audio_stream(std::string& error);
+
+			std::unique_ptr<MergedStream> merged_stream;
 	};
 }

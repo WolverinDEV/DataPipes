@@ -41,9 +41,11 @@ namespace rtc {
 			std::string _protocol;
 	};
 
+	class MergedStream;
 	class ApplicationStream : public Stream {
 			friend class DataChannel;
 			friend class PeerConnection;
+			friend class MergedStream;
 		public:
 			struct Configuration {
 				std::shared_ptr<pipes::Logger> logger;
@@ -72,6 +74,7 @@ namespace rtc {
 		private:
 		protected:
 			void on_nice_ready() override;
+			void on_dtls_initialized(const std::unique_ptr<pipes::TLS> &ptr) override;
 
 		private:
 			void send_sctp(const pipes::SCTPMessage & /* message */);

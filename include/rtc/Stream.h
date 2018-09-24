@@ -19,7 +19,9 @@ namespace rtc {
 
 	enum StreamType {
 		CHANTYPE_APPLICATION,
-		CHANTYPE_AUDIO
+		CHANTYPE_AUDIO,
+
+		CHANTYPE_MERGED = 0xF0 //This should never happen!
 	};
 
 	typedef uint32_t StreamId;
@@ -41,7 +43,10 @@ namespace rtc {
 		protected:
 			virtual void process_incoming_data(const std::string& /* data */) = 0;
 			virtual void on_nice_ready() = 0;
+			virtual void on_dtls_initialized(const std::unique_ptr<pipes::TLS>& /* handle */) = 0;
+
 			virtual void send_data(const std::string& /* data */);
+			virtual void send_data_merged(const std::string& /* data */, bool /* dtls */);
 
 			PeerConnection* _owner = nullptr;
 			StreamId _stream_id = 0;

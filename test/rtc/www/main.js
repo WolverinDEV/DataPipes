@@ -146,7 +146,9 @@ class PeerConnection {
         navigator.mediaDevices.getUserMedia({ audio: true, video: false })
             .then(stream => {
             console.log("[GOT MIC!] %o", stream.getAudioTracks());
-            this.peer.addStream(stream);
+            if (this.config.open_audio_channel) {
+                this.peer.addStream(stream);
+            }
             /*
             current_track = this.peer.addTrack(stream.getAudioTracks()[0]);
             console.log("Response: %o", current_track);

@@ -1,6 +1,6 @@
-#include <assert.h>
+#include <cassert>
 #include "include/rtc/PeerConnection.h"
-#include "include/misc/endianness.h"
+#include "include/rtc/MergedStream.h"
 #include "include/rtc/Stream.h"
 
 #define DEFINE_LOG_HELPERS
@@ -27,9 +27,24 @@ void Stream::send_data(const std::string &data) {
 		this->fail_buffer.push_back(data);
 }
 
-bool Stream::resend_buffer() {
+void Stream::send_data_merged(const std::string &data, bool dtls) {
 	assert(this->_owner);
-	assert(this->_stream_id > 0);
+	assert(this->_owner->merged_stream);
+	assert(this->_owner->merged_stream.get() != this);
+	assert(this->_stream_id == 0);
+
+	if(dtls)
+		this->_owner->merged_stream->send_data_dtls(data);
+	else
+		this->_owner->merged_stream->send_data(data);
+}
+
+bool Stream::resend_buffer() {
+	if(this->_stream_id == 0) {
+		assert(this->_owner->merged_stream);
+		return this->_owner->merged_stream->resend_buffer();
+	}
+	assert(this->_owner);
 
 	auto& nice = this->_owner->nice;
 	if(!nice) return false;

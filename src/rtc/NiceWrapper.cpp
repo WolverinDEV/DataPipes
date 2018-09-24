@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <include/rtc/NiceWrapper.h>
 #include <string.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 #include "include/rtc/NiceWrapper.h"
 
 #define DEFINE_LOG_HELPERS
@@ -113,6 +115,56 @@ bool NiceWrapper::initialize(std::string& error) {
 	g_signal_connect(G_OBJECT(agent.get()), "new-candidate", G_CALLBACK(NiceWrapper::cb_new_local_candidate), this);
 	g_signal_connect(G_OBJECT(agent.get()), "new-selected-pair", G_CALLBACK(NiceWrapper::cb_new_selected_pair), this);
 	g_signal_connect(G_OBJECT(agent.get()), "reliable-transport-writable", G_CALLBACK(NiceWrapper::cb_transport_writeable), this);
+
+	/* Add all local addresses, except those in the ignore list */
+	struct ifaddrs *ifaddr, *ifa;
+	int family, s, n;
+	char host[NI_MAXHOST];
+	if(getifaddrs(&ifaddr) == -1) {
+		LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to getting a list of interfaces...");
+	} else {
+		for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
+			if(ifa->ifa_addr == NULL)
+				continue;
+			/* Skip interfaces which are not up and running */
+			if (!((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)))
+				continue;
+			/* Skip loopback interfaces */
+			if (ifa->ifa_flags & IFF_LOOPBACK)
+				continue;
+			family = ifa->ifa_addr->sa_family;
+			if(family != AF_INET && family != AF_INET6)
+				continue;
+			/* We only add IPv6 addresses if support for them has been explicitly enabled (still WIP, mostly) */
+			if(family == AF_INET6) //FIXME!
+				continue;
+			/* Check the interface name first, we can ignore that as well: enforce list would be checked later */
+			//if(janus_ice_enforce_list == NULL && ifa->ifa_name != NULL && janus_ice_is_ignored(ifa->ifa_name))
+			//	continue;
+			s = getnameinfo(ifa->ifa_addr,
+			                (family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6),
+			                host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+			if(s != 0) {
+				LOG_ERROR(this->_logger, "NiceWrapper::initialize", "getnameinfo() failed: %s", gai_strerror(s));
+				continue;
+			}
+			/* Skip 0.0.0.0, :: and local scoped addresses  */
+			if(!strcmp(host, "0.0.0.0") || !strcmp(host, "::") || !strncmp(host, "fe80:", 5))
+				continue;
+			/* Check if this IP address is in the ignore/enforce list, now: the enforce list has the precedence */
+
+			/* Ok, add interface to the ICE agent */
+			LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Adding %s to the addresses to gather candidates for", host);
+			NiceAddress addr_local;
+			nice_address_init (&addr_local);
+			if(!nice_address_set_from_string (&addr_local, host)) {
+				LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Skipping invalid address %s", host);
+				continue;
+			}
+			nice_agent_add_local_address (this->agent.get(), &addr_local);
+		}
+		freeifaddrs(ifaddr);
+	}
 	// signal
 
 	return true;

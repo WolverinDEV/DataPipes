@@ -8,6 +8,7 @@
 #include <iostream>
 #include <thread>
 #include <bitset>
+#include <csignal>
 #include "include/sctp.h"
 
 #define DEFINE_LOG_HELPERS
@@ -141,12 +142,12 @@ bool SCTP::initialize(std::string &error) {
 }
 
 void SCTP::finalize() {
-	usrsctp_deregister_address(this);
 	if(this->sock) {
 		usrsctp_shutdown(this->sock, SHUT_RDWR);
 		usrsctp_close(this->sock);
 		this->sock = nullptr;
 	}
+	usrsctp_deregister_address(this);
 }
 
 #define READ_BUFFER_SIZE 1024
