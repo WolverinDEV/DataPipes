@@ -176,7 +176,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& client) {
         cout << "INIT!" << endl;
     };
 
-    ssl_pipeline->callback_data([weak](const string& data) {
+    ssl_pipeline->callback_data([weak](const pipes::buffer_view& data) {
         cout << "Got data " << data << endl;
     });
 
