@@ -299,7 +299,7 @@ ProcessResult WebSocket::process_data_out() {
     head.fin = true;
     head.opcode = message.code;
 
-    int lenLen = message.data.length() >= 126 ? message.data.length() >= (2 << 16) ? 8 : 2 : 0;
+    int lenLen = message.data.length() >= 126 ? message.data.length() >= 0xFFFF ? 8 : 2 : 0;
     if(lenLen == 0) head.len = message.data.length();
     else if(lenLen == 2) head.len = 126;
     else if(lenLen == 8) head.len = 127;
