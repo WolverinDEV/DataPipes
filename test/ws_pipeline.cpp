@@ -27,7 +27,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& client) {
         cout << "Got error: " << code << " => " << reason << endl;
 
     });
-    ws->callback_write([weak](const std::string& data) -> void {
+    ws->callback_write([weak](const pipes::buffer_view& data) -> void {
         auto cl = weak.lock();
         if(cl) cl->send(data);
     });
@@ -35,7 +35,10 @@ void initialize_client(const std::shared_ptr<Socket::Client>& client) {
     ws->callback_data([weak](const pipes::WSMessage& message) {
         cout << "Got message " << message.data << endl;
         auto cl = weak.lock();
-        if(cl) ((pipes::WebSocket*) cl->data)->send(pipes::WSMessage{pipes::TEXT, "You wrote: " + message.data});
+        pipes::buffer buffer;
+        buffer += "You wrote: ";
+        buffer += message.data;
+        if(cl) ((pipes::WebSocket*) cl->data)->send(pipes::WSMessage{pipes::TEXT, buffer});
     });
 
     client->data = ws;
@@ -44,7 +47,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& client) {
 int main() {
     Socket socket{};
     socket.callback_accept = initialize_client;
-    socket.callback_read = [](const std::shared_ptr<Socket::Client>& client, const std::string& data) {
+    socket.callback_read = [](const std::shared_ptr<Socket::Client>& client, const pipes::buffer_view& data) {
         ((pipes::WebSocket*) client->data)->process_incoming_data(data);
     };
     socket.callback_disconnect = [](const std::shared_ptr<Socket::Client>& client) {

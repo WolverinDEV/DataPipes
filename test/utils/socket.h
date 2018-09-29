@@ -5,6 +5,7 @@
 #include <memory>
 #include <deque>
 #include <mutex>
+#include <include/buffer.h>
 
 class Socket {
 public:
@@ -14,7 +15,7 @@ public:
         Socket* handle = nullptr;
         void* data = nullptr;
 
-        void send(const std::string& /* buffer */);
+        void send(const pipes::buffer_view& /* buffer */);
         void disconnect(bool blocking = true);
     private:
         void close_connection(bool blocking = true);
@@ -27,15 +28,15 @@ public:
         void on_write(int fd);
 
         std::mutex buffer_lock;
-        std::deque<std::string> buffer_write;
+        std::deque<pipes::buffer> buffer_write;
     };
     friend class Client;
 
     typedef void(*fnc_accept)(const std::shared_ptr<Client>&);
     typedef void(*fnc_disconnect)(const std::shared_ptr<Client>&);
-    typedef void(*fnc_read)(const std::shared_ptr<Client>&, const std::string&);
+    typedef void(*fnc_read)(const std::shared_ptr<Client>&, const pipes::buffer_view&);
 public:
-    Socket(event_base* event_base = nullptr);
+    explicit Socket(event_base* event_base = nullptr);
     virtual ~Socket();
 
     bool start(uint16_t /* port */);
@@ -43,7 +44,7 @@ public:
 
     fnc_accept callback_accept = [](const std::shared_ptr<Client>&){};
     fnc_disconnect callback_disconnect = [](const std::shared_ptr<Client>&){};
-    fnc_read callback_read = [](const std::shared_ptr<Client>&, const std::string&) {};
+    fnc_read callback_read;
 private:
     int socket = 0;
 

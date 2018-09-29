@@ -26,13 +26,13 @@ namespace rtc {
 
 			std::string generate_local_fingerprint();
 
-			void send_data_dtls(const std::string& /* data */);
+			void send_data_dtls(const pipes::buffer_view& /* data */);
 		private:
 		protected:
 			void on_nice_ready() override;
 			void on_dtls_initialized(const std::unique_ptr<pipes::TLS>& /* handle */) override;
 		private:
-			void process_incoming_data(const std::string& /* data */);
+			void process_incoming_data(const pipes::buffer_view& /* data */);
 		private:
 			std::shared_ptr<Configuration> config;
 			enum Role { Client, Server } role = Client;

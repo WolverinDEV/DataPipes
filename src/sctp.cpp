@@ -33,13 +33,13 @@ SCTP::~SCTP() {
 
 int SCTP::cb_send(void *sctp_ptr, void *data, size_t len, uint8_t tos, uint8_t set_df) {
 	if(!sctp_ptr) return -1;
-	return ((SCTP*) sctp_ptr)->on_data_out(string((const char*) data, len));
+	return ((SCTP*) sctp_ptr)->on_data_out(buffer_view{data, len});
 }
 
 int SCTP::cb_read(struct socket *sock, union sctp_sockstore addr, void *data, size_t len, struct sctp_rcvinfo recv_info, int flags, void *user_data) {
 	if(!user_data) return -1;
 	if(data) {
-		((SCTP*) user_data)->on_data_in(string((const char*) data, len), recv_info, flags);
+		((SCTP*) user_data)->on_data_in(buffer_view{data, len}, recv_info, flags);
 		free(data);
 	} else {
 		((SCTP*) user_data)->on_disconnect();
@@ -192,7 +192,7 @@ ProcessResult SCTP::process_data_out() {
 	spa.sendv_prinfo.pr_policy = SCTP_PR_SCTP_RTX;
 	spa.sendv_prinfo.pr_value = 0;
 
-	auto send = usrsctp_sendv(this->sock, message.data.data(), message.data.length(), nullptr, 0, &spa, sizeof(spa), SCTP_SENDV_SPA, 0);
+	auto send = usrsctp_sendv(this->sock, message.data.data_ptr(), message.data.length(), nullptr, 0, &spa, sizeof(spa), SCTP_SENDV_SPA, 0);
 	if(send < 0) {
 		LOG_ERROR(this->logger(), "SCTP::process_data_out", "Failed to send data! Return code %i but expected %i", send, message.data.length());
 		return ProcessResult::PROCESS_RESULT_ERROR;
@@ -200,8 +200,9 @@ ProcessResult SCTP::process_data_out() {
 	return ProcessResult::PROCESS_RESULT_OK;
 }
 
-int SCTP::on_data_out(const std::string &data) {
-	this->_callback_write(data);
+int SCTP::on_data_out(const buffer_view &data) {
+	if(this->_callback_write)
+		this->_callback_write(data);
 	return 0;
 }
 
@@ -212,10 +213,10 @@ int SCTP::on_disconnect() {
 }
 
 //TODO error handling?
-int SCTP::on_data_in(const std::string &data, struct sctp_rcvinfo recv_info, int flags) {
+int SCTP::on_data_in(const buffer_view &data, struct sctp_rcvinfo recv_info, int flags) {
 	LOG_VERBOSE(this->_logger, "SCTP::on_data_in", "Got new data. Length: %i Flags: %s", data.length(), bitset<16>(flags).to_string().c_str());
 	if((flags & MSG_NOTIFICATION) > 0) {
-		auto notify = (union sctp_notification *) data.data();
+		auto notify = (union sctp_notification *) data.data_ptr();
 		if(notify->sn_header.sn_length != data.length()) {
 			LOG_DEBUG(this->_logger, "SCTP::on_data_in", "Invalid notification length (%ui != %ul)", notify->sn_header.sn_length, data.length());
 			return -1;

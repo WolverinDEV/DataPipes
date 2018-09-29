@@ -7,6 +7,8 @@
 #include "socket.h"
 
 using namespace std;
+using namespace pipes;
+
 Socket::Socket(event_base* event_base_loop) {
     if(event_base_loop)
         this->event_base_loop = event_base_loop;
@@ -125,9 +127,9 @@ void Socket::on_accept(int socket_fd, short) {
 
 void Socket::Client::on_read(int fd) {
     size_t chunk_length = 1024;
-    auto chunk = unique_ptr<char, decltype(::free)*>((char*) malloc(chunk_length), ::free);
+    buffer chunk(chunk_length);
 
-    auto length = ::read(fd, chunk.get(), chunk_length);
+    auto length = ::read(fd, chunk.data_ptr(), chunk_length);
     if(length <= 0) {
         if(errno == EAGAIN) return;
         cout << "Got error while reading (" << errno << " => " << strerror(errno) << ")" << endl;
@@ -145,9 +147,10 @@ void Socket::Client::on_read(int fd) {
             }
         }
     }
-    if(instance)
-        this->handle->callback_read(instance, string((const char*) chunk.get(), length));
-    else
+    if(instance && this->handle->callback_read) {
+        chunk.resize(length);
+        this->handle->callback_read(instance, chunk);
+    } else
         perror("Invalid client read handle!");
 }
 
@@ -157,9 +160,9 @@ void Socket::Client::on_write(int fd) {
 
     auto& buffer = this->buffer_write[0];
 
-    auto wrote = ::send(fd, buffer.data(), buffer.length(), MSG_DONTWAIT | MSG_NOSIGNAL);
+    auto wrote = ::send(fd, buffer.data_ptr(), buffer.length(), MSG_DONTWAIT | MSG_NOSIGNAL);
     if(wrote > 0 && (size_t) wrote < buffer.length())
-        buffer = buffer.substr(wrote);
+        buffer = buffer.range(wrote);
     else
         this->buffer_write.pop_front();
 
@@ -201,10 +204,10 @@ void Socket::Client::close_connection(bool blocking) {
     }
 }
 
-void Socket::Client::send(const std::string& message) {
+void Socket::Client::send(const pipes::buffer_view& message) {
     {
         lock_guard<mutex> lock(this->buffer_lock);
-        this->buffer_write.push_back(message);
+        this->buffer_write.push_back(message.own_buffer());
     }
     event_add(this->event_write, nullptr);
 }

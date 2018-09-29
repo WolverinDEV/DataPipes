@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_MACOSX_RPATH 1)
 # Custom CMake modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O2")
 
 # Find packages
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -31,6 +31,8 @@ set(HEADER_FILES
 		include/ws.h
 		include/sctp.h
 		include/tls.h
+		include/buffer.h
+		include/allocator.h
 
 		#Helpers
 		include/misc/http.h
@@ -53,6 +55,9 @@ set(SOURCE_FILES
         src/ssl/ssl_bio.cpp
 
 		src/ws.cpp
+
+		src/buffer.cpp
+		src/allocator.cpp
 
         src/http/http.cpp
 
@@ -111,4 +116,7 @@ if(BUILD_TESTS)
 
 	add_executable(DataPipes-Test-rtc-audio test/rtc/rtc_test_audio.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
 	target_link_libraries(DataPipes-Test-rtc-audio ${TEST_LIBRARIES})
+
+	add_executable(DataPipes-Test-buffers test/buffer.cpp)
+	target_link_libraries(DataPipes-Test-buffers ${TEST_LIBRARIES})
 endif()

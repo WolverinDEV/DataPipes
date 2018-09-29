@@ -6,6 +6,7 @@
 #include <memory>
 #include <utility>
 #include "misc/logger.h"
+#include "buffer.h"
 
 namespace pipes {
 	enum ProcessResult {
@@ -22,22 +23,21 @@ namespace pipes {
 	};
 
 	namespace impl {
-		extern size_t buffer_bytes_available(std::deque<std::string> &queue);
-
-		extern size_t buffer_peek_bytes(std::deque<std::string> &queue, char *result, size_t length);
-
-		extern size_t buffer_read_bytes(std::deque<std::string> &queue, char *result, size_t length);
+		extern size_t buffer_bytes_available(std::deque<buffer> &queue);
+		extern size_t buffer_peek_bytes(std::deque<buffer> &queue, char *result, size_t length);
+		extern size_t buffer_read_bytes(std::deque<buffer> &queue, char *result, size_t length);
 	}
 
 	template<typename WriteType>
 	class Pipeline {
 			//fnc := function callback
-			typedef std::function<void(const std::string &)> fnc_write;
+			typedef std::function<void(const std::string &)> fnc_write_lagacy;
+			typedef std::function<void(const buffer_view &)> fnc_write;
 			typedef std::function<void(int /* error code */, const std::string & /* additional message */)> fnc_error;
 			using cb_data = std::function<void(const WriteType & /* data */)>;
 
 		public:
-			Pipeline(std::string name) : _name(std::move(name)) {}
+			explicit Pipeline(std::string name) : _name(std::move(name)) {}
 
 			inline std::string name() { return this->_name; }
 
@@ -74,10 +74,11 @@ namespace pipes {
 					this->process_direct_out = flag;
 			}
 
-			virtual ProcessResult process_incoming_data(const std::string &data) {
+
+			virtual ProcessResult process_incoming_data(const buffer_view &data) {
 				{
 					std::lock_guard<std::mutex> lock(this->buffer_lock);
-					this->read_buffer.push_back(data);
+					this->read_buffer.push_back(data.own_buffer());
 				}
 
 				if (this->process_direct_in)
@@ -118,6 +119,14 @@ namespace pipes {
 
 			void logger(const std::shared_ptr<pipes::Logger> &logger) { this->_logger = logger; }
 
+			__attribute_deprecated__ void callback_write(const fnc_write_lagacy &callback) { /* for std::string */
+				this->_callback_write = [callback](const buffer_view& buffer) {
+					callback(buffer.string());
+				};
+			}
+			__attribute_deprecated__ virtual ProcessResult process_incoming_data(const std::string &data) {
+				return this->process_incoming_data(buffer((void*) data.data(), data.length()));
+			}
 		protected:
 			virtual ProcessResult process_data_in() = 0;
 
@@ -125,7 +134,7 @@ namespace pipes {
 
 			std::shared_ptr<pipes::Logger> _logger;
 			std::mutex buffer_lock;
-			std::deque<std::string> read_buffer;
+			std::deque<buffer> read_buffer;
 
 			inline size_t buffer_read_bytes_available() {
 				std::lock_guard<std::mutex> lock(this->buffer_lock);
@@ -148,7 +157,7 @@ namespace pipes {
 
 			fnc_error _callback_error = [](int, const std::string &) {};
 			cb_data _callback_data = [](const WriteType &) {};
-			fnc_write _callback_write = [](const std::string &) {};
+			fnc_write _callback_write;
 
 
 			bool process_direct_in = false;

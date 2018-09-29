@@ -126,14 +126,16 @@ Content-Security-Policy: upgrade-insecure-requests
 int WebSocket::process_handshake() {
     {
         size_t chunk_length = 1024;
-        auto chunk = unique_ptr<char, decltype(::free)*>((char*) malloc(chunk_length), ::free);
-        while((chunk_length = this->buffer_read_read_bytes(chunk.get(), chunk_length)) > 0)
-            handshake_buffer += string(chunk.get(), chunk_length);
+        buffer chunk(chunk_length);
+        while((chunk_length = this->buffer_read_read_bytes((char*) chunk.data_ptr(), chunk_length)) > 0)
+            handshake_buffer += chunk.range(0, chunk_length);
     }
-    if(handshake_buffer.find("\r\n\r\n") == std::string::npos) return PERROR_NO_DATA; //Not full header!
+
+    auto header_end = handshake_buffer.find("\r\n\r\n");
+    if(header_end == std::string::npos) return PERROR_NO_DATA; //Not full header!
 
     {
-        auto overhead = this->handshake_buffer.substr(handshake_buffer.find("\r\n\r\n") + 4);
+        auto overhead = this->handshake_buffer.range(header_end + 4); //TODO drop header here!
         if(overhead.length() > 0) {
             lock_guard<mutex> lock(this->buffer_lock);
             this->read_buffer.push_front(overhead);
@@ -146,7 +148,7 @@ int WebSocket::process_handshake() {
 	bool success = false;
 
 
-    if(!http::parse_request(handshake_buffer, header)) return PERROR_HTTP_INVALID_HEADER;
+    if(!http::parse_request(handshake_buffer.string(), header)) return PERROR_HTTP_INVALID_HEADER;
     //Missing required keys
     if(!header.findHeader("Connection")) {
         response.code = http::code::code(501, "No type");
@@ -189,7 +191,8 @@ int WebSocket::process_handshake() {
 	success = true;
 
     sendResponse:
-    this->_callback_write(response.build());
+	auto resp = response.build();
+    this->_callback_write(buffer_view((void*) resp.data(), resp.length()));
 
 	if(success) {
 		this->state = WebSocketState::CONNECTED;
@@ -213,7 +216,7 @@ struct WSFrame {
     uint64_t payloadLength = 0;
     uint8_t maskKey[4] = {0, 0, 0, 0};
 
-    std::string data;
+    buffer data;
 };
 
 
@@ -247,21 +250,24 @@ bool WebSocket::process_frame() {
 
     if(this->buffer_read_bytes_available() < this->current_frame->payloadLength) return false; //We need more data
 
-    auto buffer = unique_ptr<char, decltype(::free)*>((char*) malloc(this->current_frame->payloadLength), ::free);
-    auto read = this->buffer_read_read_bytes(buffer.get(), this->current_frame->payloadLength);
+	{
+		buffer buffer(this->current_frame->payloadLength);
+		auto read = this->buffer_read_read_bytes((char*) buffer.data_ptr(), this->current_frame->payloadLength);
 
-    if(read < this->current_frame->payloadLength) {
-    	LOG_ERROR(this->_logger, "WebSocket::process_frame", "Failed to read full payload. Only read %i out of %i, but we already ensured the availability of the data!", read, this->current_frame->payloadLength);
-        return false;
-    }
-    this->current_frame->data = string(buffer.get(), read);
+		if(read < this->current_frame->payloadLength) {
+			LOG_ERROR(this->_logger, "WebSocket::process_frame", "Failed to read full payload. Only read %i out of %i, but we already ensured the availability of the data!", read, this->current_frame->payloadLength);
+			return false;
+		}
+
+		this->current_frame->data = std::move(buffer);
+	}
 
     if(this->current_frame->head.mask) {
         for(size_t j = 0; j < this->current_frame->data.length(); j++)
             this->current_frame->data[j] = this->current_frame->data[j] ^ this->current_frame->maskKey[j % 4];
     }
     if(this->current_frame->head.opcode == 0x08) { //Disconnect!
-        this->on_disconnect(this->current_frame->data);
+        this->on_disconnect(this->current_frame->data.string());
         return true;
     }
 
@@ -273,9 +279,10 @@ bool WebSocket::process_frame() {
 }
 
 void WebSocket::disconnect(int code, const std::string &reason) {
-	char buffer[2];
-	le2be16(code, buffer);
-	this->send({OpCode::CLOSE, string(buffer, 2) + reason});
+	buffer buf(2 + reason.length());
+	le2be16(code, (char*) buf.data_ptr());
+	buf.write((void*) reason.data(), reason.length(), 2);
+	this->send({OpCode::CLOSE, buf});
 }
 
 ProcessResult WebSocket::process_data_out() {
@@ -297,16 +304,16 @@ ProcessResult WebSocket::process_data_out() {
     else if(lenLen == 2) head.len = 126;
     else if(lenLen == 8) head.len = 127;
 
-    string buffer;
-    buffer.resize(sizeof(WSHead) + lenLen + message.data.length(), '\0'); //Allocate buffer :)
+    buffer buffer;
+    buffer.resize(sizeof(WSHead) + lenLen + message.data.length()); //Allocate buffer :)
 
-    le2be16(*(uint16_t*) &head, const_cast<char *>(buffer.data()), 0);
+    le2be16(*(uint16_t*) &head, (char*) buffer.data_ptr(), 0);
     if(lenLen == 2)
-        le2be16(static_cast<uint16_t>(message.data.length()), const_cast<char *>(buffer.data()), sizeof(WSHead));
+        le2be16(static_cast<uint16_t>(message.data.length()), (char*) buffer.data_ptr(), sizeof(WSHead));
     else if(lenLen == 8)
-        le2be64(message.data.length(), const_cast<char *>(buffer.data()), sizeof(WSHead));
+        le2be64(message.data.length(), (char*) buffer.data_ptr(), sizeof(WSHead));
 
-    memcpy((void *) &buffer.data()[sizeof(WSHead) + lenLen], message.data.data(), message.data.length());
+    memcpy(&buffer[sizeof(WSHead) + lenLen], message.data.data_ptr(), message.data.length());
 
     this->_callback_write(buffer);
 

@@ -1,6 +1,7 @@
+#!/usr/bin/env bash
 cd libraries/srtp
 if [ -d build ]; then
-	rm -r build
+	sudo rm -r build
 fi
 mkdir build && cd build
 ../configure

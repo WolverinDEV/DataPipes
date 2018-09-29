@@ -5,6 +5,7 @@
 #include <deque>
 #include <thread>
 #include <mutex>
+#include "include/buffer.h"
 #include "../misc/logger.h"
 
 extern "C" {
@@ -19,7 +20,7 @@ namespace rtc {
 
 	typedef uint32_t StreamId;
 	struct NiceStream {
-		typedef std::function<void(const std::string&)> cb_recive;
+		typedef std::function<void(const pipes::buffer_view&)> cb_recive;
 		typedef std::function<void()> cb_ready;
 
 		uint32_t stream_id = 0xFFFF;
@@ -75,7 +76,7 @@ namespace rtc {
 			std::deque<std::unique_ptr<LocalSdpEntry>> generate_local_sdp(bool /* with candidates */);
 
 
-			bool send_data(guint /* stream */, guint /* component */, const std::string& /* buffer */);
+			bool send_data(guint /* stream */, guint /* component */, const pipes::buffer_view& /* buffer */);
 
 			void set_callback_local_candidate(const cb_candidate& /* callback */);
 			void set_callback_failed(const cb_failed& /* callback */);

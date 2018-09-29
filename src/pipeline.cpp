@@ -5,7 +5,7 @@
 using namespace pipes;
 using namespace std;
 
-size_t impl::buffer_bytes_available(deque<string> &queue) {
+size_t impl::buffer_bytes_available(deque<buffer> &queue) {
     size_t result = 0;
 
     for(const auto& entry : queue)
@@ -14,15 +14,15 @@ size_t impl::buffer_bytes_available(deque<string> &queue) {
     return result;
 }
 
-size_t impl::buffer_peek_bytes(deque<string> &queue, char* result, size_t length) {
+size_t impl::buffer_peek_bytes(deque<buffer> &queue, char* result, size_t length) {
     size_t read = 0;
     auto it = queue.begin();
     while(read < length && it != queue.end()) {
         if(length - read >= it->length()) {
-            memcpy(result + read, it->data(), it->length());
+            memcpy(result + read, it->data_ptr(), it->length());
             read += it->length();
         } else {
-            memcpy(result + read, it->data(), length - read);
+            memcpy(result + read, it->data_ptr(), length - read);
             read += length - read;
         }
         it++;
@@ -30,18 +30,18 @@ size_t impl::buffer_peek_bytes(deque<string> &queue, char* result, size_t length
     return read;
 }
 
-size_t impl::buffer_read_bytes(deque<string> &queue, char* result, size_t length) {
+size_t impl::buffer_read_bytes(deque<buffer> &queue, char* result, size_t length) {
     size_t read = 0;
     auto it = queue.begin();
     while(read < length && it != queue.end()) {
         if(it->length() == 0) it++;
         else if(length - read >= it->length()) {
-            memcpy(result + read, it->data(), it->length());
+            memcpy(result + read, it->data_ptr(), it->length());
             read += it->length();
             it++;
         } else {
-            memcpy(result + read, it->data(), length - read);
-            *it = it->substr(length - read);
+            memcpy(result + read, it->data_ptr(), length - read);
+            *it = it->range(length - read);
             read += length - read;
         }
     }

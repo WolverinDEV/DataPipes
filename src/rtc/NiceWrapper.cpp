@@ -242,11 +242,11 @@ void NiceWrapper::finalize() {
 	this->agent.reset();
 }
 
-bool NiceWrapper::send_data(guint stream, guint component, const std::string &data) {
+bool NiceWrapper::send_data(guint stream, guint component, const pipes::buffer_view &data) {
 	if(!this->agent.get()) return false;
 	//LOG_DEBUG(this->_logger, "NiceWrapper::send_data", "Sending on stream %i component %i", stream, component);
 
-	auto result = nice_agent_send(this->agent.get(), stream, component, data.length(), data.data());
+	auto result = nice_agent_send(this->agent.get(), stream, component, data.length(), (gchar*) data.data_ptr());
 	if(result < 0 || (size_t) result != data.length()) {
 		LOG_ERROR(this->_logger, "NiceWrapper::send_data", "Failed to send data to agent! (Expected length: %i Recived length: %i)", data.length(), result);
 		return false;
@@ -271,7 +271,7 @@ void NiceWrapper::on_data_received(guint stream_id, guint component_id, void *da
 		return;
 	}
 	if(stream->callback_receive)
-		stream->callback_receive(string((const char*) data, length));
+		stream->callback_receive(pipes::buffer_view{data, length});
 }
 
 void NiceWrapper::on_gathering_done(guint stream_id) {

@@ -1,6 +1,6 @@
 cd libraries/usrsctp/
 if [ -d build ]; then
-	rm -r build
+	sudo rm -r build
 fi
 mkdir build && cd build
 cmake .. -DCMAKE_C_FLAGS="-fPIC"

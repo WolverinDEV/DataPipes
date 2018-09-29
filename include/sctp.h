@@ -5,7 +5,7 @@
 
 namespace pipes {
 	struct SCTPMessage {
-		std::string data;
+		buffer_view data;
 		uint16_t channel_id;
 		uint32_t ppid;
 	};
@@ -30,8 +30,8 @@ namespace pipes {
 			ProcessResult process_data_in() override;
 			ProcessResult process_data_out() override;
 
-			virtual int on_data_out(const std::string& /* data */);
-			virtual int on_data_in(const std::string& /* data */, struct sctp_rcvinfo recv_info, int flags);
+			virtual int on_data_out(const buffer_view& /* data */);
+			virtual int on_data_in(const buffer_view& /* data */, struct sctp_rcvinfo recv_info, int flags);
 			virtual int on_disconnect();
 		private:
 			std::recursive_mutex io_lock;

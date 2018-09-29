@@ -22,12 +22,12 @@ bool MergedStream::initialize(std::string &error) {
 		this->dtls->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
 		this->dtls->logger(this->config->logger);
 
-		this->dtls->callback_data([&](const string& data) {
+		this->dtls->callback_data([&](const pipes::buffer_view& data) {
 			LOG_VERBOSE(this->config->logger, "MergedStream::dtls", "Decoded %i bytes", data.length());
 			if(this->_owner->stream_application)
 				this->_owner->stream_application->process_incoming_data(data);
 		});
-		this->dtls->callback_write([&](const string& data) {
+		this->dtls->callback_write([&](const pipes::buffer_view& data) {
 			LOG_VERBOSE(this->config->logger, "MergedStream::dtls", "Encoded %i bytes", data.length());
 			this->send_data(data);
 		});
@@ -57,7 +57,7 @@ bool MergedStream::reset(std::string &error) {
 	return true;
 }
 
-void MergedStream::send_data_dtls(const std::string &data) {
+void MergedStream::send_data_dtls(const pipes::buffer_view &data) {
 	this->dtls->send(data);
 }
 
@@ -86,10 +86,10 @@ StreamType MergedStream::type() const {
 }
 
 
-void MergedStream::process_incoming_data(const std::string &data) {
+void MergedStream::process_incoming_data(const pipes::buffer_view &data) {
 	//FIXME in.length() >= sizeof(protocol::rtcp_header
 	//FIXME in.length() >= sizeof(protocol::rtp_header)
-	if (pipes::SSL::is_ssl((u_char*) data.data()) || (!protocol::is_rtp((void*) data.data()) && !protocol::is_rtcp((void*) data.data()))) {
+	if (pipes::SSL::is_ssl((u_char*) data.data_ptr()) || (!protocol::is_rtp((void*) data.data_ptr()) && !protocol::is_rtcp((void*) data.data_ptr()))) {
 		this->dtls->process_incoming_data(data);
 		return;
 	}
@@ -97,11 +97,11 @@ void MergedStream::process_incoming_data(const std::string &data) {
 		LOG_VERBOSE(this->config->logger, "MergedStream::process_incoming_data", "incoming %i bytes", data.length());
 		this->dtls->process_incoming_data(data);
 	} else {
-		if(protocol::is_rtp((void*) data.data())) {
+		if(protocol::is_rtp((void*) data.data_ptr())) {
 			if(this->_owner->stream_audio)
 				this->_owner->stream_audio->process_rtp_data(data);
 			else; //TODO log error
-		} else if(protocol::is_rtcp((void*) data.data())) {
+		} else if(protocol::is_rtcp((void*) data.data_ptr())) {
 			if(this->_owner->stream_audio)
 				this->_owner->stream_audio->process_rtcp_data(data);
 			else; //TODO log error

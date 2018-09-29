@@ -212,10 +212,10 @@ bool AudioStream::initialize(std::string &error) {
 		this->dtls->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
 		this->dtls->logger(this->config->logger);
 
-		this->dtls->callback_data([&](const string& data) {
+		this->dtls->callback_data([&](const pipes::buffer_view& data) {
 			LOG_VERBOSE(this->config->logger, "AudioStream::dtls", "Got incoming bytes (%i). This should never happen!", data.length());
 		});
-		this->dtls->callback_write([&](const string& data) {
+		this->dtls->callback_write([&](const pipes::buffer_view& data) {
 			LOG_VERBOSE(this->config->logger, "AudioStream::dtls", "outgoing %i bytes", data.length());
 			this->send_data(data);
 		});
@@ -578,8 +578,8 @@ StreamType AudioStream::type() const {
 }
 
 
-void AudioStream::process_incoming_data(const std::string &in) {
-	if (pipes::SSL::is_ssl((u_char*) in.data()) || (!protocol::is_rtp((void*) in.data()) && !protocol::is_rtcp((void*) in.data()))) {
+void AudioStream::process_incoming_data(const pipes::buffer_view&in) {
+	if (pipes::SSL::is_ssl((u_char*) in.data_ptr()) || (!protocol::is_rtp((void*) in.data_ptr()) && !protocol::is_rtcp((void*) in.data_ptr()))) {
 		if(!this->dtls) {
 			LOG_VERBOSE(this->config->logger, "AudioStream::process_incoming_data", "Got %i incoming bytes of dtls, which isnt supported!", in.length());
 		} else {
@@ -591,9 +591,9 @@ void AudioStream::process_incoming_data(const std::string &in) {
 		LOG_VERBOSE(this->config->logger, "AudioStream::process_incoming_data", "incoming %i bytes", in.length());
 		this->dtls->process_incoming_data(in);
 	} else {
-		if(in.length() >= sizeof(protocol::rtp_header) && protocol::is_rtp((void*) in.data())) {
+		if(in.length() >= sizeof(protocol::rtp_header) && protocol::is_rtp((void*) in.data_ptr())) {
 			this->process_rtp_data(in);
-		} else if(in.length() >= sizeof(protocol::rtcp_header) && protocol::is_rtcp((void*) in.data()))
+		} else if(in.length() >= sizeof(protocol::rtcp_header) && protocol::is_rtcp((void*) in.data_ptr()))
 			this->process_rtcp_data(in);
 		else {
 			LOG_ERROR(this->config->logger, "AudioStream::process_incoming_data", "Got invalid packet (Unknown type)!");
@@ -601,15 +601,15 @@ void AudioStream::process_incoming_data(const std::string &in) {
 		}
 	}
 }
-ssize_t protocol::rtp_payload_offset(const std::string& data, size_t max_length) {
+ssize_t protocol::rtp_payload_offset(const pipes::buffer_view& data, size_t max_length) {
 	if(data.length() < 12) return -1;
 
-	auto header = (protocol::rtp_header *) data.data();
+	auto header = (protocol::rtp_header *) data.data_ptr();
 	size_t header_length = 12; /* without variable ssrc and extentions */
 	if(header->csrccount > 0)
 		header_length += header->csrccount * 4;
 	if(header->extension) {
-		auto header_extension = (protocol::rtp_header_extension*) &data.data()[header_length];
+		auto header_extension = (protocol::rtp_header_extension*) &data[header_length];
 		auto extension_length = be16toh(header_extension->length);
 		header_length += extension_length * 4 + sizeof(protocol::rtp_header_extension);
 	}
@@ -617,7 +617,7 @@ ssize_t protocol::rtp_payload_offset(const std::string& data, size_t max_length)
 	return header_length > max_length ? -1 : header_length;
 }
 
-int protocol::rtp_header_extension_parse_audio_level(const std::string& buffer, int id, int *level) {
+int protocol::rtp_header_extension_parse_audio_level(const pipes::buffer_view& buffer, int id, int *level) {
 	uint8_t byte = 0;
 	if(protocol::rtp_header_extension_find(buffer, id, &byte, NULL, NULL) < 0)
 		return -1;
@@ -630,15 +630,15 @@ int protocol::rtp_header_extension_parse_audio_level(const std::string& buffer, 
 }
 
 /* Static helper to quickly find the extension data */
-int protocol::rtp_header_extension_find(const std::string& buffer, int id, uint8_t *byte, uint32_t *word, char **ref) {
+int protocol::rtp_header_extension_find(const pipes::buffer_view& buffer, int id, uint8_t *byte, uint32_t *word, char **ref) {
 	if(buffer.length() < 12)
 		return -1;
-	auto* rtp = (protocol::rtp_header *) buffer.data();
+	auto* rtp = (protocol::rtp_header *) buffer.data_ptr();
 	int hlen = 12;
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
 	if(rtp->extension) {
-		auto ext = (protocol::rtp_header_extension *)(buffer.data() + hlen);
+		auto ext = (protocol::rtp_header_extension *)(buffer.data_ptr() + hlen);
 		int extlen = ntohs(ext->length)*4;
 		hlen += 4;
 		if(buffer.length() > (hlen + extlen)) {
@@ -661,7 +661,7 @@ int protocol::rtp_header_extension_find(const std::string& buffer, int id, uint8
 						if(byte)
 							*byte = buffer[hlen+i+1];
 						if(word)
-							*word = ntohl(*(uint32_t *)(buffer.data()+hlen+i));
+							*word = ntohl(*(uint32_t *)(buffer.data_ptr()+hlen+i));
 						if(ref)
 							*ref = (char*) &buffer[hlen+i];
 						return 0;
@@ -677,15 +677,15 @@ int protocol::rtp_header_extension_find(const std::string& buffer, int id, uint8
 
 //#define ENABLE_PROTOCOL_LOGGING
 extern void alsa_replay(void* data, size_t length);
-void AudioStream::process_rtp_data(const std::string &in) {
+void AudioStream::process_rtp_data(const pipes::buffer_view&in) {
 	if(!this->srtp_in_ready) {
 		LOG_ERROR(this->config->logger, "AudioStream::process_rtp_data", "Got too early packet!");
 		return;
 	}
 
-	auto header = (protocol::rtp_header*) in.data();
+	auto header = (protocol::rtp_header*) in.data_ptr();
 	int buflen = in.length();
-	srtp_err_status_t res = srtp_unprotect(this->srtp_in, (void*) in.data(), &buflen);
+	srtp_err_status_t res = srtp_unprotect(this->srtp_in, (void*) in.data_ptr(), &buflen);
 	if(res != srtp_err_status_ok) {
 		if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 			/* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */
@@ -744,10 +744,10 @@ void AudioStream::process_rtp_data(const std::string &in) {
 	}
 
 	if(this->incoming_data_handler)
-		this->incoming_data_handler(channel, in.substr(0, buflen), payload_offset); //TODO Avoid copy here? Use C++17 std::string_view?
+		this->incoming_data_handler(channel, in.view(0, buflen), payload_offset); //TODO Avoid copy here? Use C++17 std::string_view?
 }
 
-bool AudioStream::send_rtp_data(const shared_ptr<AudioChannel> &stream, const std::string &data, uint32_t timestamp) {
+bool AudioStream::send_rtp_data(const shared_ptr<AudioChannel> &stream, const pipes::buffer_view &data, uint32_t timestamp) {
 	static_assert(sizeof(protocol::rtp_header) == 12, "Invalid structure size");
 	static_assert(sizeof(protocol::rtp_header_extension) == 4, "Invalid structure size");
 	if(!this->srtp_out_ready) {
@@ -762,8 +762,8 @@ bool AudioStream::send_rtp_data(const shared_ptr<AudioChannel> &stream, const st
 	auto allocated = sizeof(protocol::rtp_header) + (sizeof(protocol::rtp_header_extension) + 4) + data.length() + SRTP_MAX_TRAILER_LEN;
 	allocated += allocated % 4; //Align 32 bits
 
-	auto buffer = string(allocated, '\0');
-	auto header = (protocol::rtp_header*) buffer.data();
+	pipes::buffer buffer(allocated);
+	auto header = (protocol::rtp_header*) buffer.data_ptr();
 
 	header->type = stream->codec->id;
 	header->ssrc = htobe32(stream->ssrc);
@@ -780,7 +780,7 @@ bool AudioStream::send_rtp_data(const shared_ptr<AudioChannel> &stream, const st
 
 	if(header->extension) { //FIXME make this configurable?
 		offset_payload += 4 + sizeof(protocol::rtp_header_extension);
-		auto extension = (protocol::rtp_header_extension*) &buffer.data()[sizeof(protocol::rtp_header)];
+		auto extension = (protocol::rtp_header_extension*) &buffer[sizeof(protocol::rtp_header)];
 		extension->length = htobe16(1);
 		extension->type = htobe16(0xBEDE);
 		extension->data[0] = 0x10; //upper: type lower: len
@@ -789,34 +789,34 @@ bool AudioStream::send_rtp_data(const shared_ptr<AudioChannel> &stream, const st
 		extension->data[3] = 0;
 	}
 
-	memcpy((void*) &buffer.data()[offset_payload], data.data(), data.length());
+	memcpy((void*) &buffer[offset_payload], data.data_ptr(), data.length());
 
 	auto org_buflen = offset_payload + data.length();
 	auto buflen = org_buflen; //SRTP_MAX_TRAILER_LEN
-	srtp_err_status_t res = srtp_protect(this->srtp_out, (void*) buffer.data(), (int*) &buflen);
+	srtp_err_status_t res = srtp_protect(this->srtp_out, (void*) buffer.data_ptr(), (int*) &buflen);
 	if(res != srtp_err_status_ok) {
 		if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 			LOG_ERROR(this->config->logger, "AudioStream::process_rtp_data", "Failed to protect srtp packet. Error: %i (len=%i --> %i)", res, buffer.length(), buflen);
 			return false;
 		}
 	}
-	assert(buffer.size() >= buflen);
+	assert(buffer.length() >= buflen);
 #ifdef ENABLE_PROTOCOL_LOGGING
 	LOG_ERROR(this->config->logger, "AudioStream::process_srtp_data", "Protect succeeed %i (len=%i --> %i | len_org=%i)", res, buffer.length(), buflen, org_buflen);
 #endif
 
 	if(this->_stream_id > 0)
-		this->send_data(buffer.substr(0, buflen)); //TODO Avoid copy here? Use C++17 std::string_view?
+		this->send_data(buffer.view(0, buflen)); //TODO Avoid copy here? Use C++17 std::string_view?
 	else
-		this->send_data_merged(buffer.substr(0, buflen), false);
+		this->send_data_merged(buffer.view(0, buflen), false);
 	return true;
 }
 
-void AudioStream::process_rtcp_data(const std::string &in) {
-	auto header = (protocol::rtcp_header*) in.data();
+void AudioStream::process_rtcp_data(const pipes::buffer_view&in) {
+	auto header = (protocol::rtcp_header*) in.data_ptr();
 
 	auto buflen = in.length();
-	srtp_err_status_t res = srtp_unprotect_rtcp(this->srtp_in, (void*) in.data(), (int*) &buflen);
+	srtp_err_status_t res = srtp_unprotect_rtcp(this->srtp_in, (void*) in.data_ptr(), (int*) &buflen);
 	if(res != srtp_err_status_ok) {
 		if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 			/* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */

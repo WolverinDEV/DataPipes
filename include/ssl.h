@@ -11,7 +11,7 @@ namespace pipes {
 		SSL_STATE_UNDEFINED
 	};
 
-	class SSL : public Pipeline<std::string> {
+	class SSL : public Pipeline<buffer_view> {
 		public:
 			typedef std::function<void()> InitializedHandler;
 

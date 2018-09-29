@@ -37,7 +37,7 @@ std::string DataChannel::protocol() const { return this->_protocol; }
 std::string DataChannel::lable() const { return this->_lable; }
 DataChannel::DataChannel(ApplicationStream* owner, uint16_t id, std::string lable, std::string protocol) : owner(owner), _id(id), _lable(std::move(lable)), _protocol(std::move(protocol)) {}
 
-void DataChannel::send(const std::string &message, rtc::DataChannel::MessageType type) {
+void DataChannel::send(const pipes::buffer_view &message, rtc::DataChannel::MessageType type) {
 	int ppid_type = 0;
 	if(type == DataChannel::BINARY)
 		ppid_type = message.empty() ? PPID_BINARY_EMPTY : PPID_BINARY;
@@ -66,11 +66,11 @@ bool ApplicationStream::initialize(std::string &error) {
 		this->dtls->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
 		this->dtls->logger(this->config->logger);
 
-		this->dtls->callback_data([&](const string& data) {
+		this->dtls->callback_data([&](const pipes::buffer_view& data) {
 			LOG_VERBOSE(this->config->logger, "ApplicationStream::sctp", "incoming %i bytes", data.length());
 			this->sctp->process_incoming_data(data);
 		});
-		this->dtls->callback_write([&](const string& data) {
+		this->dtls->callback_write([&](const pipes::buffer_view& data) {
 			LOG_VERBOSE(this->config->logger, "ApplicationStream::dtls", "outgoing %i bytes", data.length());
 			this->send_data(data);
 		});
@@ -100,7 +100,7 @@ bool ApplicationStream::initialize(std::string &error) {
 		this->sctp->callback_error([&](int code, const std::string& error) {
 			LOG_ERROR(this->config->logger, "ApplicationStream::sctp", "Got error (%i): %s", code, error.c_str());
 		});
-		this->sctp->callback_write([&](const std::string& data) {
+		this->sctp->callback_write([&](const pipes::buffer_view& data) {
 			LOG_VERBOSE(this->config->logger, "ApplicationStream::sctp", "outgoing %i bytes", data.length());
 			if(this->dtls)
 				this->dtls->send(data);
@@ -394,7 +394,7 @@ bool ApplicationStream::reset(std::string &) {
 	return true;
 }
 
-void ApplicationStream::process_incoming_data(const std::string &data) {
+void ApplicationStream::process_incoming_data(const pipes::buffer_view &data) {
 	if(this->dtls)
 		this->dtls->process_incoming_data(data);
 	else
@@ -455,7 +455,7 @@ void ApplicationStream::handle_sctp_event(union sctp_notification* event) {
 }
 
 void ApplicationStream::send_sctp_event(uint16_t channel_id, union sctp_notification* event) {
-	this->send_sctp({string((const char *) event, event->sn_header.sn_length), channel_id, MSG_NOTIFICATION});
+	this->send_sctp({pipes::buffer_view{(void *) event, event->sn_header.sn_length}, channel_id, MSG_NOTIFICATION});
 }
 
 void ApplicationStream::handle_event_stream_reset(struct sctp_stream_reset_event &ev) {
@@ -493,7 +493,7 @@ void ApplicationStream::handle_sctp_message(const pipes::SCTPMessage &message) {
 	LOG_VERBOSE(this->config->logger, "ApplicationStream::handle_sctp_message", "got new message of type %i for channel %i", message.ppid, message.channel_id);
 	if (message.ppid == PPID_CONTROL) {
 		if (message.data[0] == DC_TYPE_OPEN) {
-			this->handle_datachannel_new(message.channel_id, message.data.substr(1));
+			this->handle_datachannel_new(message.channel_id, message.data.view(1));
 		} else if (message.data[0] == DC_TYPE_ACK) {
 			this->handle_datachannel_ack(message.channel_id);
 		} else {
@@ -518,23 +518,23 @@ struct dc_new {
 };
 
 
-void ApplicationStream::handle_datachannel_new(uint16_t channel_id, const std::string &message) {
+void ApplicationStream::handle_datachannel_new(uint16_t channel_id, const pipes::buffer_view &message) {
 	if(this->active_channels.size() >= this->config->max_data_channels) { return; } //TODO error?
 	if(sizeof(dc_new_header) > message.length()) return;
 
 	dc_new packet{};
 	packet.header.channel_type = (uint8_t) message[0];
-	packet.header.priority = be2le16(message.data(), 1);
-	packet.header.reliability = be2le32(message.data(), 3);
-	packet.header.length_label = be2le16(message.data(), 7);
-	packet.header.length_protocol = be2le16(message.data(), 9);
+	packet.header.priority = be2le16((char*) message.data_ptr(), 1);
+	packet.header.reliability = be2le32((char*) message.data_ptr(), 3);
+	packet.header.length_label = be2le16((char*) message.data_ptr(), 7);
+	packet.header.length_protocol = be2le16((char*) message.data_ptr(), 9);
 
 
-	if(sizeof(packet.header) + packet.header.length_label + packet.header.length_protocol != message.size())
+	if(sizeof(packet.header) + packet.header.length_label + packet.header.length_protocol != message.length())
 		return;
 
-	packet.label = message.substr(sizeof(packet.header), packet.header.length_label);
-	packet.protocol = message.substr(sizeof(packet.header) + packet.header.length_label, packet.header.length_protocol);
+	packet.label = message.view(sizeof(packet.header), packet.header.length_label).string();
+	packet.protocol = message.view(sizeof(packet.header) + packet.header.length_label, packet.header.length_protocol).string();
 
 	auto channel = shared_ptr<DataChannel>(new DataChannel(this, channel_id, packet.label, packet.protocol));
 	this->active_channels[channel_id] = channel;
@@ -544,7 +544,7 @@ void ApplicationStream::handle_datachannel_new(uint16_t channel_id, const std::s
 
 	char buffer[1];
 	buffer[0] = DC_TYPE_ACK;
-	this->send_sctp({string(buffer, 1), channel_id, PPID_CONTROL}); //Acknowledge the shit
+	this->send_sctp({pipes::buffer_view(buffer, 1), channel_id, PPID_CONTROL}); //Acknowledge the shit
 
 	LOG_INFO(this->config->logger, "ApplicationStream::handle_datachannel_new", "Recived new data channel. Label: %s (Protocol: %s) ChannelId: %i (Type: %i)", packet.label.c_str(), packet.protocol.c_str(), channel_id, packet.header.channel_type);
 }
@@ -553,7 +553,7 @@ void ApplicationStream::handle_datachannel_ack(uint16_t channel_id) {
 	//TODO acknowledge for create
 }
 
-void ApplicationStream::handle_datachannel_message(uint16_t channel_id, uint32_t type, const std::string &message) {
+void ApplicationStream::handle_datachannel_message(uint16_t channel_id, uint32_t type, const pipes::buffer_view &message) {
 	auto channel = this->find_datachannel(channel_id);
 	if(!channel) return; //TODO error handling?
 

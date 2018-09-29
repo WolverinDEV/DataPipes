@@ -33,6 +33,38 @@ SSL_CTX* create_context()
 }
 
 
+const std::string currentDateTime() {
+	time_t     now = time(0);
+	struct tm  tstruct;
+	char       buf[80];
+	tstruct = *localtime(&now);
+	// Visit http://en.cppreference.com/w/cpp/chrono/c/strftime
+	// for more information about date/time format
+	strftime(buf, sizeof(buf), "%Y-%m-%d.%X", &tstruct);
+
+	return buf;
+}
+
+void log(pipes::Logger::LogLevel level, const std::string& name, const std::string& message, ...) {
+	auto max_length = 1024 * 8;
+	char buffer[max_length];
+
+	va_list args;
+	va_start(args, message);
+	max_length = vsnprintf(buffer, max_length, message.c_str(), args);
+	va_end(args);
+
+	printf("[%s][%i][%s] %s\n", currentDateTime().c_str(), level, name.c_str(), buffer);
+}
+
+auto logger = []{
+	auto logger = make_shared<pipes::Logger>();
+	logger = make_shared<pipes::Logger>();
+	logger->callback_log = log;
+	return logger;
+}();
+
+
 #define CERTIFICATE_FILE "/home/wolverindev/TeamSpeak/server/environment/default_certificate.pem"
 #define KEY_FILE "/home/wolverindev/TeamSpeak/server/environment/default_privatekey.pem"
 
@@ -148,10 +180,12 @@ void initialize_client(const std::shared_ptr<Socket::Client>& client) {
         cout << "Got data " << data << endl;
     });
 
-    ssl_pipeline->callback_write([weak](const std::string& data) -> void {
+    ssl_pipeline->callback_write([weak](const pipes::buffer_view& data) -> void {
         auto cl = weak.lock();
         if(cl) cl->send(data);
     });
+
+    ssl_pipeline->logger(logger);
 
     client->data = ssl_pipeline;
 }
@@ -162,7 +196,7 @@ int main() {
 
     Socket socket{};
     socket.callback_accept = initialize_client;
-    socket.callback_read = [](const std::shared_ptr<Socket::Client>& client, const std::string& data) {
+    socket.callback_read = [](const std::shared_ptr<Socket::Client>& client, const pipes::buffer_view& data) {
         ((pipes::SSL*) client->data)->process_incoming_data(data);
     };
     socket.callback_disconnect = [](const std::shared_ptr<Socket::Client>& client) {

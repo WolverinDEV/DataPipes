@@ -10,8 +10,8 @@ namespace rtc {
 			friend class ApplicationStream;
 		public:
 			typedef std::function<void()> cb_close;
-			typedef std::function<void(const std::string&)> cb_text;
-			typedef std::function<void(const std::string&)> cb_binary;
+			typedef std::function<void(const pipes::buffer_view&)> cb_text;
+			typedef std::function<void(const pipes::buffer_view&)> cb_binary;
 
 			enum MessageType {
 				BINARY,
@@ -29,7 +29,7 @@ namespace rtc {
 			bool readable() const { return this->read; }
 			bool writeable() const { return this->write; }
 
-			void send(const std::string& /* message */, MessageType /* type */ = BINARY);
+			void send(const pipes::buffer_view& /* message */, MessageType /* type */ = BINARY);
 			void close();
 		private:
 			DataChannel(ApplicationStream*, uint16_t id, std::string lable, std::string protocol);
@@ -78,16 +78,16 @@ namespace rtc {
 
 		private:
 			void send_sctp(const pipes::SCTPMessage & /* message */);
-			void process_incoming_data(const std::string& /* data */);
+			void process_incoming_data(const pipes::buffer_view& /* data */);
 
 			virtual void handle_sctp_message(const pipes::SCTPMessage& /* message */);
 			virtual void handle_sctp_event(union sctp_notification * /* event */);
 			void send_sctp_event(uint16_t /* channel id (useless?) */, union sctp_notification* /* event */);
 
-			virtual void handle_datachannel_new(uint16_t /* channel id */, const std::string& /* data */);
+			virtual void handle_datachannel_new(uint16_t /* channel id */, const pipes::buffer_view& /* data */);
 			virtual void handle_datachannel_ack(uint16_t /* channel id */);
 
-			virtual void handle_datachannel_message(uint16_t /* channel id */, uint32_t /* message type */, const std::string& /* message */);
+			virtual void handle_datachannel_message(uint16_t /* channel id */, uint32_t /* message type */, const pipes::buffer_view& /* message */);
 			virtual void handle_event_stream_reset(struct sctp_stream_reset_event &);
 
 			virtual void close_datachannel(DataChannel* /* channel */);

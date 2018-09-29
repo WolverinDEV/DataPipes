@@ -31,7 +31,7 @@ int(*pipes::SSL::bio_write)(BIO*, const char *, int) = [](BIO* self, const char*
 	assert(handle);
 
 	LOG_DEBUG(handle->logger(), "SSL::bio_write", "Got %p with length %i", buffer, length);
-	handle->_callback_write(std::string(buffer, length));
+	handle->_callback_write(buffer_view{(void*) buffer, length});
 	return length;
 };
 

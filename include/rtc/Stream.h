@@ -41,18 +41,18 @@ namespace rtc {
 			virtual StreamId stream_id() const { return this->_stream_id; }
 
 		protected:
-			virtual void process_incoming_data(const std::string& /* data */) = 0;
+			virtual void process_incoming_data(const pipes::buffer_view& /* data */) = 0;
 			virtual void on_nice_ready() = 0;
 			virtual void on_dtls_initialized(const std::unique_ptr<pipes::TLS>& /* handle */) = 0;
 
-			virtual void send_data(const std::string& /* data */);
-			virtual void send_data_merged(const std::string& /* data */, bool /* dtls */);
+			virtual void send_data(const pipes::buffer_view& /* data */);
+			virtual void send_data_merged(const pipes::buffer_view& /* data */, bool /* dtls */);
 
 			PeerConnection* _owner = nullptr;
 			StreamId _stream_id = 0;
 
 			bool buffer_fails = true;
-			std::deque<std::string> fail_buffer;
+			std::deque<pipes::buffer> fail_buffer;
 			virtual bool resend_buffer();
 	};
 }

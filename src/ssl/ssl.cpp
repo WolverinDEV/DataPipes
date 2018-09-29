@@ -90,18 +90,17 @@ ProcessResult pipes::SSL::process_data_in() {
 	    lock.unlock();
         this->process_data_in();
     } else if(this->sslState == SSLSocketState::SSL_STATE_CONNECTED) {
-        auto readBuffer = new char[this->readBufferSize];
-        memset(readBuffer, 0, this->readBufferSize);
         int read = 0;
         while(this->sslState == SSLSocketState::SSL_STATE_CONNECTED) { //State could be updated while message processing!
-            read = SSL_read(this->sslLayer, readBuffer, (int) this->readBufferSize);
+	        buffer read_buffer(this->readBufferSize);
+            read = SSL_read(this->sslLayer, read_buffer.data_ptr(), (int) read_buffer.capacity());
             if(read <= 0) break;
+	        read_buffer.resize(read);
 
 	        lock.unlock();
-            this->_callback_data(std::string(readBuffer, (size_t) read));
+            this->_callback_data(read_buffer);
 	        lock.lock();
         }
-        delete[] readBuffer;
     }
 
     return PROCESS_RESULT_ERROR;
@@ -112,11 +111,11 @@ ProcessResult pipes::SSL::process_data_out() {
 
     lock_guard<mutex> lock(this->lock);
     while(!this->write_buffer.empty()) {
-    	string front = this->write_buffer.front();
+    	auto front = this->write_buffer.front();
 	    this->write_buffer.pop_front();
 	    int index = 5;
 	    while(index-- > 0) {
-		    auto result = SSL_write(this->sslLayer, front.data(), front.length());
+		    auto result = SSL_write(this->sslLayer, front.data_ptr(), front.length());
 		    LOG_DEBUG(this->logger(), "SSL::process_data_out", "Write (%i): %i (bytes: %i) (empty: %i)", index, result, front.length(), this->write_buffer.size());
 		    if(result > 0) break;
 	    }

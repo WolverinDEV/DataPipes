@@ -121,7 +121,7 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 						if(this->merged_stream)
 							this->merged_stream->on_nice_ready();
 					};
-					stream->callback_receive = [&](const std::string& data) {
+					stream->callback_receive = [&](const pipes::buffer_view& data) {
 						if(this->merged_stream)
 							this->merged_stream->process_incoming_data(data);
 					};
@@ -317,7 +317,7 @@ bool PeerConnection::create_application_stream(std::string& error) {
 			return false;
 		}
 
-		stream->callback_receive = [&](const std::string& data) {
+		stream->callback_receive = [&](const pipes::buffer_view& data) {
 			if(this->stream_application)
 				this->stream_application->process_incoming_data(data);
 		};
@@ -347,7 +347,7 @@ bool PeerConnection::create_audio_stream(std::string &error) {
 			return false;
 		}
 
-		stream->callback_receive = [&](const std::string& data) {
+		stream->callback_receive = [&](const pipes::buffer_view& data) {
 			if(this->stream_audio)
 				this->stream_audio->process_incoming_data(data);
 		};

@@ -205,10 +205,10 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 		configure_context(ctx);
 		client->ssl->initialize(shared_ptr<SSL_CTX>(ctx, SSL_CTX_free), pipes::SSL::SERVER);
 
-		client->ssl->callback_data([client](const string& data) {
+		client->ssl->callback_data([client](const pipes::buffer_view& data) {
 			client->websocket->process_incoming_data(data);
 		});
-		client->ssl->callback_write([client](const string& data) {
+		client->ssl->callback_write([client](const pipes::buffer_view& data) {
 			auto cl = client->connection.lock();
 			if(cl) cl->send(data);
 		});
@@ -229,7 +229,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 			cout << "Got error: " << code << " => " << reason << endl;
 
 		});
-		client->websocket->callback_write([client](const std::string& data) -> void {
+		client->websocket->callback_write([client](const pipes::buffer_view& data) -> void {
 			if(client->ssl)
 				client->ssl->send(data);
 			else {
@@ -245,7 +245,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 			Json::Value root;
 
 			cout << "Got message " << message.data << endl;
-			if(client->reader.parse(message.data, root)) {
+			if(client->reader.parse(message.data.string(), root)) {
 				std::cout << "Got msg of type: " << root["type"] << endl;
 				if (root["type"] == "offer") {
 					cout << "Recived offer" << endl;
@@ -260,7 +260,9 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 
 						std::cout << "Sending Answer: " << answer << endl;
 
-						client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, answer)});
+						pipes::buffer buffer;
+						buffer += Json::writeString(client->json_writer, answer);
+						client->websocket->send({pipes::OpCode::TEXT, buffer});
 					}
 				} else if (root["type"] == "candidate") {
 					cout << "Apply candidates: " << client->peer->apply_ice_candidates(
@@ -292,19 +294,25 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				auto data_channel = dynamic_pointer_cast<rtc::ApplicationStream>(stream);
 				data_channel->callback_datachannel_new = [](const std::shared_ptr<rtc::DataChannel>& channel) {
 					weak_ptr<rtc::DataChannel> weak = channel;
-					channel->callback_binary = [weak](const std::string& message) {
+					channel->callback_binary = [weak](const pipes::buffer_view& message) {
 						auto chan = weak.lock();
 						cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] Got binary message " << message.length() << endl;
-						chan->send("Echo: " + message, rtc::DataChannel::BINARY);
+						pipes::buffer buf;
+						buf += "Echo (BIN): ";
+						buf += message;
+						chan->send(buf, rtc::DataChannel::BINARY);
 					};
-					channel->callback_text = [weak](const std::string& message) {
+					channel->callback_text = [weak](const pipes::buffer_view& message) {
 						auto chan = weak.lock();
-						if(message == "close") {
+						if(message.string() == "close") {
 							cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] closing channel" << endl;
 							chan->close();
 						} else {
 							cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] Got text message " << message.length() << endl;
-							chan->send("Echo: " + message, rtc::DataChannel::TEXT);
+							pipes::buffer buf;
+							buf += "Echo (TEXT): ";
+							buf += message;
+							chan->send(buf, rtc::DataChannel::TEXT);
 						}
 					};
 					channel->callback_close = [weak]() {
@@ -326,7 +334,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				astream->register_local_extension("urn:ietf:params:rtp-hdrext:ssrc-audio-level");
 
 				weak_ptr<rtc::AudioStream> weak_astream = astream;
-				astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::AudioChannel>& channel, const std::string& buffer, size_t payload_offset) {
+				astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::AudioChannel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
 					auto as = weak_astream.lock();
 					if(!as) return;
 
@@ -340,7 +348,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 						}
 					}
 
-					auto buf = buffer.substr(payload_offset);
+					auto buf = buffer.view(payload_offset);
 					auto channels = as->list_channels();
 					for(const auto& ch : channels)
 						if(ch->local)
@@ -370,7 +378,7 @@ int main() {
 
 	Socket socket{};
 	socket.callback_accept = initialize_client;
-	socket.callback_read = [](const std::shared_ptr<Socket::Client>& client, const std::string& data) {
+	socket.callback_read = [](const std::shared_ptr<Socket::Client>& client, const pipes::buffer_view& data) {
 		if(client->data) {
 			auto ptr_client = (Client*) client->data;
 			if(ptr_client->ssl)

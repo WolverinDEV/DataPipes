@@ -22,7 +22,7 @@ namespace pipes {
 
     struct WSMessage {
         OpCode code;
-        std::string data;
+        buffer data;
     };
 
     class WebSocket : public Pipeline<WSMessage> {
@@ -51,7 +51,7 @@ namespace pipes {
         ProcessResult process_data_out() override;
 
     private:
-        std::string handshake_buffer;
+        buffer handshake_buffer;
         int process_handshake();
 
         std::unique_ptr<WSFrame> current_frame;

@@ -80,9 +80,9 @@ namespace rtc {
 			return ((header->type < 64) || (header->type >= 96));
 		}
 
-		extern ssize_t rtp_payload_offset(const std::string& /* data */, size_t /* max_length */);
-		extern int rtp_header_extension_find(const std::string& /* buffer */, int id, uint8_t *byte, uint32_t *word, char **ref);
-		extern int rtp_header_extension_parse_audio_level(const std::string& /* buffer */, int id, int *level);
+		extern ssize_t rtp_payload_offset(const pipes::buffer_view& /* data */, size_t /* max_length */);
+		extern int rtp_header_extension_find(const pipes::buffer_view& /* buffer */, int id, uint8_t *byte, uint32_t *word, char **ref);
+		extern int rtp_header_extension_parse_audio_level(const pipes::buffer_view& /* buffer */, int id, int *level);
 	}
 
 	struct HeaderExtension {
@@ -154,7 +154,7 @@ namespace rtc {
 				std::shared_ptr<pipes::Logger> logger;
 			};
 			/** buffer contains the full rtp packet inc. header and extensions **/
-			typedef std::function<void(const std::shared_ptr<AudioChannel>& /* channel */, const std::string& /* buffer */, size_t /* payload offset */)> callback_data;
+			typedef std::function<void(const std::shared_ptr<AudioChannel>& /* channel */, const pipes::buffer_view& /* buffer */, size_t /* payload offset */)> callback_data;
 
 			AudioStream(PeerConnection* /* owner */, StreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
 			virtual ~AudioStream();
@@ -171,7 +171,7 @@ namespace rtc {
 			StreamType type() const override;
 
 
-			bool send_rtp_data(const std::shared_ptr<AudioChannel>& /* channel */, const std::string& /* data */, uint32_t /* timestamp */);
+			bool send_rtp_data(const std::shared_ptr<AudioChannel>& /* channel */, const pipes::buffer_view& /* data */, uint32_t /* timestamp */);
 			callback_data incoming_data_handler = nullptr;
 
 			std::deque<std::shared_ptr<codec::TypedAudio>> find_codec_by_name(const std::string& /* name */);
@@ -212,9 +212,9 @@ namespace rtc {
 			void on_nice_ready() override;
 			void on_dtls_initialized(const std::unique_ptr<pipes::TLS> &ptr) override;
 		protected:
-			void process_incoming_data(const std::string &string) override;
-			void process_rtp_data(const std::string & /* data */);
-			void process_rtcp_data(const std::string & /* data */);
+			void process_incoming_data(const pipes::buffer_view&string) override;
+			void process_rtp_data(const pipes::buffer_view & /* data */);
+			void process_rtcp_data(const pipes::buffer_view & /* data */);
 		private:
 			std::shared_ptr<Configuration> config;
 
