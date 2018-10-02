@@ -34,6 +34,8 @@ namespace pipes {
 			virtual int on_data_in(const buffer_view& /* data */, struct sctp_rcvinfo recv_info, int flags);
 			virtual int on_disconnect();
 		private:
+			bool finalized = false;
+
 			std::recursive_mutex io_lock;
 			std::recursive_mutex connect_lock;
 

@@ -36,8 +36,13 @@ void initialize_client(const std::shared_ptr<Socket::Client>& client) {
         cout << "Got message " << message.data << endl;
         auto cl = weak.lock();
         pipes::buffer buffer;
-        buffer += "You wrote: ";
-        buffer += message.data;
+	    if(message.data.string() == "longmsg") {
+		    buffer.resize(66000);
+		    memset(buffer.data_ptr(), 'H', buffer.length());
+	    } else {
+		    buffer += "You wrote: ";
+		    buffer += message.data;
+	    }
         if(cl) ((pipes::WebSocket*) cl->data)->send(pipes::WSMessage{pipes::TEXT, buffer});
     });
 

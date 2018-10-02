@@ -32,12 +32,12 @@ SCTP::~SCTP() {
 }
 
 int SCTP::cb_send(void *sctp_ptr, void *data, size_t len, uint8_t tos, uint8_t set_df) {
-	if(!sctp_ptr) return -1;
+	if(!sctp_ptr || ((SCTP*) sctp_ptr)->finalized) return -1;
 	return ((SCTP*) sctp_ptr)->on_data_out(buffer_view{data, len});
 }
 
 int SCTP::cb_read(struct socket *sock, union sctp_sockstore addr, void *data, size_t len, struct sctp_rcvinfo recv_info, int flags, void *user_data) {
-	if(!user_data) return -1;
+	if(!user_data || ((SCTP*) user_data)->finalized) return -1;
 	if(data) {
 		((SCTP*) user_data)->on_data_in(buffer_view{data, len}, recv_info, flags);
 		free(data);
@@ -80,6 +80,8 @@ bool SCTP::global_initialized = false;
 //TODO: error callbacks
 //NOTE Start learning what this magic here does?
 bool SCTP::initialize(std::string &error) {
+	this->finalized = false;
+
 	usrsctp_register_address(this);
 	sock = usrsctp_socket(AF_CONN, SOCK_STREAM, IPPROTO_SCTP, &SCTP::cb_read, nullptr, 0, this);
 	if (!sock)
@@ -142,6 +144,7 @@ bool SCTP::initialize(std::string &error) {
 }
 
 void SCTP::finalize() {
+	this->finalized = true;
 	if(this->sock) {
 		usrsctp_shutdown(this->sock, SHUT_RDWR);
 		usrsctp_close(this->sock);
@@ -208,7 +211,7 @@ int SCTP::on_data_out(const buffer_view &data) {
 
 int SCTP::on_disconnect() {
 	this->finalize();
-	this->_callback_error(1, "Disconnected!"); //FIXME Using callback disconnected
+	this->_callback_error(1, "Disconnected!?"); //FIXME Using callback disconnected
 	return 0;
 }
 
