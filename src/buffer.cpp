@@ -93,6 +93,12 @@ buffer buffer_view::own_buffer() const {
 	return buffer(*this);
 }
 
+buffer buffer_view::dup() const {
+	auto result = buffer(this->length());
+	memcpy(result.data_ptr(), this->data_ptr(), this->length());
+	return result;
+}
+
 buffer::buffer(pipes::buffer &&ref) {
 	*this = std::forward<buffer>(ref);
 }
