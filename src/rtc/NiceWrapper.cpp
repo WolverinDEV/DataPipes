@@ -186,6 +186,7 @@ std::shared_ptr<NiceStream> NiceWrapper::add_stream(const string& name) { //TODO
 		lock_guard<recursive_mutex> lock(this->streams_lock);
 		this->streams.push_back(stream);
 	}
+
 	if(!nice_agent_attach_recv(agent.get(), stream->stream_id, 1, g_main_loop_get_context(loop.get()), NiceWrapper::cb_received, this)) {
 		lock_guard<recursive_mutex> lock(this->streams_lock);
 		this->streams.erase(find(this->streams.begin(), this->streams.end(), stream));
@@ -210,7 +211,7 @@ std::shared_ptr<NiceStream> NiceWrapper::find_stream(rtc::StreamId id) {
 void NiceWrapper::finalize() {
 	std::unique_lock<std::recursive_mutex> lock(io_lock);
 
-	{
+	{ //Finish handling
 		auto context = g_main_loop_get_context(loop.get());
 		if(!g_main_context_ref(context)) {
 			//TODO error

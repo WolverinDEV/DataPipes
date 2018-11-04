@@ -2,6 +2,7 @@
 #include <cmath>
 #include <iomanip>
 #include <bitset>
+#include <cstring>
 #include <chrono>
 #include "include/buffer.h"
 
@@ -38,9 +39,21 @@ void emp() {}
 
 #define LOOPS 1024
 int main(int, char**) {
+	/*
+	{
+		buffer_view buffer("Hello World", 12);
+	}
+	 */
+	char raw_buffer[] = {'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '\0'};
+
+	buffer_view view(raw_buffer, strlen(raw_buffer));
+
+	cout << view.length() << " - " << view.empty() << " - " << view.data_ptr() << " = " << (void*) raw_buffer << endl;
+/*
+	return 0;
 	for(int i = 0; i < 9; i++) c(i);
 
-	register PagedAllocator* allocator = new PagedAllocator();
+	PagedAllocator* allocator = new PagedAllocator();
 
 	void* ptr_buffer[1024];
 	{
@@ -105,7 +118,7 @@ int main(int, char**) {
 		cout << buf.at<uint8_t, int>(2) << endl;
 		cout << buf.at<uint8_t, int>(3) << endl;
 	}
-
+*/
 	return 0;
 }
 /*

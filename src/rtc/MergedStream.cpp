@@ -28,10 +28,12 @@ bool MergedStream::initialize(std::string &error) {
 				this->_owner->stream_application->process_incoming_data(data);
 		});
 		this->dtls->callback_write([&](const pipes::buffer_view& data) {
+			/* keep in mind that peer connection streams are may read locked here */
 			LOG_VERBOSE(this->config->logger, "MergedStream::dtls", "Encoded %i bytes", data.length());
 			this->send_data(data);
 		});
 		this->dtls->callback_error([&](int code, const std::string& error) {
+			/* keep in mind that peer connection streams are may read locked here */
 			LOG_ERROR(this->config->logger, "MergedStream::dtls", "Got error (%i): %s", code, error.c_str());
 		});
 		this->dtls->callback_initialized = [&](){

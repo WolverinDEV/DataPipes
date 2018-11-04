@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <shared_mutex>
 #include "../sctp.h"
 
 namespace pipes {
@@ -45,14 +46,24 @@ namespace rtc {
 			virtual void on_nice_ready() = 0;
 			virtual void on_dtls_initialized(const std::unique_ptr<pipes::TLS>& /* handle */) = 0;
 
+			/**
+			 * @note This function is thread save
+			 */
 			virtual void send_data(const pipes::buffer_view& /* data */);
+
+			/**
+			 * @note This function is thread save
+			 */
 			virtual void send_data_merged(const pipes::buffer_view& /* data */, bool /* dtls */);
 
+			std::shared_mutex _owner_lock;
 			PeerConnection* _owner = nullptr;
 			StreamId _stream_id = 0;
 
 			bool buffer_fails = true;
+
+			std::mutex fail_buffer_lock;
 			std::deque<pipes::buffer> fail_buffer;
-			virtual bool resend_buffer();
+			virtual bool resend_buffer(bool /* lock owner */);
 	};
 }

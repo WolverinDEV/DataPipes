@@ -20,12 +20,12 @@ namespace rtc {
 
 	typedef uint32_t StreamId;
 	struct NiceStream {
-		typedef std::function<void(const pipes::buffer_view&)> cb_recive;
+		typedef std::function<void(const pipes::buffer_view&)> cb_receive;
 		typedef std::function<void()> cb_ready;
 
 		uint32_t stream_id = 0xFFFF;
 		bool ready = false;
-		cb_recive callback_receive;
+		cb_receive callback_receive;
 		cb_ready callback_ready;
 	};
 

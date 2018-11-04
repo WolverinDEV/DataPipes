@@ -638,7 +638,7 @@ int protocol::rtp_header_extension_find(const pipes::buffer_view& buffer, int id
 	if(rtp->csrccount)	/* Skip CSRC if needed */
 		hlen += rtp->csrccount*4;
 	if(rtp->extension) {
-		auto ext = (protocol::rtp_header_extension *)(buffer.data_ptr() + hlen);
+		auto ext = (protocol::rtp_header_extension *)(buffer.data_ptr<char>() + hlen);
 		int extlen = ntohs(ext->length)*4;
 		hlen += 4;
 		if(buffer.length() > (hlen + extlen)) {
@@ -828,7 +828,7 @@ void AudioStream::process_rtcp_data(const pipes::buffer_view&in) {
 }
 
 void AudioStream::on_nice_ready() {
-	this->resend_buffer();
+	this->resend_buffer(true);
 	if(this->role == Client)
 		this->dtls->do_handshake();
 }

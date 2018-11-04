@@ -65,15 +65,10 @@ namespace rtc {
 
 			std::deque<std::shared_ptr<Stream>> available_streams(); /* only valid result after apply_offer(...) */
 
-		protected:
-			virtual void on_nice_ready();
-			virtual void trigger_setup_fail(ConnectionComponent /* component */, const std::string& /* reason */);
 		private:
 			std::shared_ptr<Config> config;
 
 			std::unique_ptr<NiceWrapper> nice;
-			std::shared_ptr<ApplicationStream> stream_application;
-			std::shared_ptr<AudioStream> stream_audio;
 
 			std::deque<std::shared_ptr<Stream>> sdp_media_lines;
 			inline int sdp_mline_index(const std::shared_ptr<Stream>& stream) {
@@ -87,6 +82,9 @@ namespace rtc {
 			bool create_application_stream(std::string& error);
 			bool create_audio_stream(std::string& error);
 
+			std::shared_mutex stream_lock; /* first lock stream -> than this general thing */
 			std::unique_ptr<MergedStream> merged_stream;
+			std::shared_ptr<ApplicationStream> stream_application;
+			std::shared_ptr<AudioStream> stream_audio;
 	};
 }

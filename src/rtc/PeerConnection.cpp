@@ -23,6 +23,58 @@ PeerConnection::~PeerConnection() {
 }
 
 void PeerConnection::reset() {
+	{
+		unique_lock streams_lock(this->stream_lock);
+		if(this->merged_stream) {
+			auto stream = std::move(this->merged_stream);
+			streams_lock.unlock();
+
+			{
+				unique_lock stream_lock(stream->_owner_lock);
+				stream->_owner = nullptr;
+				stream->_stream_id = 0;
+			}
+			{
+				lock_guard buffer_lock(stream->fail_buffer_lock);
+				stream->fail_buffer.clear();
+			}
+
+			streams_lock.lock();
+		}
+		if(this->stream_audio) {
+			auto stream = std::move(this->stream_audio);
+			streams_lock.unlock();
+
+			{
+				unique_lock stream_lock(stream->_owner_lock);
+				stream->_owner = nullptr;
+				stream->_stream_id = 0;
+			}
+			{
+				lock_guard buffer_lock(stream->fail_buffer_lock);
+				stream->fail_buffer.clear();
+			}
+
+			streams_lock.lock();
+		}
+		if(this->stream_audio) {
+			auto stream = std::move(this->stream_application);
+			streams_lock.unlock();
+
+			{
+				unique_lock stream_lock(stream->_owner_lock);
+				stream->_owner = nullptr;
+				stream->_stream_id = 0;
+			}
+			{
+				lock_guard buffer_lock(stream->fail_buffer_lock);
+				stream->fail_buffer.clear();
+			}
+
+			//streams_lock.lock(); //No need to lock here :)
+		}
+	}
+
 	if(this->nice) this->nice->finalize();
 }
 
@@ -116,6 +168,7 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 					auto config = make_shared<MergedStream::Configuration>();
 					config->logger = this->config->logger;
 
+					unique_lock stream_lock(this->stream_lock);
 					this->merged_stream = make_unique<MergedStream>(this, stream->stream_id, config);
 					stream->callback_ready = [&] {
 						if(this->merged_stream)
@@ -294,19 +347,8 @@ std::string PeerConnection::generate_answer(bool candidates) {
 	return sdp.str();
 }
 
-void PeerConnection::on_nice_ready() {
-	//This is within the main gloop!
-	LOG_DEBUG(this->config->logger, "PeerConnection::nice", "successful connected");
-	if(this->stream_audio)
-		;//this->stream_audio->dtls->do_handshake();
-}
-
-void PeerConnection::trigger_setup_fail(rtc::PeerConnection::ConnectionComponent comp, const std::string &reason) {
-	if(this->callback_setup_fail)
-		this->callback_setup_fail(comp, reason);
-}
-
 bool PeerConnection::create_application_stream(std::string& error) {
+	unique_lock stream_lock(this->stream_lock);
 	assert(!this->stream_application);
 
 	std::shared_ptr<NiceStream> stream;
@@ -337,6 +379,7 @@ bool PeerConnection::create_application_stream(std::string& error) {
 }
 
 bool PeerConnection::create_audio_stream(std::string &error) {
+	unique_lock stream_lock(this->stream_lock);
 	assert(!this->stream_audio);
 
 	std::shared_ptr<NiceStream> stream;
@@ -370,10 +413,13 @@ bool PeerConnection::create_audio_stream(std::string &error) {
 std::deque<std::shared_ptr<Stream>> PeerConnection::available_streams() {
 	std::deque<std::shared_ptr<Stream>> result;
 
-	if(this->stream_audio)
-		result.push_back(this->stream_audio);
-	if(this->stream_application)
-		result.push_back(this->stream_application);
+	{
+		shared_lock stream_lock(this->stream_lock);
+		if(this->stream_audio)
+			result.push_back(this->stream_audio);
+		if(this->stream_application)
+			result.push_back(this->stream_application);
+	}
 
 	return result;
 }

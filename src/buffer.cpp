@@ -29,9 +29,9 @@ bool abstract_buffer_container::resize(size_t capacity, size_t data_length, size
 	return true;
 }
 
-buffer_view::buffer_view(void *buffer, size_t length) {
+buffer_view::buffer_view(const void *buffer, size_t length) {
 	this->data.reset(new buffer_container<no_allocator, no_deleter>(no_allocator(), no_deleter()));
-	this->data->address = buffer;
+	this->data->address = (void*) buffer;
 	this->data->capacity = length;
 	this->_length = length;
 }
@@ -270,11 +270,11 @@ ssize_t buffer::find(const std::string &str) {
 	if(len < str.length()) return -1;
 	len -= str.length();
 
-	register uint32_t str_idx;
-	register const char* c_str = str.data();
-	register const char* c_this = (char*) this->data_ptr();
+	uint32_t str_idx;
+	const char* c_str = str.data();
+	const char* c_this = (char*) this->data_ptr();
 
-	for(register uint32_t index = 0; index <= len; index++) {
+	for(uint32_t index = 0; index <= len; index++) {
 		if(c_str[0] == c_this[index]) {
 			str_idx = 0;
 			while(++str_idx < str.length())

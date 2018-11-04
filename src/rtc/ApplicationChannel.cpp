@@ -150,8 +150,11 @@ bool ApplicationStream::apply_sdp(const nlohmann::json &, const nlohmann::json &
 	{
 		TEST_AV_TYPE(media_entry, "payloads", is_string, return false, "ApplicationStream::apply_sdp", "Entry contains invalid/missing payloads");
 		string payload = media_entry["payloads"];
-		this->sctp->remote_port(static_cast<uint16_t>(stoi(payload)));
-		LOG_DEBUG(this->config->logger, "ApplicationStream::apply_sdp", "Apply sctp port %s", payload.c_str());
+		if(payload.find_first_not_of("0123456789") == string::npos) {
+			this->sctp->remote_port(static_cast<uint16_t>(stoi(payload)));
+			LOG_DEBUG(this->config->logger, "ApplicationStream::apply_sdp", "Apply sctp port %s", payload.c_str());
+		} else
+			LOG_DEBUG(this->config->logger, "ApplicationStream::apply_sdp", "Ignoring payload %s", payload.c_str());
 	}
 
 	return true;
@@ -618,7 +621,7 @@ void ApplicationStream::close_datachannel(rtc::DataChannel *channel) {
 }
 
 void ApplicationStream::on_nice_ready() {
-	this->resend_buffer();
+	this->resend_buffer(true);
 	if(this->role == Client && this->dtls)
 		this->dtls->do_handshake();
 }

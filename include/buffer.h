@@ -73,19 +73,27 @@ namespace pipes {
 			friend class buffer;
 		public:
 			buffer_view() = default;
-			buffer_view(void* /* address */, size_t /* length */);
 			buffer_view(const buffer_view& /* buffer */, size_t /* offset */ = 0, ssize_t /* length */ = -1);
+
+			buffer_view(const void* /* address */, size_t /* length */); /* base pointer initialisation */
+
+			template <typename pointer_t, typename std::enable_if<!std::is_same<typename std::remove_all_extents<pointer_t>::type, void>::value, int>::type = 0>
+			buffer_view(pointer_t* address, size_t length) : buffer_view((const void*) address, length){ }  /* Allow multible pointer types */
 
 			size_t length() const;
 			bool empty() const;
-			inline const void* data_ptr() const { return this->_data_ptr(); }
-			inline const void* data_ptr_origin() const { return this->_data_ptr_origin(); }
+
+			template <typename pointer_t = void>
+			inline const pointer_t* data_ptr() const { return (pointer_t*) this->_data_ptr(); }
+
+			template <typename pointer_t = void>
+			inline const pointer_t* data_ptr_origin() const { return (pointer_t*) this->_data_ptr_origin(); }
 
 			template <typename T = char, typename N_T = T, typename std::enable_if<std::is_integral<T>::value && std::is_integral<N_T>::value, int>::type = 0>
 			inline N_T at(size_t index) const {
 				if(this->length() <= index)
 					std::__throw_out_of_range_fmt("Index %lu is out of range. Max allowed %lu", index, this->length());
-				return (N_T) *(T*) ((char*) this->data_ptr() + index);
+				return (N_T) *(T*) (this->data_ptr<char>() + index);
 			}
 
 
@@ -93,7 +101,7 @@ namespace pipes {
 			const T& at(size_t index) const {
 				if(this->length() <= index)
 					std::__throw_out_of_range_fmt("Index %lu is out of range. Max allowed %lu", index, this->length());
-				return *(T*) (this->data_ptr() + index);
+				return *(T*) (this->data_ptr<char>() + index);
 			}
 
 			template <typename T = char, typename N_T = T, typename std::enable_if<std::is_integral<T>::value && std::is_integral<N_T>::value && !std::is_same<T, N_T>::value, int>::type = 0>
@@ -150,8 +158,12 @@ namespace pipes {
 
 			bool resize(size_t /* new size */);
 
-			inline void* data_ptr() { return this->_data_ptr(); }
-			inline void* data_ptr_origin() { return this->_data_ptr_origin(); }
+
+			template <typename pointer_t = void>
+			inline pointer_t* data_ptr() { return (pointer_t*) this->_data_ptr(); }
+
+			template <typename pointer_t = void>
+			inline pointer_t* data_ptr_origin() { return (pointer_t*) this->_data_ptr_origin(); }
 
 			inline bool is_sub_view() const { return this->view_offset >= 0; }
 
