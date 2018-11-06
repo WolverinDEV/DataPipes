@@ -126,7 +126,12 @@ class PeerConnection {
             });
             handle.script_prcessor.connect(context.destination);
             handle.audio = new Audio();
-            handle.audio.src = (URL || webkitURL || mozURL).createObjectURL(event.stream);
+            try {
+                handle.audio.srcObject = event.stream;
+            }
+            catch (_) {
+                handle.audio.src = (URL || webkitURL || mozURL).createObjectURL(event.stream);
+            }
             remote_sources.push(handle);
         };
         this.peer.onremovestream = event => {
@@ -141,8 +146,8 @@ class PeerConnection {
             this.initialize_data_channel(dataChannel);
         }
         let sdpConstraints = {};
-        sdpConstraints.offerToReceiveAudio = this.config.open_audio_channel ? 1 : 0;
-        sdpConstraints.offerToReceiveVideo = 0;
+        sdpConstraints.offerToReceiveAudio = this.config.open_audio_channel;
+        sdpConstraints.offerToReceiveVideo = false;
         navigator.mediaDevices.getUserMedia({ audio: true, video: false })
             .then(stream => {
             console.log("[GOT MIC!] %o", stream.getAudioTracks());
