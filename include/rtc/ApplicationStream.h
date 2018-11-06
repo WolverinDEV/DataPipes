@@ -51,7 +51,7 @@ namespace rtc {
 				std::shared_ptr<pipes::Logger> logger;
 
 				size_t max_data_channels = 255;
-				uint16_t local_port = 50000;
+				uint16_t local_port = 50000; //FIXME: Default is 5000!
 			};
 			typedef std::function<void(const std::shared_ptr<DataChannel>&)> cb_datachannel_new;
 

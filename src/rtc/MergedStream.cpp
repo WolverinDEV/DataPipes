@@ -41,7 +41,7 @@ bool MergedStream::initialize(std::string &error) {
 		};
 
 		auto certificate = pipes::TLSCertificate::generate("DataPipes", 365);
-		if(!this->dtls->initialize(error, certificate, pipes::DTLS_v1_2, [](SSL_CTX* ctx) {
+		if(!this->dtls->initialize(error, std::move(certificate), pipes::DTLS_v1_2, [](SSL_CTX* ctx) {
 			SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32"); //Required for rt(c)p
 			return true;
 		})) {

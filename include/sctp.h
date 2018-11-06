@@ -43,7 +43,7 @@ namespace pipes {
 			static int cb_send(void *sctp_ptr, void *data, size_t len, uint8_t tos, uint8_t set_df);
 			static int cb_read(struct socket *sock, union sctp_sockstore addr, void *data, size_t len, struct sctp_rcvinfo recv_info, int flags, void *user_data);
 
-			uint16_t _local_port;
+			uint16_t _local_port = 0;
 			uint16_t _remote_port = 0;
 
 			struct socket *sock;

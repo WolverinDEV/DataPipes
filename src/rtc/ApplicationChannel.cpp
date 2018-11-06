@@ -82,7 +82,7 @@ bool ApplicationStream::initialize(std::string &error) {
 		};
 
 		auto certificate = pipes::TLSCertificate::generate("DataPipes", 365);
-		if(!this->dtls->initialize(error, certificate, pipes::DTLS_v1_2)) {
+		if(!this->dtls->initialize(error, std::move(certificate), pipes::DTLS_v1_2)) {
 			error = "Failed to initialize dtls (" + error + ")";
 			return false;
 		}
@@ -148,13 +148,20 @@ bool ApplicationStream::apply_sdp(const nlohmann::json &, const nlohmann::json &
 	}
 
 	{
-		TEST_AV_TYPE(media_entry, "payloads", is_string, return false, "ApplicationStream::apply_sdp", "Entry contains invalid/missing payloads");
-		string payload = media_entry["payloads"];
-		if(payload.find_first_not_of("0123456789") == string::npos) {
-			this->sctp->remote_port(static_cast<uint16_t>(stoi(payload)));
-			LOG_DEBUG(this->config->logger, "ApplicationStream::apply_sdp", "Apply sctp port %s", payload.c_str());
-		} else
-			LOG_DEBUG(this->config->logger, "ApplicationStream::apply_sdp", "Ignoring payload %s", payload.c_str());
+		uint16_t sctp_port = 5000;
+
+		if(media_entry.count("payloads") > 0) {
+			string payload = media_entry["payloads"];
+			if(payload.find_first_not_of("0123456789") == string::npos) {
+				sctp_port = static_cast<uint16_t>(stoi(payload));
+			} else
+				LOG_DEBUG(this->config->logger, "ApplicationStream::apply_sdp", "Ignoring payload %s", payload.c_str());
+		} else if(media_entry.count("sctp-port") > 0) {
+			TEST_AV_TYPE(media_entry, "sctp-port", is_number, return false, "ApplicationStream::apply_sdp", "Invalid port!");
+			sctp_port = media_entry["sctp-port"];
+		}
+		this->sctp->remote_port(sctp_port);
+		LOG_DEBUG(this->config->logger, "ApplicationStream::apply_sdp", "Apply sctp port %u", sctp_port);
 	}
 
 	return true;
@@ -296,7 +303,9 @@ bool ApplicationStream::apply_sdp(const nlohmann::json &, const nlohmann::json &
             "icePwd": "rttC8j09TxW7O/KtpUp+oV18",
             "iceUfrag": "LAcb",
             "mid": "data",
-            "payloads": "5000",
+            "payloads": "5000", //This is may send as sctp-port
+            "sctp-port": 5000
+
             "port": 9,
             "protocol": "DTLS/SCTP",
             "rtp": [],
@@ -382,6 +391,7 @@ std::string ApplicationStream::generate_sdp() {
 	sdp << "a=setup:" << (this->role == Client ? "active" : "passive") << "\r\n";
 	sdp << "a=mid:" << this->mid << "\r\n";
 	sdp << "a=sctpmap:" << to_string(this->sctp->local_port()) << " webrtc-datachannel 1024\r\n";
+	sdp << "a=sctp-port:" << this->sctp->local_port() << "\r\n";
 
 	return sdp.str();
 }

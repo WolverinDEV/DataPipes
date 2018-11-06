@@ -134,8 +134,33 @@ bool PeerConnection::initialize(std::string &error) {
 	return true;
 }
 
-
+typedef std::map<char, std::vector<sdptransform::grammar::Rule>> SDPRuleMap;
 bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp) {
+	static bool sdptransform_setupped = false;
+	if(!sdptransform_setupped) {
+		LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "Setting up sdptransform");
+		const SDPRuleMap* rules_map = &sdptransform::grammar::rulesMap;
+		auto mutable_rules_map = (SDPRuleMap*) rules_map;
+		auto& map = (*mutable_rules_map)['a'];
+
+		map.insert(map.begin(),
+				// a=sctp-port:5000
+				   {
+				           // name:
+				           "sctp-port",
+				           // push:
+				           "",
+				           // reg:
+				           std::regex("^sctp-port:(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[0-5]?[0-9]{1,4})$"),
+				           // names:
+				           { },
+				           // types:
+				           { 'd' },
+				           // format:
+				           "sctp-port:%d"
+		           });
+		sdptransform_setupped = true;
+	}
 	auto sdp = sdptransform::parse(raw_sdp);
 	if(sdp.count("media") <= 0) {
 		error = "Missing media entry";

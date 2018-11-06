@@ -171,15 +171,15 @@ void* PagedAllocator::allocate_type(uint8_t type) {
 		if(chunk->page_type == type && chunk->flag_free == 1) {
 			auto& type_info = pipes::type_info[chunk->page_type];
 
-			register uint16_t blk_index = 0;
-			register uint8_t* flag_ptr = chunk->block_free_flags;
+			uint16_t blk_index = 0;
+			uint8_t* flag_ptr = chunk->block_free_flags;
 			while(!*flag_ptr) {
 				flag_ptr++;
 				blk_index++;
 			}
 			blk_index *= 8;
 
-			register uint8_t mask = 1;
+			uint8_t mask = 1;
 			while((*flag_ptr & mask) == 0 && blk_index < type_info->block_count) {
 				mask <<= 1;
 				blk_index++;
@@ -275,15 +275,15 @@ mapped_chunk* PagedAllocator::allocate_chunk(uint8_t type) {
 
 	register_chunk:
 	SPIN_LOCK(this->chunk_lock);
-	register uint16_t chunk_index = 0;
-	register uint8_t* flag_ptr = this->chunk_flags;
+	uint16_t chunk_index = 0;
+	uint8_t* flag_ptr = this->chunk_flags;
 	while(!*flag_ptr) {
 		flag_ptr++;
 		chunk_index++;
 	}
 	chunk_index *= 8;
 
-	register uint8_t mask = 1;
+	uint8_t mask = 1;
 	while((*flag_ptr & mask) == 0 && chunk_index < this->chunk_count) {
 		mask <<= 1;
 		chunk_index++;

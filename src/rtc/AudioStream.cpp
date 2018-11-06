@@ -237,7 +237,7 @@ bool AudioStream::initialize(std::string &error) {
 		};
 
 		auto certificate = pipes::TLSCertificate::generate("DataPipes", 365);
-		if(!this->dtls->initialize(error, certificate, pipes::DTLS_v1, [](SSL_CTX* ctx) {
+		if(!this->dtls->initialize(error, std::move(certificate), pipes::DTLS_v1, [](SSL_CTX* ctx) {
 			SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32");
 			return true;
 		})) {
@@ -661,7 +661,7 @@ int protocol::rtp_header_extension_find(const pipes::buffer_view& buffer, int id
 						if(byte)
 							*byte = buffer[hlen+i+1];
 						if(word)
-							*word = ntohl(*(uint32_t *)(buffer.data_ptr()+hlen+i));
+							*word = ntohl(*(uint32_t *)(buffer.data_ptr<char>()+hlen+i));
 						if(ref)
 							*ref = (char*) &buffer[hlen+i];
 						return 0;
@@ -744,7 +744,7 @@ void AudioStream::process_rtp_data(const pipes::buffer_view&in) {
 	}
 
 	if(this->incoming_data_handler)
-		this->incoming_data_handler(channel, in.view(0, buflen), payload_offset); //TODO Avoid copy here? Use C++17 std::string_view?
+		this->incoming_data_handler(channel, in.view(0, buflen), payload_offset);
 }
 
 bool AudioStream::send_rtp_data(const shared_ptr<AudioChannel> &stream, const pipes::buffer_view &data, uint32_t timestamp) {

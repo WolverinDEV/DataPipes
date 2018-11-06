@@ -47,11 +47,14 @@ int SCTP::cb_read(struct socket *sock, union sctp_sockstore addr, void *data, si
 	return 1;
 }
 
-//TODO some kind of cleanup
-#define ERRORQ(message) \
-do { \
-	error = message; \
-	return false; \
+#define ERRORQ(message)                 \
+do {                                    \
+	error = message;                    \
+	if(this->sock)                      \
+		usrsctp_close(this->sock);      \
+	this->sock = nullptr;               \
+	usrsctp_register_address(this);     \
+	return false;                       \
 } while(0)
 
 
@@ -60,21 +63,25 @@ do { \
 static uint16_t interested_events[] = {
 		SCTP_ASSOC_CHANGE,
 		SCTP_PEER_ADDR_CHANGE,
+		SCTP_SEND_FAILED_EVENT,
+		SCTP_SENDER_DRY_EVENT,
+		SCTP_STREAM_RESET_EVENT,
+
+#if true //Only for debug purpose right now
 		SCTP_REMOTE_ERROR,
 		SCTP_SEND_FAILED,
 
-		SCTP_SENDER_DRY_EVENT,
 		SCTP_SHUTDOWN_EVENT,
 		SCTP_ADAPTATION_INDICATION,
 		SCTP_PARTIAL_DELIVERY_EVENT,
 
 		SCTP_AUTHENTICATION_EVENT,
-		SCTP_STREAM_RESET_EVENT,
 		SCTP_ASSOC_RESET_EVENT,
 		SCTP_STREAM_CHANGE_EVENT,
 
-		SCTP_SEND_FAILED_EVENT
+#endif
 };
+
 
 bool SCTP::global_initialized = false;
 //TODO: error callbacks
@@ -87,47 +94,64 @@ bool SCTP::initialize(std::string &error) {
 	if (!sock)
 		ERRORQ("Could not create usrsctp_socket. errno=" + to_string(errno));
 
-	struct linger linger_opt{};
-	linger_opt.l_onoff = 1;
-	linger_opt.l_linger = 0;
-	if (usrsctp_setsockopt(this->sock, SOL_SOCKET, SO_LINGER, &linger_opt, sizeof(linger_opt)) == -1)
-		ERRORQ("Could not set socket options for SO_LINGER. errno=" + to_string(errno));
+	{
+		// This ensures that the usrsctp close call deletes the association. This
+		// prevents usrsctp from calling OnSctpOutboundPacket with references to
 
-	struct sctp_paddrparams peer_param{};
-	memset(&peer_param, 0, sizeof(peer_param));
-	peer_param.spp_flags = SPP_PMTUD_DISABLE;
-	peer_param.spp_pathmtu = 1200;  // XXX: Does this need to match the actual MTU?
-	if (usrsctp_setsockopt(this->sock, IPPROTO_SCTP, SCTP_PEER_ADDR_PARAMS, &peer_param, sizeof(peer_param)) == -1)
-		ERRORQ("Could not set socket options for SCTP_PEER_ADDR_PARAMS. errno=" + to_string(errno));
-
-	struct sctp_assoc_value av{};
-	av.assoc_id = SCTP_ALL_ASSOC;
-	av.assoc_value = 1;
-	if (usrsctp_setsockopt(this->sock, IPPROTO_SCTP, SCTP_ENABLE_STREAM_RESET, &av, sizeof(av)) == -1)
-		ERRORQ("Could not set socket options for SCTP_ENABLE_STREAM_RESET. errno=" + to_string(errno));
-
-	uint32_t nodelay = 1;
-	if (usrsctp_setsockopt(this->sock, IPPROTO_SCTP, SCTP_NODELAY, &nodelay, sizeof(nodelay)) == -1)
-		ERRORQ("Could not set socket options for SCTP_NODELAY. errno=" + to_string(errno));
-
-	/* Enable the events of interest */
-	struct sctp_event event{};
-	memset(&event, 0, sizeof(event));
-	event.se_assoc_id = SCTP_ALL_ASSOC;
-	event.se_on = 1;
-	int num_events = sizeof(interested_events) / sizeof(uint16_t);
-	for (int i = 0; i < num_events; i++) {
-		event.se_type = interested_events[i];
-		if (usrsctp_setsockopt(this->sock, IPPROTO_SCTP, SCTP_EVENT, &event, sizeof(event)) == -1)
-			ERRORQ("Could not set socket options for SCTP_EVENT " + to_string(i) + ". errno=" + to_string(errno));
+		struct linger linger_opt{};
+		linger_opt.l_onoff = 1;
+		linger_opt.l_linger = 0;
+		if (usrsctp_setsockopt(this->sock, SOL_SOCKET, SO_LINGER, &linger_opt, sizeof(linger_opt)) == -1)
+			ERRORQ("Could not set socket options for SO_LINGER. errno=" + to_string(errno));
 	}
 
-	struct sctp_initmsg init_msg{};
-	memset(&init_msg, 0, sizeof(init_msg));
-	init_msg.sinit_num_ostreams = MAX_OUT_STREAM;
-	init_msg.sinit_max_instreams = MAX_IN_STREAM;
-	if (usrsctp_setsockopt(this->sock, IPPROTO_SCTP, SCTP_INITMSG, &init_msg, sizeof(init_msg)) == -1)
-		ERRORQ("Could not set socket options for SCTP_INITMSG. errno=" + to_string(errno));
+	{
+		struct sctp_paddrparams peer_param{};
+		memset(&peer_param, 0, sizeof(peer_param));
+		peer_param.spp_flags = SPP_PMTUD_DISABLE;
+		peer_param.spp_pathmtu = 1200;  // XXX: Does this need to match the actual MTU?
+		if (usrsctp_setsockopt(this->sock, IPPROTO_SCTP, SCTP_PEER_ADDR_PARAMS, &peer_param, sizeof(peer_param)) == -1)
+			ERRORQ("Could not set socket options for SCTP_PEER_ADDR_PARAMS. errno=" + to_string(errno));
+	}
+
+	{
+		// Enable stream ID resets.
+
+		struct sctp_assoc_value av{};
+		av.assoc_id = SCTP_ALL_ASSOC;
+		av.assoc_value = 1;
+		if (usrsctp_setsockopt(this->sock, IPPROTO_SCTP, SCTP_ENABLE_STREAM_RESET, &av, sizeof(av)) == -1)
+			ERRORQ("Could not set socket options for SCTP_ENABLE_STREAM_RESET. errno=" + to_string(errno));
+	}
+
+	{
+		uint32_t nodelay = 1;
+		if (usrsctp_setsockopt(this->sock, IPPROTO_SCTP, SCTP_NODELAY, &nodelay, sizeof(nodelay)) == -1)
+			ERRORQ("Could not set socket options for SCTP_NODELAY. errno=" + to_string(errno));
+	}
+
+	/* Enable the events of interest */
+	{
+		struct sctp_event event{};
+		memset(&event, 0, sizeof(event));
+		event.se_assoc_id = SCTP_ALL_ASSOC;
+		event.se_on = 1;
+		int num_events = sizeof(interested_events) / sizeof(uint16_t);
+		for (int i = 0; i < num_events; i++) {
+			event.se_type = interested_events[i];
+			if (usrsctp_setsockopt(this->sock, IPPROTO_SCTP, SCTP_EVENT, &event, sizeof(event)) == -1)
+				ERRORQ("Could not set socket options for SCTP_EVENT " + to_string(i) + ". errno=" + to_string(errno));
+		}
+	}
+
+	{
+		struct sctp_initmsg init_msg{};
+		memset(&init_msg, 0, sizeof(init_msg));
+		init_msg.sinit_num_ostreams = MAX_OUT_STREAM;
+		init_msg.sinit_max_instreams = MAX_IN_STREAM;
+		if (usrsctp_setsockopt(this->sock, IPPROTO_SCTP, SCTP_INITMSG, &init_msg, sizeof(init_msg)) == -1)
+			ERRORQ("Could not set socket options for SCTP_INITMSG. errno=" + to_string(errno));
+	}
 
 	struct sockaddr_conn sconn{};
 	sconn.sconn_family = AF_CONN;
@@ -149,8 +173,8 @@ void SCTP::finalize() {
 		usrsctp_shutdown(this->sock, SHUT_RDWR);
 		usrsctp_close(this->sock);
 		this->sock = nullptr;
+		usrsctp_deregister_address(this);
 	}
-	usrsctp_deregister_address(this);
 }
 
 #define READ_BUFFER_SIZE 1024
@@ -247,6 +271,7 @@ bool SCTP::connect(int32_t remote_port) {
 #if defined(__APPLE__) || defined(__Bitrig__) || defined(__DragonFly__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
 	sconn.sconn_len = sizeof((void *)this);
 #endif
+
 
 	// Blocks until connection succeeds/fails
 	int connect_result = usrsctp_connect(sock, (struct sockaddr *)&sconn, sizeof sconn);

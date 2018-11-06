@@ -77,13 +77,14 @@ install(TARGETS DataPipes DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include/pipes)
 
 target_link_libraries(
-        DataPipes
-        LibNice::LibNice
-        #SctpLab::UsrSCTP
-        usrsctp.a
+    DataPipes
+    LibNice::LibNice
+    #SctpLab::UsrSCTP
+    usrsctp.a
 	sdptransform
 	#srtp
 	${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
+	stdc++fs.a
 )
 
 

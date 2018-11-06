@@ -37,7 +37,7 @@ inline bool _decode_url(std::string &message) {
 inline std::string _encode_url(std::string message) {
 	char replacement[3];
 	replacement[0] = '%';
-	register uint8_t uc;
+	uint8_t uc;
 
 	for(size_t index = 0; index < message.length(); index++) {
 		uc = (uint8_t) message[index];
