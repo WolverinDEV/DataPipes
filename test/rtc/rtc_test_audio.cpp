@@ -132,56 +132,36 @@ std::string random_string( size_t length )
 	return str;
 }
 
-std::pair<EVP_PKEY*, X509*> certs{nullptr, nullptr};
-std::pair<EVP_PKEY*, X509*> createCerts(pem_password_cb* password) {
-	auto key = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>(EVP_PKEY_new(), ::EVP_PKEY_free);
+#define TEST_CERTIFICATE_PATH "test_certificate.pem"
+#define TEST_PRIVATE_KEY_PATH "test_private_key.pem"
+std::unique_ptr<pipes::TLSCertificate> certificates;
 
-	auto rsa = RSA_new();
-	auto e = std::unique_ptr<BIGNUM, decltype(&BN_free)>(BN_new(), ::BN_free);
-	BN_set_word(e.get(), RSA_F4);
-	if(!RSA_generate_key_ex(rsa, 2048, e.get(), nullptr)) return {nullptr, nullptr};
-	EVP_PKEY_assign_RSA(key.get(), rsa);
+void initializes_certificates() {
+	try {
+		certificates = make_unique<pipes::TLSCertificate>(TEST_CERTIFICATE_PATH, TEST_PRIVATE_KEY_PATH, true);
+		return;
+	} catch(const std::exception& ex) {
+		cerr << "Failed to load certificates from file: " << ex.what() << endl;
+		cerr << "Generating new one" << endl;
+	}
 
-	auto cert = X509_new();
-	X509_set_pubkey(cert, key.get());
+	certificates = pipes::TLSCertificate::generate("TeaSpeak-Test", 356);
+	assert(certificates);
 
-	ASN1_INTEGER_set(X509_get_serialNumber(cert), 3);
-	X509_gmtime_adj(X509_get_notBefore(cert), 0);
-	X509_gmtime_adj(X509_get_notAfter(cert), 31536000L);
-
-	X509_NAME* name = X509_get_subject_name(cert);
-
-	//This was an example for TeaSpeak
-	X509_NAME_add_entry_by_txt(name, "C",  MBSTRING_ASC, (unsigned char *) "DE", -1, -1, 0);
-	X509_NAME_add_entry_by_txt(name, "O",  MBSTRING_ASC, (unsigned char *) ("DataPipes Text (" + random_string(12) + ")").c_str(), -1, -1, 0); //We need something random here else some browsers say: SEC_ERROR_REUSED_ISSUER_AND_SERIAL
-	X509_NAME_add_entry_by_txt(name, "OU",  MBSTRING_ASC, (unsigned char *) ("DataPipes Text (" + random_string(12) + ")").c_str(), -1, -1, 0);
-	X509_NAME_add_entry_by_txt(name, "emailAddress",  MBSTRING_ASC, (unsigned char *)("contact_" + random_string(12) + "@teaspeak.de").c_str(), -1, -1, 0);
-
-	X509_set_issuer_name(cert, name);
-	X509_set_subject_name(cert, name);
-
-	X509_sign(cert, key.get(), EVP_sha512());
-
-	return {key.release(), cert};
-};
+	certificates->save_file(TEST_CERTIFICATE_PATH, TEST_PRIVATE_KEY_PATH);
+}
 
 void configure_context(SSL_CTX *ctx) {
 	assert(SSL_CTX_set_ecdh_auto(ctx, 1));
-	if(!certs.first || !certs.second)
-		certs = createCerts([](char* buffer, int length, int rwflag, void* data) -> int {
-			std::string password = "markus";
-			memcpy(buffer, password.data(), password.length());
-			return password.length();
-		});
+	if(!certificates)
+		initializes_certificates();
 
-	PEM_write_X509(stdout, certs.second);
-
-	if (SSL_CTX_use_PrivateKey(ctx, certs.first) <= 0 ) {
+	if (SSL_CTX_use_PrivateKey(ctx, certificates->getPrivateKey()) <= 0 ) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
 
-	if (SSL_CTX_use_certificate(ctx, certs.second) <= 0 ) {
+	if (SSL_CTX_use_certificate(ctx, certificates->getCertificate()) <= 0 ) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}

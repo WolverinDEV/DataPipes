@@ -87,28 +87,61 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 	return true;
 }
 
-//TODO improve with unique_ptr to return at any error
-TLSCertificate::TLSCertificate(const std::string &pem_certificate, const std::string &pem_key) {
-	/* x509 */
-	BIO *bio = BIO_new(BIO_s_mem());
-	BIO_write(bio, pem_certificate.c_str(), (int)pem_certificate.length());
+#define HAVE_STD_EXPERIMENTAL_FS
+#if defined(HAVE_STD_FS) || defined(HAVE_STD_EXPERIMENTAL_FS)
+	#ifdef HAVE_STD_FS
+		#include <filesystem>
+		namespace fs = std::filesystem;
+	#else
+		#include <experimental/filesystem>
+		namespace fs = std::experimental::filesystem;
+	#endif
+#endif
 
-	this->certificate = std::shared_ptr<X509>(PEM_read_bio_X509(bio, nullptr, 0, 0), X509_free);
-	BIO_free(bio);
-	if (!this->certificate) {
-		throw std::invalid_argument("Could not read cert_pem");
+
+std::string ssl_err_as_string () {
+	std::unique_ptr<BIO, decltype(BIO_free)*> bio(BIO_new(BIO_s_mem()), BIO_free);
+	ERR_print_errors(bio.get());
+
+	char* buf = nullptr;
+	long len = BIO_get_mem_data(bio.get(), &buf);
+	return string(buf, len);
+}
+
+TLSCertificate::TLSCertificate(const std::string &pem_certificate, const std::string &pem_key, bool files) {
+	std::unique_ptr<BIO, decltype(BIO_free)*> bio_certificate(nullptr, BIO_free);
+	std::unique_ptr<BIO, decltype(BIO_free)*> bio_key(nullptr, BIO_free);
+
+	if(files) {
+		#if defined(HAVE_STD_FS) || defined(HAVE_STD_EXPERIMENTAL_FS)
+			auto path_key = fs::path(pem_key);
+			auto path_certificate = fs::path(pem_certificate);
+
+			if(!fs::exists(path_key)) throw std::invalid_argument("Missing key file!");
+			if(!fs::exists(path_certificate)) throw std::invalid_argument("Missing certificate file!");
+
+			bio_key.reset(BIO_new_file(pem_key.c_str(), "r"));
+			bio_certificate.reset(BIO_new_file(pem_certificate.c_str(), "r"));
+		#else
+			throw std::runtime_error("file system isn't implemented!");
+		#endif
+	} else {
+		bio_key.reset(BIO_new(BIO_s_mem()));
+		BIO_write(bio_key.get(), pem_key.c_str(), (int)pem_key.length());
+
+		bio_certificate.reset(BIO_new(BIO_s_mem()));
+		BIO_write(bio_certificate.get(), pem_certificate.c_str(), (int)pem_certificate.length());
 	}
+
+	/* x509 */
+	this->certificate = std::shared_ptr<X509>(PEM_read_bio_X509(bio_certificate.get(), nullptr, nullptr, nullptr), X509_free);
+	if (!this->certificate)
+		throw std::invalid_argument("Could not read cert_pem (" + ssl_err_as_string() + ")");
 
 	/* evp_pkey */
-	bio = BIO_new(BIO_s_mem());
-	BIO_write(bio, pem_key.c_str(), (int)pem_key.length());
-
-	this->evp_key = std::shared_ptr<EVP_PKEY>(PEM_read_bio_PrivateKey(bio, nullptr, 0, 0), EVP_PKEY_free);
-	BIO_free(bio);
-
-	if (!this->evp_key) {
-		throw std::invalid_argument("Could not read pkey_pem");
-	}
+	this->evp_key = std::shared_ptr<EVP_PKEY>(PEM_read_bio_PrivateKey(bio_key.get(), nullptr, nullptr, nullptr), EVP_PKEY_free);
+	if (!this->evp_key)
+		throw std::invalid_argument("Could not read pkey_pem (" + ssl_err_as_string() + ")");
 
 	this->generate_fingerprint();
 }
@@ -192,7 +225,7 @@ static std::shared_ptr<X509> GenerateX509(std::shared_ptr<EVP_PKEY> evp_pkey, co
 	return x509;
 }
 
-std::shared_ptr<TLSCertificate> TLSCertificate::generate(const std::string &common_name, int days) {
+std::unique_ptr<TLSCertificate> TLSCertificate::generate(const std::string &common_name, int days) {
 	std::shared_ptr<EVP_PKEY> pkey(EVP_PKEY_new(), EVP_PKEY_free);
 	RSA *rsa = RSA_new();
 
@@ -210,5 +243,25 @@ std::shared_ptr<TLSCertificate> TLSCertificate::generate(const std::string &comm
 	if (!cert) {
 		throw std::runtime_error("GenerateCertificate: Error in GenerateX509");
 	}
-	return shared_ptr<TLSCertificate>(new TLSCertificate(cert, pkey));
+
+	return unique_ptr<TLSCertificate>(new TLSCertificate(cert, pkey));
+}
+
+bool TLSCertificate::save(std::string &certificate, std::string &key, bool files) {
+	if(files) return this->save_file(certificate, key);
+
+	assert(false); //FIXME: Implement me
+	return false;
+}
+
+bool TLSCertificate::save_file(const std::string &certificate_path, const std::string &key_path) {
+	std::unique_ptr<BIO, decltype(BIO_free)*> bio(nullptr, BIO_free);
+
+	bio.reset(BIO_new_file(key_path.c_str(), "w"));
+	if(PEM_write_bio_PrivateKey(bio.get(), this->evp_key.get(), nullptr, nullptr, 0, nullptr, nullptr) != 1) return false;
+
+	bio.reset(BIO_new_file(certificate_path.c_str(), "w"));
+	if(PEM_write_bio_X509(bio.get(), this->certificate.get()) != 1) return false;
+
+	return true;
 }
