@@ -99,6 +99,7 @@ namespace rtc {
 			std::string mid;
 			enum Role { Client, Server } role = Client;
 
+			bool external_sctp_port;
 			std::unique_ptr<pipes::TLS> dtls;
 			std::unique_ptr<pipes::SCTP> sctp;
 			std::thread sctp_connect_thread;

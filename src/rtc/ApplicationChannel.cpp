@@ -156,7 +156,9 @@ bool ApplicationStream::apply_sdp(const nlohmann::json &, const nlohmann::json &
 				sctp_port = static_cast<uint16_t>(stoi(payload));
 			} else
 				LOG_DEBUG(this->config->logger, "ApplicationStream::apply_sdp", "Ignoring payload %s", payload.c_str());
+			this->external_sctp_port = false;
 		} else if(media_entry.count("sctp-port") > 0) {
+			this->external_sctp_port = true;
 			TEST_AV_TYPE(media_entry, "sctp-port", is_number, return false, "ApplicationStream::apply_sdp", "Invalid port!");
 			sctp_port = media_entry["sctp-port"];
 		}
@@ -391,7 +393,9 @@ std::string ApplicationStream::generate_sdp() {
 	sdp << "a=setup:" << (this->role == Client ? "active" : "passive") << "\r\n";
 	sdp << "a=mid:" << this->mid << "\r\n";
 	sdp << "a=sctpmap:" << to_string(this->sctp->local_port()) << " webrtc-datachannel 1024\r\n";
-	sdp << "a=sctp-port:" << this->sctp->local_port() << "\r\n";
+
+	if(this->external_sctp_port)
+		sdp << "a=sctp-port:" << this->sctp->local_port() << "\r\n";
 
 	return sdp.str();
 }
