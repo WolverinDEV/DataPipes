@@ -58,13 +58,13 @@ namespace rtc {
 			ApplicationStream(PeerConnection* /* owner */, StreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
 			virtual ~ApplicationStream();
 
-			StreamType type() const { return StreamType::CHANTYPE_APPLICATION; }
+			StreamType type() const override { return StreamType::CHANTYPE_APPLICATION; }
 
-			bool initialize(std::string& /* error */);
-			bool apply_sdp(const nlohmann::json& /* sdp */, const nlohmann::json& /* media */);
-			const std::string& get_mid() const { return this->mid; }
-			std::string generate_sdp();
-			bool reset(std::string& /* error */);
+			bool initialize(std::string& /* error */) override;
+			bool apply_sdp(const nlohmann::json& /* sdp */, const nlohmann::json& /* media */) override;
+			const std::string& get_mid() const override { return this->mid; }
+			std::string generate_sdp() override;
+			bool reset(std::string& /* error */) override;
 
 
 			std::shared_ptr<DataChannel> find_datachannel(uint16_t /* channel id */);
@@ -78,7 +78,7 @@ namespace rtc {
 
 		private:
 			void send_sctp(const pipes::SCTPMessage & /* message */);
-			void process_incoming_data(const pipes::buffer_view& /* data */);
+			void process_incoming_data(const pipes::buffer_view& /* data */) override;
 
 			virtual void handle_sctp_message(const pipes::SCTPMessage& /* message */);
 			virtual void handle_sctp_event(union sctp_notification * /* event */);

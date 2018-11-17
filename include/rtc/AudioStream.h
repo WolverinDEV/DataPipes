@@ -162,7 +162,7 @@ namespace rtc {
 			bool initialize(std::string &string) override;
 
 			bool apply_sdp(const nlohmann::json& /* sdp */, const nlohmann::json& /* media */) override;
-			const std::string& get_mid() const { return this->mid; }
+			const std::string& get_mid() const override { return this->mid; }
 
 			std::string generate_sdp() override;
 

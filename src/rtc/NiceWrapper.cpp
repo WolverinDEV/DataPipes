@@ -95,7 +95,7 @@ bool NiceWrapper::initialize(std::string& error) {
 	for (const auto& ice_server : config->ice_servers) {
 		struct hostent *stun_host = gethostbyname(ice_server.host.c_str());
 		if (stun_host == nullptr) {
-			LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to lookup host for ice server %s:%i", ice_server.host, ice_server.port);
+			LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to lookup host for ice server %s:%i", ice_server.host.c_str(), ice_server.port);
 		} else {
 			auto address = (in_addr *)stun_host->h_addr;
 			const char *ip_address = inet_ntoa(*address);
@@ -299,7 +299,7 @@ void NiceWrapper::on_transport_writeable(guint stream_id, guint component) {
 		LOG_ERROR(this->_logger, "NiceWrapper::on_transport_writeable", "Missing stream %i", stream_id);
 		return;
 	}
-	LOG_DEBUG(this->_logger, "NiceWrapper::on_transport_writeable", "Stream %u (%u) is writeable again", stream, component);
+	LOG_DEBUG(this->_logger, "NiceWrapper::on_transport_writeable", "Stream %u (%u) is writeable again", stream_id, component);
 }
 
 void NiceWrapper::on_state_change(guint stream_id, guint component_id, guint state) {

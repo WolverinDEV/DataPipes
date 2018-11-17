@@ -15,8 +15,8 @@ namespace rtc {
 			MergedStream(PeerConnection* /* owner */, StreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
 			virtual ~MergedStream();
 
-			bool initialize(std::string& /* error */);
-			bool reset(std::string& /* error */);
+			bool initialize(std::string& /* error */) override;
+			bool reset(std::string& /* error */) override;
 
 			bool apply_sdp(const nlohmann::json& /* sdp */, const nlohmann::json& /* media */) override;
 
@@ -32,7 +32,7 @@ namespace rtc {
 			void on_nice_ready() override;
 			void on_dtls_initialized(const std::unique_ptr<pipes::TLS>& /* handle */) override;
 		private:
-			void process_incoming_data(const pipes::buffer_view& /* data */);
+			void process_incoming_data(const pipes::buffer_view& /* data */) override;
 		private:
 			std::shared_ptr<Configuration> config;
 			enum Role { Client, Server } role = Client;
