@@ -1,3 +1,4 @@
+#include <sstream>
 #include "json.hpp"
 #include "include/misc/endianness.h"
 #include "include/rtc/PeerConnection.h"
