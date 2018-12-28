@@ -102,6 +102,5 @@ namespace rtc {
 			bool external_sctp_port;
 			std::unique_ptr<pipes::TLS> dtls;
 			std::unique_ptr<pipes::SCTP> sctp;
-			std::thread sctp_connect_thread;
 	};
 }

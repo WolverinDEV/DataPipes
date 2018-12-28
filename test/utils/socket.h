@@ -10,25 +10,28 @@
 class Socket {
 public:
     struct Client {
-        friend class Socket;
-    public:
-        Socket* handle = nullptr;
-        void* data = nullptr;
+            friend class Socket;
+        public:
+            Socket* handle = nullptr;
+            void* data = nullptr;
 
-        void send(const pipes::buffer_view& /* buffer */);
-        void disconnect(bool blocking = true);
-    private:
-        void close_connection(bool blocking = true);
+            Client() = default;
+            ~Client() = default;
 
-        int fd = 0;
-        event* event_read = nullptr;
-        event* event_write = nullptr;
+            void send(const pipes::buffer_view& /* buffer */);
+            void disconnect(bool blocking = true);
+        private:
+            void close_connection(bool blocking = true);
 
-        void on_read(int fd);
-        void on_write(int fd);
+            int fd = 0;
+            event* event_read = nullptr;
+            event* event_write = nullptr;
 
-        std::mutex buffer_lock;
-        std::deque<pipes::buffer> buffer_write;
+            void on_read(int fd);
+            void on_write(int fd);
+
+            std::mutex buffer_lock;
+            std::deque<pipes::buffer> buffer_write;
     };
     friend class Client;
 

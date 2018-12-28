@@ -21,6 +21,8 @@ struct Client {
 
 	Json::Reader reader;
 	Json::StreamWriterBuilder json_writer;
+
+	~Client() = default;
 };
 
 void log(pipes::Logger::LogLevel level, const std::string& name, const std::string& message, ...) {

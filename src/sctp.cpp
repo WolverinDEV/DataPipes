@@ -153,6 +153,12 @@ bool SCTP::initialize(std::string &error) {
 			ERRORQ("Could not set socket options for SCTP_INITMSG. errno=" + to_string(errno));
 	}
 
+	/* enable non block */
+	{
+		if(usrsctp_set_non_blocking(sock, 1) < 0)
+			ERRORQ("failed to enable nonblock");
+	}
+
 	struct sockaddr_conn sconn{};
 	sconn.sconn_family = AF_CONN;
 	sconn.sconn_port = htons(_local_port);

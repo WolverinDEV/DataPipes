@@ -121,14 +121,12 @@ bool ApplicationStream::initialize(std::string &error) {
 
 void ApplicationStream::on_dtls_initialized(const std::unique_ptr<pipes::TLS> &handle) {
 	LOG_DEBUG(this->config->logger, "ApplicationStream::dtls", "Initialized! Starting SCTP connect");
-	this->sctp_connect_thread = std::thread([&]{
-		if(!this->sctp->connect()) {
-			LOG_ERROR(this->config->logger, "ApplicationStream::sctp", "Failed to connect");
-			//this->trigger_setup_fail(ConnectionComponent::SCTP, "failed to connect");
-			//FIXME!
-		} else
-			LOG_DEBUG(this->config->logger, "ApplicationStream::sctp", "successful connected");
-	});
+	if(!this->sctp->connect()) {
+		LOG_ERROR(this->config->logger, "ApplicationStream::sctp", "Failed to connect");
+		//this->trigger_setup_fail(ConnectionComponent::SCTP, "failed to connect");
+		//FIXME!
+	} else
+		LOG_DEBUG(this->config->logger, "ApplicationStream::sctp", "successful connected");
 }
 
 bool ApplicationStream::apply_sdp(const nlohmann::json &, const nlohmann::json &media_entry) {
@@ -405,10 +403,6 @@ bool ApplicationStream::reset(std::string &) {
 	if(this->sctp) this->sctp->finalize();
 	if(this->dtls) this->dtls->finalize();
 
-	if(this->sctp_connect_thread.joinable()) {
-		pthread_cancel(this->sctp_connect_thread.native_handle());
-		this->sctp_connect_thread.join();
-	}
 	return true;
 }
 

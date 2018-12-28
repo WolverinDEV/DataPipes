@@ -283,6 +283,8 @@ Reader::Reader(const Features& features)
       features_(features),
       collectComments_() {}
 
+Reader::~Reader() {}
+
 bool Reader::parse(const std::string& document, Value& root, bool collectComments) {
   JSONCPP_STRING documentCopy(document.data(), document.data() + document.capacity());
   std::swap(documentCopy, document_);

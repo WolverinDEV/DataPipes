@@ -37,8 +37,32 @@ void c(int type) {
 
 void emp() {}
 
+inline void compute_targetdigest(uint32_t targetdigest[5], u_char targetdifficulty) {
+	int quad_index = 0;
+	for (; quad_index < targetdifficulty / 32; quad_index++) {
+		targetdigest[quad_index] = 0xFFFFFFFF;
+	}
+
+	for (int idx = quad_index; idx < 5; idx++) {
+		targetdigest[idx] = 0;
+	}
+
+	targetdifficulty -= quad_index * 32;
+	for(int index = 0; index < targetdifficulty; index++) {
+		targetdigest[quad_index] >>= 1;
+		targetdigest[quad_index] |= 0x80000000;
+	}
+}
+
 #define LOOPS 1024
 int main(int, char**) {
+	{
+		uint32_t buffer[5];
+		compute_targetdigest(buffer, 44);
+
+		cout << std::bitset<32>(buffer[0]) << " - " << std::bitset<32>(buffer[1]) << " - " << std::bitset<32>(buffer[2]) << " - " << std::bitset<32>(buffer[3]) << " - " << std::bitset<32>(buffer[4]) << endl;
+	}
+	return 0;
 	/*
 	{
 		buffer_view buffer("Hello World", 12);
