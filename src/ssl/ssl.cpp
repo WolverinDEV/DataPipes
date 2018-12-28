@@ -85,9 +85,9 @@ ProcessResult pipes::SSL::process_data_in() {
             return ProcessResult::PROCESS_RESULT_NEED_DATA;
         }
         this->sslState = SSLSocketState::SSL_STATE_CONNECTED;
-        this->callback_initialized();
-
 	    lock.unlock();
+
+        this->callback_initialized();
         this->process_data_in();
     } else if(this->sslState == SSLSocketState::SSL_STATE_CONNECTED) {
         int read = 0;
