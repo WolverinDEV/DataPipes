@@ -1,3 +1,7 @@
+if(window.require) {
+    window.$ = require("jquery");
+}
+
 let connection: PeerConnection;
 
 let button = $("#connect");

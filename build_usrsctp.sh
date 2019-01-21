@@ -3,7 +3,7 @@ if [ -d build ]; then
 	sudo rm -r build
 fi
 mkdir build && cd build
-cmake .. -DCMAKE_C_FLAGS="-fPIC"
+cmake .. -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
 if [ $? -ne 0 ]; then
 	echo "failed to generate cmake project!"
 	exit 1

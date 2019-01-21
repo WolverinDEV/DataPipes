@@ -292,7 +292,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 							pipes::buffer buf;
 							buf += "Echo (TEXT): ";
 							buf += message;
-							chan->send(buf, rtc::DataChannel::TEXT);
+							//chan->send(buf, rtc::DataChannel::TEXT);
 						}
 					};
 					channel->callback_close = [weak]() {

@@ -21,6 +21,7 @@ include_directories(libraries/sdptransform/include)
 
 add_definitions(-DLOG_LEVEL=0) #FIXME!
 
+
 set(HEADER_FILES
 		#General definitions
         include/pipeline.h
@@ -38,14 +39,6 @@ set(HEADER_FILES
 		include/misc/http.h
 		include/misc/endianness.h
 		include/misc/logger.h
-
-		#WebRTC
-		include/rtc/Stream.h
-		include/rtc/NiceWrapper.h
-		include/rtc/PeerConnection.h
-		include/rtc/ApplicationStream.h
-		include/rtc/AudioStream.h
-		include/rtc/MergedStream.h
 )
 
 set(SOURCE_FILES
@@ -61,20 +54,38 @@ set(SOURCE_FILES
 
         src/http/http.cpp
 
-		src/sctp.cpp
-
-		src/rtc/Stream.cpp
-		src/rtc/AudioStream.cpp
-		src/rtc/ApplicationChannel.cpp
-		src/rtc/NiceWrapper.cpp
-		src/rtc/PeerConnection.cpp
-		src/rtc/MergedStream.cpp
 		src/tls.cpp
 )
 
+if(BUILD_WEBRTC)
+	set(HEADER_FILES ${HEADER_FILES}
+			#WebRTC
+			include/rtc/Stream.h
+			include/rtc/NiceWrapper.h
+			include/rtc/PeerConnection.h
+			include/rtc/ApplicationStream.h
+			include/rtc/AudioStream.h
+			include/rtc/MergedStream.h
+	)
+
+
+	set(SOURCE_FILES ${SOURCE_FILES}
+			src/sctp.cpp
+
+			src/rtc/Stream.cpp
+			src/rtc/AudioStream.cpp
+			src/rtc/ApplicationChannel.cpp
+			src/rtc/NiceWrapper.cpp
+			src/rtc/PeerConnection.cpp
+			src/rtc/MergedStream.cpp
+	)
+endif()
+
+add_library(DataPipes-Static STATIC ${HEADER_FILES} ${SOURCE_FILES})
 add_library(DataPipes SHARED ${HEADER_FILES} ${SOURCE_FILES})
 install(TARGETS DataPipes DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include/pipes)
+set_target_properties(DataPipes-Static PROPERTIES OUTPUT_NAME DataPipes)
 
 target_link_libraries(
     DataPipes
@@ -90,6 +101,7 @@ target_link_libraries(
 
 add_definitions(-DUSE_BORINGSSL)
 include_directories(/home/wolverindev/clib/boringssl/include)
+include_directories(/usr/include/glib-2.0) #FIXME?
 
 option(BUILD_TESTS ON "Build test cases")
 if(BUILD_TESTS)
