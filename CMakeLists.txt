@@ -4,11 +4,11 @@ project(plugin CXX)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
 # Custom CMake modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O2")
-set(CMAKE_CXX_COMPILER "c++")
+#set(CMAKE_CXX_COMPILER "c++")
 
 # Find packages
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -24,11 +24,11 @@ add_definitions(-DLOG_LEVEL=0) #FIXME!
 
 set(HEADER_FILES
 		#General definitions
-        include/pipeline.h
-        include/errors.h
+		include/pipeline.h
+		include/errors.h
 
 		#The pipes
-        include/ssl.h
+		include/ssl.h
 		include/ws.h
 		include/sctp.h
 		include/tls.h
@@ -42,23 +42,33 @@ set(HEADER_FILES
 )
 
 set(SOURCE_FILES
-        src/pipeline.cpp
+		src/pipeline.cpp
 
-        src/ssl/ssl.cpp
-        src/ssl/ssl_bio.cpp
+		src/ssl/ssl.cpp
+		src/ssl/ssl_bio.cpp
 
 		src/ws.cpp
 
 		src/buffer.cpp
 		src/allocator.cpp
 
-        src/http/http.cpp
+		src/http/http.cpp
 
 		src/tls.cpp
 )
 
 option(BUILD_WEBRTC "Build the WebRTC package" ON)
 if(BUILD_WEBRTC)
+	execute_process(
+			COMMAND bash -c "pkg-config --cflags --libs glib-2.0"
+			OUTPUT_VARIABLE GLIB_FLAGS
+	)
+    string(REPLACE "\t" " " GLIB_FLAGS "${GLIB_FLAGS}")
+	string(REPLACE "\n" "" GLIB_FLAGS "${GLIB_FLAGS}")
+
+	message("Got GLIB include directories ${GLIB_FLAGS}")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GLIB_FLAGS}")
+
 	set(HEADER_FILES ${HEADER_FILES}
 			#WebRTC
 			include/rtc/Stream.h
@@ -89,29 +99,27 @@ install(DIRECTORY include/ DESTINATION include/pipes)
 set_target_properties(DataPipes-Static PROPERTIES OUTPUT_NAME DataPipes)
 
 target_link_libraries(
-    DataPipes
-    LibNice::LibNice
-    #SctpLab::UsrSCTP
-    usrsctp.a
-	sdptransform
-	#srtp
-	${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
-	stdc++fs.a
+		DataPipes
+		LibNice::LibNice
+		#SctpLab::UsrSCTP
+		usrsctp.a
+		sdptransform
+		#srtp
+		${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
+		stdc++fs.a
 )
 
 
 add_definitions(-DUSE_BORINGSSL)
 include_directories(/home/wolverindev/clib/boringssl/include)
-include_directories(/usr/include/glib-2.0) #FIXME?
 
-option(BUILD_TESTS ON "Build test cases")
 if(BUILD_TESTS)
 	set(TEST_LIBRARIES
-       		DataPipes
-        	event
-        	event_pthreads
-        	#/home/wolverindev/clib/boringssl/build/ssl/libssl.so
-        	#/home/wolverindev/clib/boringssl/build/crypto/libcrypto.so
+			DataPipes
+			event
+			event_pthreads
+			#/home/wolverindev/clib/boringssl/build/ssl/libssl.so
+			#/home/wolverindev/clib/boringssl/build/crypto/libcrypto.so
 			/home/wolverindev/TeaSpeak/libraries/boringssl/build/ssl/libssl.so
 			/home/wolverindev/TeaSpeak/libraries/boringssl/build/crypto/libcrypto.so
 			pthread
