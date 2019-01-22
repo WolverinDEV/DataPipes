@@ -57,6 +57,7 @@ set(SOURCE_FILES
 		src/tls.cpp
 )
 
+option(BUILD_WEBRTC "Build the WebRTC package" ON)
 if(BUILD_WEBRTC)
 	set(HEADER_FILES ${HEADER_FILES}
 			#WebRTC
