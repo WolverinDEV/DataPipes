@@ -142,14 +142,14 @@ namespace pipes {
 
 			buffer(size_t /* length */, uint8_t /* fill */);
 
-			template <typename allocator_t = default_allocator, typename deleter_t = default_deleter, typename std::enable_if<!std::is_integral<allocator_t>::value, int>::type = 0>
+			template <typename allocator_t = default_allocator, typename deleter_t = default_deleter>
 			buffer(void* source, size_t length, bool copy = true, allocator_t&& allocator = allocator_t(), deleter_t&& deleter = deleter_t()) {
-				this->allocate_data<allocator_t, deleter_t>(std::forward<allocator_t>(allocator), std::forward<deleter_t>(deleter));
+				this->allocate_data<allocator_t, deleter_t>(0, std::forward<allocator_t>(allocator), std::forward<deleter_t>(deleter));
 
 				if(copy) {
 					//TODO Error handling if resizing failed
 					this->resize_data(length); /* ensure that the data has this length */
-					memcpy(this->data_ptr(), source, length);
+					this->write(source, length);
 				} else {
 					this->data->address = source;
 					this->data->capacity = length;
@@ -161,7 +161,7 @@ namespace pipes {
 
 			template <typename allocator_t = default_allocator, typename deleter_t = default_deleter, typename std::enable_if<!std::is_integral<allocator_t>::value, int>::type = 0>
 			buffer(size_t length, allocator_t&& allocator = allocator_t(), deleter_t&& deleter = deleter_t()) {
-				this->allocate_data<allocator_t, deleter_t>(std::forward<allocator_t>(allocator), std::forward<deleter_t>(deleter));
+				this->allocate_data<allocator_t, deleter_t>(0, std::forward<allocator_t>(allocator), std::forward<deleter_t>(deleter));
 				if(length > 0)
 					this->resize_data(length);
 				this->_length = length;
@@ -221,7 +221,8 @@ namespace pipes {
 			template <typename allocator_t = default_allocator, typename deleter_t = default_deleter, typename std::enable_if<!std::is_integral<allocator_t>::value, int>::type = 0>
 			void allocate_data(size_t length, allocator_t&& allocator = allocator_t(), deleter_t&& deleter = deleter_t()) {
 				if(!this->data)
-					this->data.reset(new impl::buffer_container<default_allocator, default_deleter>(default_allocator(), default_deleter()));
+					this->data.reset(new impl::buffer_container<allocator_t, deleter_t>(std::forward<allocator_t>(allocator), std::forward<deleter_t>(deleter)));
+
 				if(length > 0)
 					this->resize_data(length);
 			}
