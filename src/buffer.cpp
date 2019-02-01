@@ -111,18 +111,6 @@ buffer::buffer(size_t length, uint8_t fill) : buffer(length) {
 	memset(this->data_ptr(), fill, this->capacity());
 }
 
-buffer::buffer(void *source, size_t length, bool copy) {
-	if(copy) {
-		this->allocate_data(length);
-		memcpy(this->data_ptr(), source, length);
-	} else {
-		this->allocate_data(0);
-		this->data->address = source;
-		this->data->capacity = length;
-	}
-	this->_length = length;
-}
-
 buffer::buffer(const pipes::buffer_view &view) {
 	if(view.data) {
 		this->_length = view._length;
@@ -163,10 +151,7 @@ size_t buffer::capacity_origin() const {
 	return 0;
 }
 
-void buffer::allocate_data(size_t length) {
-	if(!this->data)
-		this->data.reset(new impl::buffer_container<default_allocator, default_deleter>(default_allocator(), default_deleter()));
-
+void buffer::resize_data(size_t length) {
 	if(length > 0) {
 		if(!data->address)
 			this->data->alloc(length);
