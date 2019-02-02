@@ -122,6 +122,7 @@ namespace pipes {
 			/* creates a new buffer any copy the data to it */
 			buffer own_buffer() const;
 			buffer dup() const;
+			buffer dup(pipes::buffer /* target buffer */) const;
 		protected:
 			std::shared_ptr<impl::abstract_buffer_container> data;
 
@@ -153,6 +154,7 @@ namespace pipes {
 				} else {
 					this->data->address = source;
 					this->data->capacity = length;
+					this->data->owns = true;
 				}
 				this->_length = length;
 			}
@@ -160,7 +162,7 @@ namespace pipes {
 			explicit buffer(const buffer_view& /* view */);
 
 			template <typename allocator_t = default_allocator, typename deleter_t = default_deleter, typename std::enable_if<!std::is_integral<allocator_t>::value, int>::type = 0>
-			buffer(size_t length, allocator_t&& allocator = allocator_t(), deleter_t&& deleter = deleter_t()) {
+			explicit buffer(size_t length, allocator_t&& allocator = allocator_t(), deleter_t&& deleter = deleter_t()) {
 				this->allocate_data<allocator_t, deleter_t>(0, std::forward<allocator_t>(allocator), std::forward<deleter_t>(deleter));
 				if(length > 0)
 					this->resize_data(length);

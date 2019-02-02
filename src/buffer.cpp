@@ -99,6 +99,12 @@ buffer buffer_view::dup() const {
 	return result;
 }
 
+buffer buffer_view::dup(pipes::buffer target) const {
+	target.resize(this->length());
+	memcpy(target.data_ptr(), this->data_ptr(), this->length());
+	return target;
+}
+
 buffer::buffer(pipes::buffer &&ref) {
 	*this = std::forward<buffer>(ref);
 }
@@ -153,10 +159,11 @@ size_t buffer::capacity_origin() const {
 
 void buffer::resize_data(size_t length) {
 	if(length > 0) {
-		if(!data->address)
+		if(!data->address) {
 			this->data->alloc(length);
-		else if(this->data->capacity < length)
+		} else if(this->data->capacity < length) {
 			this->data->resize(length, this->data->capacity, 0, 0);
+		}
 	}
 }
 
@@ -235,7 +242,7 @@ ssize_t buffer::write(const pipes::buffer_view &buffer, ssize_t length, ssize_t 
 
 	if(length + offset_source > buffer.length()) std::__throw_out_of_range("Source is out of buffer range!");
 
-	return this->write((void *)buffer.data_ptr(), length, offset_source, offset_target);
+	return this->write((void *)buffer.data_ptr(), length, offset_target, offset_source);
 }
 
 ssize_t buffer::write(void *buffer, size_t length, ssize_t offset_target, ssize_t offset_source) {
