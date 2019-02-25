@@ -147,6 +147,7 @@ namespace pipes {
 			buffer(void* source, size_t length, bool copy = true, allocator_t&& allocator = allocator_t(), deleter_t&& deleter = deleter_t()) {
 				this->allocate_data<allocator_t, deleter_t>(0, std::forward<allocator_t>(allocator), std::forward<deleter_t>(deleter));
 
+				this->_length = length;
 				if(copy) {
 					//TODO Error handling if resizing failed
 					this->resize_data(length); /* ensure that the data has this length */
@@ -156,7 +157,6 @@ namespace pipes {
 					this->data->capacity = length;
 					this->data->owns = true;
 				}
-				this->_length = length;
 			}
 
 			explicit buffer(const buffer_view& /* view */);
