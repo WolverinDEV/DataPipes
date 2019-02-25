@@ -2,12 +2,12 @@
 #
 # Usage of this module as follows:
 #
-#     find_package(BoringSSL)
+#     find_package(Crypto)
 #
 # Variables used by this module, they can change the default behaviour and need
 # to be set before calling find_package:
 #
-#  BoringSSL_ROOT_DIR          Set this variable to the root installation of
+#  Crypto_ROOT_DIR          Set this variable to the root installation of
 #                            boringssl if the module has problems finding the
 #                            proper installation path.
 #
@@ -22,39 +22,39 @@
 #  Crypto_BORINGSSL         Set if crypto is boringssl
 
 find_path(Crypto_ROOT_DIR
-		NAMES INCORPORATING.md include/openssl/ssl.h include/openssl/base.h include/openssl/opensslv.h
-		HINTS ${BoringSSL_ROOT_DIR}
+		NAMES include/openssl/ssl.h include/openssl/base.h include/openssl/opensslv.h
+		HINTS ${Crypto_ROOT_DIR}
 )
 
 find_path(Crypto_INCLUDE_DIR
 		NAMES openssl/ssl.h openssl/base.h openssl/hkdf.h include/openssl/opensslv.h
-		HINTS ${BoringSSL_ROOT_DIR}/include
+		HINTS ${Crypto_ROOT_DIR}/include
 )
 
 #detect if its boringssl or openssl
-file(READ "${Crypto_INCLUDE_DIR}/openssl/crypto.h" BoringSSL_CRYPTO_H)
-if(Crypto_CRYPTO_H MATCHES ".*Google Inc.*" OR BoringSSL_CRYPTO_H MATCHES ".*BoringSSL.*")
+file(READ "${Crypto_INCLUDE_DIR}/openssl/crypto.h" Crypto_CRYPTO_H)
+if(Crypto_CRYPTO_H MATCHES ".*Google Inc.*" OR Crypto_CRYPTO_H MATCHES ".*BoringSSL.*")
 	set(Crypto_BORINGSSL 1)
-elseif(Crypto_CRYPTO_H MATCHES ".*to the OpenSSL project.*" OR BoringSSL_CRYPTO_H MATCHES ".*OpenSSL Project Authors.*")
+elseif(Crypto_CRYPTO_H MATCHES ".*to the OpenSSL project.*" OR Crypto_CRYPTO_H MATCHES ".*OpenSSL Project Authors.*")
 	set(Crypto_OPENSSL 1)
 endif()
 
 find_library(Crypto_SSL_LIBRARY
-		NAMES libssl.a
-		HINTS ${BoringSSL_ROOT_DIR}/build/ssl
+		NAMES libssl.so
+		HINTS ${Crypto_ROOT_DIR}/build/ssl ${Crypto_ROOT_DIR}/ssl ${Crypto_ROOT_DIR}/libs
 )
 
 find_library(Crypto_CRYPTO_LIBRARY
-		NAMES libcrypto.a
-		HINTS "${BoringSSL_ROOT_DIR}/build/crypto/"
+		NAMES libcrypto.so
+		HINTS "${Crypto_ROOT_DIR}/build/crypto/" "${Crypto_ROOT_DIR}/crypto/" "${Crypto_ROOT_DIR}/libs/"
 )
 
 set(Crypto_LIBRARIES ${Crypto_SSL_LIBRARY} ${Crypto_CRYPTO_LIBRARY} CACHE STRING "BoringSSL/OpenSSL SSL and crypto libraries" FORCE)
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(BoringSSL DEFAULT_MSG
-		BoringSSL_LIBRARIES
-		BoringSSL_INCLUDE_DIR
+find_package_handle_standard_args(Crypto DEFAULT_MSG
+		Crypto_LIBRARIES
+		Crypto_INCLUDE_DIR
 )
 
 mark_as_advanced(
