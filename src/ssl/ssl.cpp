@@ -10,7 +10,15 @@ using ProcessResult = pipes::ProcessResult;
 using namespace std::chrono;
 using namespace std;
 
-pipes::SSL::SSL() : Pipeline("ssl") { }
+#ifdef USE_BORINGSSL
+int pipes::SSL::compiled_boringssl = 1;
+#else
+int pipes::SSL::compiled_boringssl = 0;
+#endif
+
+pipes::SSL::SSL() : Pipeline("ssl") {
+	assert(this->included_boringssl == this->compiled_boringssl);
+}
 pipes::SSL::~SSL() {
 	this->finalize();
 }

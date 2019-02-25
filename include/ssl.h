@@ -79,12 +79,12 @@ namespace pipes {
 			static int (*bio_gets)(BIO *, char *, int);
 
 #ifdef USE_BORINGSSL
-
 			static long (*bio_callback_ctrl)(BIO *, int, bio_info_cb);
-
+			static constexpr int included_boringssl = 1;
 #else
-			static long (*bio_callback_ctrl)    (BIO *, int, bio_info_cb *);
+			static long (*bio_callback_ctrl)(BIO *, int, bio_info_cb *);
+			static constexpr int included_boringssl = 0;
 #endif
-
+			static int compiled_boringssl;
 	};
 }
