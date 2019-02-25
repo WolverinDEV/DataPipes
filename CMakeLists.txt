@@ -13,7 +13,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules"
 # Find packages
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
-#find_package(OpenSSL REQUIRED)
 find_package(LibNice REQUIRED)
 find_package(UsrSCTP REQUIRED)
 
@@ -57,6 +56,19 @@ set(SOURCE_FILES
 		src/tls.cpp
 )
 
+#Crypto librarie (OpenSSL or BoringSSL)
+find_package(Crypto REQUIRED)
+include_directories(BEFORE SYSTEM ${Crypto_INCLUDE_DIR})
+link_libraries (${Crypto_LIBRARIES})
+if(Crypto_OPENSSL)
+	message("Using OpenSSL")
+elseif(Crypto_BORINGSSL)
+	add_definitions(-DUSE_BORINGSSL)
+	message("Using BoringSSL")
+else()
+	message(FATAL "Failed to detect crypto library type!")
+endif()
+
 option(BUILD_WEBRTC "Build the WebRTC package" ON)
 if(BUILD_WEBRTC)
 	execute_process(
@@ -95,6 +107,7 @@ endif()
 add_library(DataPipes-Static STATIC ${HEADER_FILES} ${SOURCE_FILES})
 add_library(DataPipes SHARED ${HEADER_FILES} ${SOURCE_FILES})
 install(TARGETS DataPipes DESTINATION lib)
+install(TARGETS DataPipes-Static DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include/pipes)
 set_target_properties(DataPipes-Static PROPERTIES OUTPUT_NAME DataPipes)
 
@@ -108,10 +121,6 @@ target_link_libraries(
 		${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
 		stdc++fs.a
 )
-
-
-add_definitions(-DUSE_BORINGSSL)
-include_directories(/home/wolverindev/clib/boringssl/include)
 
 if(BUILD_TESTS)
 	set(TEST_LIBRARIES
