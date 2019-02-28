@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebRTC test side</title>
+    <script src="jquery-3.0.0.min.js"></script>
+</head>
+<body>
+    <a href="https://192.168.43.141:1111" target="_blank">cert</a>
+    <button id="connect">connect</button><br>
+    <input type="text" id="message"/> <button id="send">send</button>
+    <video id="local_video" autoplay muted></video>
+    <script src="main.js"></script>
+</body>
+</html>
+<!--
+
+a=candidate:
+
+
+Fixed: 248968227 1 udp 1685987071 93.230.25.85 56568
+Dynam: typ srflx raddr 192.168.43.141 rport 56568 generation 0 ufrag MTkh network-id 2
+
+-->
