@@ -13,6 +13,7 @@ namespace rtc {
 	class MergedStream;
 	class ApplicationStream;
 	class AudioStream;
+	class VideoStream;
 
 	struct IceCandidate {
 		IceCandidate(std::string candidate, std::string sdpMid, int sdpMLineIndex)
@@ -81,10 +82,12 @@ namespace rtc {
 
 			bool create_application_stream(std::string& error);
 			bool create_audio_stream(std::string& error);
+			bool create_video_stream(std::string& error);
 
 			std::shared_mutex stream_lock; /* first lock stream -> than this general thing */
 			std::unique_ptr<MergedStream> merged_stream;
 			std::shared_ptr<ApplicationStream> stream_application;
 			std::shared_ptr<AudioStream> stream_audio;
+			std::shared_ptr<VideoStream> stream_video;
 	};
 }

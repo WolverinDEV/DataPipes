@@ -106,6 +106,8 @@ if(BUILD_WEBRTC)
 			include/rtc/ApplicationStream.h
 			include/rtc/AudioStream.h
 			include/rtc/MergedStream.h
+			include/rtc/Protocol.h
+			include/rtc/RtpStream.h
 	)
 
 
@@ -117,7 +119,10 @@ if(BUILD_WEBRTC)
 			src/rtc/ApplicationChannel.cpp
 			src/rtc/NiceWrapper.cpp
 			src/rtc/PeerConnection.cpp
+			src/rtc/Protocol.cpp
 			src/rtc/MergedStream.cpp
+			src/rtc/VideoStream.cpp
+			src/rtc/RtpStream.cpp
 	)
 endif()
 
@@ -164,6 +169,9 @@ if(BUILD_TESTS)
 
 	add_executable(DataPipes-Test-rtc-audio test/rtc/rtc_test_audio.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
 	target_link_libraries(DataPipes-Test-rtc-audio ${TEST_LIBRARIES})
+
+	add_executable(DataPipes-Test-rtc-video test/rtc/rtc_test_video.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
+	target_link_libraries(DataPipes-Test-rtc-video ${TEST_LIBRARIES})
 
 	add_executable(DataPipes-Test-buffers test/buffer.cpp)
 	target_link_libraries(DataPipes-Test-buffers ${TEST_LIBRARIES})

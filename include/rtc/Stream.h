@@ -21,6 +21,7 @@ namespace rtc {
 	enum StreamType {
 		CHANTYPE_APPLICATION,
 		CHANTYPE_AUDIO,
+		CHANTYPE_VIDEO,
 
 		CHANTYPE_MERGED = 0xF0 //This should never happen!
 	};

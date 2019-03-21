@@ -8,39 +8,11 @@
 #include <include/ws.h>
 #include <include/rtc/PeerConnection.h>
 #include <include/rtc/ApplicationStream.h>
-#include "include/rtc/AudioStream.h"
+#include <include/rtc/AudioStream.h>
+#include <include/rtc/VideoStream.h>
 #include "test/json/json.h"
 
 using namespace std;
-
-//#define DEBUG_SOUND_LOCAL
-#ifdef DEBUG_SOUND_LOCAL
-	#include <alsa/asoundlib.h>
-
-	snd_pcm_t *alsa_handle;
-	bool init_alsa() {
-		if(snd_pcm_open(&alsa_handle, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
-			cerr << "Failed to load alsa!" << endl;
-			return 0;
-		}
-		if(snd_pcm_set_params(alsa_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 2, 48000, 1, 100000) < 0) {
-			cerr << "Failed to setup alsa!" << endl;
-			return 0;
-		}
-		return true;
-	}
-
-	void alsa_replay(void* data, size_t length) {
-		int pcm;
-		if (pcm = snd_pcm_writei(alsa_handle, data, length) == -EPIPE) {
-			printf("XRUN.\n");
-			snd_pcm_prepare(alsa_handle);
-		}
-	}
-#else
-	void alsa_replay(void* data, size_t length) {}
-	bool init_alsa() { return true; }
-#endif
 
 struct Client {
 	std::weak_ptr<Socket::Client> connection;
@@ -69,7 +41,7 @@ const std::string currentDateTime() {
 }
 
 void log(pipes::Logger::LogLevel level, const std::string& name, const std::string& message, ...) {
-	auto max_length = 1024 * 8;
+	auto max_length = 1024 * 32;
 	char buffer[max_length];
 
 	va_list args;
@@ -304,7 +276,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				auto astream = dynamic_pointer_cast<rtc::AudioStream>(stream);
 				assert(astream);
 				{
-					auto opus_codec = astream->find_codec_by_name("opus");
+					auto opus_codec = astream->find_codecs_by_name("opus");
 					if(opus_codec.empty()) {
 						return; //FIXME disconnect client
 					}
@@ -314,11 +286,11 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				astream->register_local_extension("urn:ietf:params:rtp-hdrext:ssrc-audio-level");
 
 				weak_ptr<rtc::AudioStream> weak_astream = astream;
-				astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::AudioChannel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
+				astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::Channel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
 					auto as = weak_astream.lock();
 					if(!as) return;
 
-					for(const auto& ext : as->list_extensions(0x02)) {
+					for(const auto& ext : as->list_extensions(rtc::direction::bidirectional)) {
 						if(ext->name == "urn:ietf:params:rtp-hdrext:ssrc-audio-level") {
 							int level;
 							if(rtc::protocol::rtp_header_extension_parse_audio_level(buffer, ext->id, &level) == 0) {
@@ -333,6 +305,50 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					for(const auto& ch : channels)
 						if(ch->local)
 							as->send_rtp_data(ch, buf, ch->timestamp_last_send += 960); //960 = 20ms opus :)
+				};
+			}  else if(stream->type() == rtc::CHANTYPE_VIDEO) {
+				auto vstream = dynamic_pointer_cast<rtc::VideoStream>(stream);
+				assert(vstream);
+
+				{
+					std::shared_ptr<rtc::codec::Codec> channel_codec;
+					for(const auto& codec : vstream->list_codecs()) {
+						cout << "Codec: " << codec->codec << " (" << (uint32_t) codec->id << ")" << endl;
+						if(!channel_codec) {
+							codec->accepted = true;
+							channel_codec = codec;
+						}
+					}
+
+					//vstream->register_local_channel("video_response", "video_response_normal", channel_codec);
+				}
+
+				{
+					for(const auto& extension : vstream->list_extensions(rtc::direction::incoming))
+						vstream->register_local_extension(extension->name,extension->direction,extension->config,extension->id);
+				}
+
+				weak_ptr<rtc::VideoStream> weak_astream = vstream;
+				vstream->incoming_data_handler = [weak_astream](const std::shared_ptr<rtc::Channel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
+					auto vs = weak_astream.lock();
+					if(!vs) return;
+
+					/*
+					auto raw_data = buffer.view(payload_offset);
+					cerr.write(raw_data.data_ptr<char>(), raw_data.length());
+					cerr << flush;
+					*/
+					auto buf = buffer.view(sizeof(rtc::protocol::rtp_header));
+					auto channels = vs->list_channels();
+
+					for(const auto& extension : vs->list_extensions(rtc::direction::incoming)) {
+						if(rtc::protocol::rtp_header_extension_find(buf, extension->id, nullptr, nullptr, nullptr) == 0)
+							cout << "Got extension: " << extension->name << endl;
+					}
+
+					for(const auto& ch : channels)
+						if(ch->local)
+							vs->send_rtp_data(ch, buf, ch->timestamp_last_receive, buffer.data_ptr<rtc::protocol::rtp_header>()->extension > 0);
 				};
 			} else {
 				cerr << "Remote offers invalid stream type! (" << stream->type() << ")" << endl;
@@ -352,7 +368,6 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 
 int main() {
 	srand(time(nullptr));
-	init_alsa();
 	SSL_library_init();
 	OpenSSL_add_all_algorithms();
 

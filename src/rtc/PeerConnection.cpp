@@ -3,11 +3,14 @@
 #include <cstring>
 #include <utility>
 #include <cassert>
+
 #include "sdptransform.hpp"
 #include "include/rtc/NiceWrapper.h"
 #include "include/rtc/PeerConnection.h"
 #include "include/rtc/ApplicationStream.h"
+#include "include/rtc/RtpStream.h"
 #include "include/rtc/AudioStream.h"
+#include "include/rtc/VideoStream.h"
 #include "include/rtc/MergedStream.h"
 #include "include/misc/endianness.h"
 
@@ -41,6 +44,22 @@ void PeerConnection::reset() {
 
 			streams_lock.lock();
 		}
+		if(this->stream_video) {
+			auto stream = std::move(this->stream_video);
+			streams_lock.unlock();
+
+			{
+				unique_lock stream_lock(stream->_owner_lock);
+				stream->_owner = nullptr;
+				stream->_stream_id = 0;
+			}
+			{
+				lock_guard buffer_lock(stream->fail_buffer_lock);
+				stream->fail_buffer.clear();
+			}
+
+			streams_lock.lock();
+		}
 		if(this->stream_audio) {
 			auto stream = std::move(this->stream_audio);
 			streams_lock.unlock();
@@ -57,7 +76,7 @@ void PeerConnection::reset() {
 
 			streams_lock.lock();
 		}
-		if(this->stream_audio) {
+		if(this->stream_application) {
 			auto stream = std::move(this->stream_application);
 			streams_lock.unlock();
 
@@ -221,6 +240,11 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 				error = "failed to create audio handle: " + error;
 				return false;
 			}
+		} else if(type == "video") {
+			if(!this->stream_video && !this->create_video_stream(error)) {
+				error = "failed to create video handle: " + error;
+				return false;
+			}
 		} else if(type == "application") {
 			if(!this->stream_application && !this->create_application_stream(error)) {
 				error = "failed to create audio handle: " + error;
@@ -237,6 +261,13 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 				return false;
 			}
 			this->sdp_media_lines.push_back(this->stream_audio);
+		} else if(type == "video") {
+			assert(this->stream_video);
+			if(!this->stream_video->apply_sdp(sdp, media_entry)) {
+				error = "failed to apply sdp for video stream";
+				return false;
+			}
+			this->sdp_media_lines.push_back(this->stream_video);
 		} else if(type == "application") {
 			assert(this->stream_application);
 			if(!this->stream_application->apply_sdp(sdp, media_entry)) {
@@ -435,13 +466,49 @@ bool PeerConnection::create_audio_stream(std::string &error) {
 	return true;
 }
 
+bool PeerConnection::create_video_stream(std::string &error) {
+	unique_lock stream_lock(this->stream_lock);
+	assert(!this->stream_video);
+
+	std::shared_ptr<NiceStream> stream;
+	if(!this->merged_stream) {
+		stream = nice->add_stream("video");
+		if(!stream) {
+			error = "failed to create stream!";
+			return false;
+		}
+
+		stream->callback_receive = [&](const pipes::buffer_view& data) {
+			if(this->stream_video)
+				this->stream_video->process_incoming_data(data);
+		};
+		stream->callback_ready = [&]{
+			if(this->stream_video)
+				this->stream_video->on_nice_ready();
+		};
+	}
+
+	{
+		auto config = make_shared<VideoStream::Configuration>();
+		config->logger = this->config->logger;
+		this->stream_video = make_shared<VideoStream>(this, stream ? stream->stream_id : 0, config);
+		if(!this->stream_video->initialize(error)) return false;
+	}
+
+	return true;
+}
+
 std::deque<std::shared_ptr<Stream>> PeerConnection::available_streams() {
 	std::deque<std::shared_ptr<Stream>> result;
 
 	{
 		shared_lock stream_lock(this->stream_lock);
+		if(this->stream_video)
+			result.push_back(this->stream_video);
+
 		if(this->stream_audio)
 			result.push_back(this->stream_audio);
+
 		if(this->stream_application)
 			result.push_back(this->stream_application);
 	}
