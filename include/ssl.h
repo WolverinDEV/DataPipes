@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <memory>
 #include <openssl/ssl.h>
 #include "pipeline.h"
@@ -13,16 +14,38 @@ namespace pipes {
 
 	class SSL : public Pipeline<buffer_view> {
 		public:
+			enum Type {
+				SERVER,
+				CLIENT
+			};
+
+			struct Options {
+				typedef std::pair<std::shared_ptr<EVP_PKEY>, std::shared_ptr<X509>> KeyPair;
+				const static KeyPair EmptyKeyPair;
+
+				Type type = Type::SERVER;
+
+				bool free_unused_keypairs = true;
+				const SSL_METHOD *context_method = nullptr; /* default: SSLv23_method */
+				std::function<bool(::SSL_CTX* /* context */)> context_initializer;
+				std::function<bool(::SSL* /* context */)> ssl_initializer;
+
+				/* empty key stand for the default keypair */
+				std::map<std::string, KeyPair> servername_keys;
+				bool enforce_sni = false; /* enforces SNI handling */
+
+				inline const KeyPair default_keypair() const { return this->servername_keys.count("") > 0 ? this->servername_keys.at("") : EmptyKeyPair; }
+				inline void default_keypair(const KeyPair& value) {
+					this->servername_keys.erase("");
+					this->servername_keys.insert({"", value});
+				}
+			};
+
 			typedef std::function<void()> InitializedHandler;
 
 			static bool is_ssl(const u_char* buf) {
 				return ((*buf >= 20) && (*buf <= 64));
 			}
-
-			enum Type {
-				SERVER,
-				CLIENT
-			};
 
 			static bool isSSLHeader(const std::string &);
 			//static bool isSSLHandschake(const std::string&, bool full = false);
@@ -31,7 +54,7 @@ namespace pipes {
 
 			virtual ~SSL();
 
-			bool initialize(const std::shared_ptr<SSL_CTX> &, Type /* type */);
+			bool initialize(const std::shared_ptr<Options>& /* options */);
 			bool do_handshake();
 			void finalize();
 
@@ -52,6 +75,7 @@ namespace pipes {
 
 			ProcessResult process_data_out() override;
 
+			std::shared_ptr<Options> options;
 			std::shared_ptr<SSL_CTX> sslContext = nullptr;
 			::SSL *sslLayer = nullptr;
 			Type type;
@@ -59,6 +83,8 @@ namespace pipes {
 			std::chrono::system_clock::time_point handshakeStart;
 
 		private:
+			static int _sni_callback(::SSL*,int*,void*);
+
 			std::mutex lock;
 			static BIO_METHOD *SSLSocketBioMethods;
 

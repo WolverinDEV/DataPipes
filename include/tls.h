@@ -9,6 +9,8 @@ namespace pipes {
 			static std::unique_ptr<TLSCertificate> generate(const std::string& /* name */, int /* days */);
 			TLSCertificate(const std::string& /* certificate pen */, const std::string& /* key pen */, bool /* files */ = false);
 
+			std::shared_ptr<X509> ref_certificate();
+			std::shared_ptr<EVP_PKEY> ref_private_key();
 			X509* getCertificate() const { return this->certificate.get(); }
 			EVP_PKEY* getPrivateKey() const { return this->evp_key.get(); }
 
