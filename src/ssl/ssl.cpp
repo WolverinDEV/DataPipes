@@ -43,6 +43,8 @@ int pipes::SSL::_sni_callback(::SSL* handle, int* ad, void* _ptr_ssl) {
 				if(!SSL_use_certificate(handle, &*key.second))
 					return SSL_TLSEXT_ERR_ALERT_FATAL;
 
+				if(ssl->options->free_unused_keypairs)
+					ssl->options->servername_keys.clear();
 				return SSL_TLSEXT_ERR_OK;
 			}
 		}
@@ -63,6 +65,9 @@ int pipes::SSL::_sni_callback(::SSL* handle, int* ad, void* _ptr_ssl) {
 		} else {
 			LOG_DEBUG(ssl->logger(), "SSL::sni_callback", "Haven't yet setupped any certificate. Trying without.");
 		}
+
+		if(ssl->options->free_unused_keypairs)
+			ssl->options->servername_keys.clear();
 	}
 	return SSL_TLSEXT_ERR_OK;
 }
