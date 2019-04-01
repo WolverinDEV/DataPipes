@@ -110,7 +110,7 @@ namespace rtc {
 			std::shared_ptr<Config> config;
 
 			std::unique_ptr<NiceAgent, void (*)(gpointer)> agent;
-			std::shared_ptr<GMainLoop> loop;
+			std::unique_ptr<GMainLoop, void (*)(GMainLoop*)> loop;
 			bool own_loop = false;
 
 			std::thread g_main_loop_thread;

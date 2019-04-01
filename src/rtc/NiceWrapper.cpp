@@ -1,3 +1,5 @@
+#include <memory>
+
 #include <netdb.h>
 #include <iostream>
 #include <sstream>
@@ -16,7 +18,9 @@
 using namespace std;
 using namespace rtc;
 
-NiceWrapper::NiceWrapper(const std::shared_ptr<Config>& config) : config(config), agent(nullptr, nullptr), loop(nullptr) {}
+void _null_deleter(GMainLoop* loop) { }
+
+NiceWrapper::NiceWrapper(const std::shared_ptr<Config>& config) : config(config), agent(nullptr, nullptr), loop(nullptr, _null_deleter) {}
 NiceWrapper::~NiceWrapper() {
 	this->finalize();
 }
@@ -72,13 +76,15 @@ bool NiceWrapper::initialize(std::string& error) {
 
 	/* log setup */
 	int log_flags = G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION;
-	g_log_set_handler(NULL, (GLogLevelFlags) log_flags, g_log_handler, this);
+	g_log_set_handler(nullptr, (GLogLevelFlags) log_flags, g_log_handler, this);
 
 	if(this->config->main_loop) {
-		this->loop = this->config->main_loop;
+		this->loop = std::unique_ptr<GMainLoop, void(*)(GMainLoop*)>(&*this->config->main_loop, _null_deleter);//std::unique_ptr<GMainLoop, void(*)(GMainLoop*)>(g_main_loop_ref(&*this->config->main_loop), g_main_loop_unref);
+		if(!this->loop)
+			ERRORQ("Failed to reference the main loop");
 		this->own_loop = false;
 	} else {
-		this->loop = std::shared_ptr<GMainLoop>(g_main_loop_new(nullptr, false), g_main_loop_unref);
+		this->loop = std::unique_ptr<GMainLoop, void(*)(GMainLoop*)>(g_main_loop_new(nullptr, false), g_main_loop_unref);
 		this->own_loop = true;
 		this->g_main_loop_thread = std::thread(g_main_loop_run, this->loop.get());
 	}
@@ -91,23 +97,38 @@ bool NiceWrapper::initialize(std::string& error) {
 	g_object_set(G_OBJECT(agent.get()), "upnp", false, nullptr);
 	g_object_set(G_OBJECT(agent.get()), "controlling-mode", 0, NULL);
 
+	struct addrinfo hints{}, *info_ptr = nullptr;
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET; //IPv4 only
+
+	char address_buffer[256];
 
 	for (const auto& ice_server : config->ice_servers) {
-		struct hostent *stun_host = gethostbyname(ice_server.host.c_str());
-		if (stun_host == nullptr) {
-			LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to lookup host for ice server %s:%i", ice_server.host.c_str(), ice_server.port);
-		} else {
-			auto address = (in_addr *)stun_host->h_addr;
-			const char *ip_address = inet_ntoa(*address);
-
-			g_object_set(G_OBJECT(agent.get()), "stun-server", ip_address, NULL);
-		}
-
-		if (ice_server.port > 0) {
-			g_object_set(G_OBJECT(agent.get()), "stun-server-port", ice_server.port, NULL);
-		} else {
+		if (ice_server.port <= 0) {
 			LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Invalid stun port! (%i)", ice_server.port);
+			continue;
 		}
+
+		int state = getaddrinfo(ice_server.host.c_str(), nullptr, &hints, &info_ptr);
+		if(state) {
+			LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to lookup host for ice server %s:%i (State: %i)", ice_server.host.c_str(), ice_server.port, state);
+			continue;
+		}
+
+		struct addrinfo *address;
+		for (address = info_ptr; address != nullptr; address = address->ai_next) {
+			if(getnameinfo(address->ai_addr, address->ai_addrlen, address_buffer, sizeof(address_buffer), NULL, 0, NI_NUMERICHOST)> 0)
+				continue;
+
+			g_object_set(G_OBJECT(agent.get()), "stun-server", address_buffer, NULL);
+			LOG_DEBUG(this->_logger, "NiceWrapper::initialize", "Set stun server to %s:%i, resolved from hostname %s", address_buffer, ice_server.port, ice_server.host.c_str());
+			break;
+		}
+		freeaddrinfo(info_ptr);
+		info_ptr = nullptr;
+
+		g_object_set(G_OBJECT(agent.get()), "stun-server-port", ice_server.port, NULL);
+		break; /* only one server */
 	}
 
 	g_signal_connect(G_OBJECT(agent.get()), "candidate-gathering-done", G_CALLBACK(NiceWrapper::cb_candidate_gathering_done), this);
@@ -121,10 +142,10 @@ bool NiceWrapper::initialize(std::string& error) {
 	int family, s, n;
 	char host[NI_MAXHOST];
 	if(getifaddrs(&ifaddr) == -1) {
-		LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to getting a list of interfaces...");
+		LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to getting a list of interfaces for local turn server...");
 	} else {
-		for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
-			if(ifa->ifa_addr == NULL)
+		for(ifa = ifaddr, n = 0; ifa != nullptr; ifa = ifa->ifa_next, n++) {
+			if(ifa->ifa_addr == nullptr)
 				continue;
 			/* Skip interfaces which are not up and running */
 			if (!((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)))
@@ -143,7 +164,7 @@ bool NiceWrapper::initialize(std::string& error) {
 			//	continue;
 			s = getnameinfo(ifa->ifa_addr,
 			                (family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6),
-			                host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+			                host, NI_MAXHOST, nullptr, 0, NI_NUMERICHOST);
 			if(s != 0) {
 				LOG_ERROR(this->_logger, "NiceWrapper::initialize", "getnameinfo() failed: %s", gai_strerror(s));
 				continue;
@@ -211,7 +232,7 @@ std::shared_ptr<NiceStream> NiceWrapper::find_stream(rtc::StreamId id) {
 void NiceWrapper::finalize() {
 	std::unique_lock<std::recursive_mutex> lock(io_lock);
 
-	{ //Finish handling
+	if(this->loop && this->agent) { //Finish handling
 		auto context = g_main_loop_get_context(loop.get());
 		if(!g_main_context_ref(context)) {
 			//TODO error
@@ -219,16 +240,22 @@ void NiceWrapper::finalize() {
 
 		for(const auto& stream : this->available_streams()) {
 			nice_agent_attach_recv(agent.get(), stream->stream_id, 1, context, nullptr, nullptr);
+			nice_agent_remove_stream(agent.get(), stream->stream_id);
 		}
 		{ //Let the other thread so something with IO
 			lock.unlock();
-			if(!g_main_context_iteration(context, false)) {
-				//TODO log error (cant flush ip!)
-			}
+			size_t iterations = 0, max_iterations = 1024;
+			while(g_main_context_iteration(context, false) && iterations < max_iterations) { } /* flush */
+			if(max_iterations == iterations); //TODO error?
 			lock.lock();
 		}
 		g_main_context_unref(context);
 		this->streams.clear();
+	}
+	{ /* allow the agent to remove all events from the event loop, may event triggers some events then */
+		lock.unlock();
+		this->agent.reset();
+		lock.lock();
 	}
 
 	if(this->own_loop && this->loop) {
@@ -236,11 +263,8 @@ void NiceWrapper::finalize() {
 
 		if (this->g_main_loop_thread.joinable())
 			this->g_main_loop_thread.join();
-
-		this->loop.reset();
 	}
-
-	this->agent.reset();
+	this->loop.reset();
 }
 
 bool NiceWrapper::send_data(guint stream, guint component, const pipes::buffer_view &data) {
@@ -355,11 +379,10 @@ void NiceWrapper::on_local_ice_candidate(guint stream_id, guint component_id, gc
 			candidate = can;
 			break;
 		}
-		nice_candidate_free(can);
 		index = index->next;
 	}
-	g_slist_free(candidates);
 	if(!candidate) {
+		g_slist_free_full(candidates, (GDestroyNotify) &nice_candidate_free);
 		LOG_ERROR(this->_logger, "NiceWrapper::on_local_ice_candidate", "Got local candidate without handle! (Foundation %s)", foundation);
 		return;
 	}
@@ -367,6 +390,7 @@ void NiceWrapper::on_local_ice_candidate(guint stream_id, guint component_id, gc
 	auto candidate_string = unique_ptr<gchar, decltype(g_free)*>(nice_agent_generate_local_candidate_sdp(this->agent.get(), candidate), ::g_free);
 	if(this->callback_local_candidate)
 		this->callback_local_candidate(stream, string(candidate_string.get()));
+	g_slist_free_full(candidates, (GDestroyNotify) &nice_candidate_free);
 }
 
 
@@ -429,7 +453,7 @@ std::deque<std::unique_ptr<LocalSdpEntry>> NiceWrapper::generate_local_sdp(bool 
 		if(g_str_has_prefix(line.c_str(), "m=")) {
 			if(current)
 				result.push_back(std::move(current));
-			current.reset(new LocalSdpEntry());
+			current = std::make_unique<LocalSdpEntry>();
 			current->index = (int) result.size();
 			current->has_bitset = 0;
 
