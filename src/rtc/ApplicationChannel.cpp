@@ -630,8 +630,6 @@ void ApplicationStream::close_datachannel(rtc::DataChannel *channel) {
 }
 
 void ApplicationStream::on_nice_ready() {
-	this->resend_buffer(true);
-
 	if(this->dtls) {
 		LOG_DEBUG(this->config->logger, "ApplicationStream::on_nice_ready", "Nice stream has been initialized successfully. Initializing DTLS as %s", this->role == Role::Client ? "client" : "server");
 
@@ -640,12 +638,17 @@ void ApplicationStream::on_nice_ready() {
 			SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32"); //Required for rt(c)p
 			return true;
 		})) {
-			LOG_ERROR(this->config->logger, "AudioStream::on_nice_ready", "Failed to initialize DTLS (%s)", error.c_str());
+			LOG_ERROR(this->config->logger, "ApplicationStream::on_nice_ready", "Failed to initialize DTLS (%s)", error.c_str());
 			return;
 		}
 
+
+
 		if(this->role == Role::Client) {
-			this->dtls->do_handshake();
+			if(!this->dtls->do_handshake()) {
+				LOG_ERROR(this->config->logger, "ApplicationStream::on_nice_ready", "Failed to process dtls handshake!");
+			}
 		}
 	}
+	this->resend_buffer(true);
 }

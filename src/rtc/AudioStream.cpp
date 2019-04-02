@@ -832,7 +832,7 @@ void AudioStream::on_nice_ready() {
 		LOG_DEBUG(this->config->logger, "AudioStream::on_nice_ready", "Nice stream has been initialized successfully. Initializing DTLS as %s", this->role == Role::Client ? "client" : "server");
 
 		string error;
-		if(!this->dtls->initialize(error, std::move(this->dtls_certificate), pipes::DTLS_v1_2,this->role == Role::Client ? pipes::SSL::CLIENT : pipes::SSL::SERVER, [](SSL_CTX* ctx) {
+		if(!this->dtls->initialize(error, this->dtls_certificate, pipes::DTLS_v1_2,this->role == Role::Client ? pipes::SSL::CLIENT : pipes::SSL::SERVER, [](SSL_CTX* ctx) {
 			SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32"); //Required for rt(c)p
 			return true;
 		})) {
@@ -841,7 +841,9 @@ void AudioStream::on_nice_ready() {
 		}
 
 		if(this->role == Role::Client) {
-			this->dtls->do_handshake();
+			if(!this->dtls->do_handshake()) {
+				LOG_ERROR(this->config->logger, "AudioStream::on_nice_ready", "Failed to process dtls handshake!");
+			}
 		}
 	}
 }
