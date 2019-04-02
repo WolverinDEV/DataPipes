@@ -141,7 +141,7 @@ bool NiceWrapper::initialize(std::string& error) {
 	g_signal_connect(G_OBJECT(agent.get()), "candidate-gathering-done", G_CALLBACK(NiceWrapper::cb_candidate_gathering_done), this);
 	g_signal_connect(G_OBJECT(agent.get()), "component-state-changed", G_CALLBACK(NiceWrapper::cb_component_state_changed), this);
 	g_signal_connect(G_OBJECT(agent.get()), "new-candidate", G_CALLBACK(NiceWrapper::cb_new_local_candidate), this);
-	g_signal_connect(G_OBJECT(agent.get()), "new-selected-pair", G_CALLBACK(NiceWrapper::cb_new_selected_pair), this);
+	g_signal_connect(G_OBJECT(agent.get()), "new-selected-pair-full", G_CALLBACK(NiceWrapper::cb_new_selected_pair), this);
 	g_signal_connect(G_OBJECT(agent.get()), "reliable-transport-writable", G_CALLBACK(NiceWrapper::cb_transport_writeable), this);
 
 	/* Add all local addresses, except those in the ignore list */
@@ -333,11 +333,9 @@ void NiceWrapper::on_selected_pair(guint stream_id, guint component_id, NiceCand
 		return;
 	}
 
-	/* Dosn't work that well
 	auto local_string = unique_ptr<gchar, decltype(g_free)*>(nice_agent_generate_local_candidate_sdp(this->agent.get(), local), ::g_free);
 	auto remote_string = unique_ptr<gchar, decltype(g_free)*>(nice_agent_generate_local_candidate_sdp(this->agent.get(), remote), ::g_free);
 	LOG_DEBUG(this->_logger, "NiceWrapper::on_selected_pair", "Gathered ICE pair for %u (%u): local=%s, remote=%s", stream_id, component_id, local_string.get(), remote_string.get());
-	 */
 }
 
 void NiceWrapper::on_transport_writeable(guint stream_id, guint component) {
