@@ -1,6 +1,8 @@
 #include <include/errors.h>
 #include <cstring>
 #include <iostream>
+#include <openssl/err.h>
+
 #define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
 #include "include/ssl.h"
@@ -136,7 +138,12 @@ bool pipes::SSL::do_handshake() {
 		return false;
 	}
 	auto code = SSL_do_handshake(this->sslLayer);
-	return code == 0;
+	if(code == 1)
+		return true;
+	auto error_code = SSL_get_error(this->sslLayer, code);
+	auto error_message = ERR_reason_error_string(error_code);
+	LOG_ERROR(this->logger(), "SSL::do_handshake", "Failed to process SSL handshake. Result: %u => Error code %u (%s)!", code, error_code, error_message);
+	return false;
 }
 
 void pipes::SSL::finalize() {
