@@ -279,7 +279,10 @@ int PeerConnection::apply_ice_candidates(const std::deque<std::shared_ptr<rtc::I
 	for(const auto& candidate : candidates) {
 		std::shared_ptr<NiceStream> nice_handle;
 		if(this->merged_stream) {
-			if(candidate->sdpMLineIndex != 0) continue;
+			if(candidate->sdpMLineIndex != 0) {
+				success_counter++; /* lets assume that this candidate is equal to one we've already received for the "master" stream */
+				continue;
+			}
 
 			nice_handle = this->nice->find_stream(this->merged_stream->stream_id());
 		} else {
