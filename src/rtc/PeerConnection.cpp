@@ -167,8 +167,10 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 		return false;
 	}
 
-	LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "Got sdp offer:");
-	LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "%s", sdp.dump(4).c_str());
+	if(this->config->print_parse_sdp) {
+		LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "Got sdp offer:");
+		LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "%s", sdp.dump(4).c_str());
+	}
 
 	//merged_nice_channels
 	json& media = sdp["media"];
