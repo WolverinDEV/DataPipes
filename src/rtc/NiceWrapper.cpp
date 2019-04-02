@@ -117,7 +117,7 @@ bool NiceWrapper::initialize(std::string& error) {
 
 		struct addrinfo *address;
 		for (address = info_ptr; address != nullptr; address = address->ai_next) {
-			if(getnameinfo(address->ai_addr, address->ai_addrlen, address_buffer, sizeof(address_buffer), NULL, 0, NI_NUMERICHOST)> 0)
+			if(getnameinfo(address->ai_addr, address->ai_addrlen, address_buffer, sizeof(address_buffer), nullptr, 0, NI_NUMERICHOST)> 0)
 				continue;
 
 			g_object_set(G_OBJECT(agent.get()), "stun-server", address_buffer, NULL);
@@ -364,6 +364,10 @@ void NiceWrapper::on_state_change(guint stream_id, guint component_id, guint sta
 	}
 }
 
+void candidate_list_free(GSList* list) {
+	g_slist_free_full(list, (GDestroyNotify) &nice_candidate_free);
+}
+
 void NiceWrapper::on_local_ice_candidate(guint stream_id, guint component_id, gchar *foundation) {
 	auto stream = this->find_stream(stream_id);
 	if(!stream) {
@@ -371,8 +375,11 @@ void NiceWrapper::on_local_ice_candidate(guint stream_id, guint component_id, gc
 		return;
 	}
 
+	auto candidates = unique_ptr<GSList, decltype(&candidate_list_free)>(nice_agent_get_local_candidates(this->agent.get(), stream_id, component_id), &candidate_list_free);
+
 	NiceCandidate* candidate = nullptr;
-	auto candidates = nice_agent_get_local_candidates(this->agent.get(), stream_id, component_id), index = candidates;
+	GSList* index = &*candidates;
+
 	while(index) {
 		auto can = (NiceCandidate *) index->data;
 		if(!strcasecmp(can->foundation, foundation)) { //Search for the candidate
@@ -382,7 +389,6 @@ void NiceWrapper::on_local_ice_candidate(guint stream_id, guint component_id, gc
 		index = index->next;
 	}
 	if(!candidate) {
-		g_slist_free_full(candidates, (GDestroyNotify) &nice_candidate_free);
 		LOG_ERROR(this->_logger, "NiceWrapper::on_local_ice_candidate", "Got local candidate without handle! (Foundation %s)", foundation);
 		return;
 	}
@@ -390,7 +396,6 @@ void NiceWrapper::on_local_ice_candidate(guint stream_id, guint component_id, gc
 	auto candidate_string = unique_ptr<gchar, decltype(g_free)*>(nice_agent_generate_local_candidate_sdp(this->agent.get(), candidate), ::g_free);
 	if(this->callback_local_candidate)
 		this->callback_local_candidate(stream, string(candidate_string.get()));
-	g_slist_free_full(candidates, (GDestroyNotify) &nice_candidate_free);
 }
 
 
