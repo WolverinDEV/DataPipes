@@ -28,6 +28,10 @@ namespace rtc {
 		bool ready = false;
 		cb_receive callback_receive;
 		cb_ready callback_ready;
+
+		GSList* cached_ice_candidates = nullptr; /* protected with the IO lock */
+
+		~NiceStream();
 	};
 
 	struct LocalSdpEntry {

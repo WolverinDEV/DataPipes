@@ -177,7 +177,7 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 	if(!media.is_array()) return false;
 
 	{
-		if(media.size() <= 1) {
+		if(media.size() <= 1 || this->config->disable_merged_stream) {
 			this->merged_stream = nullptr;
 		} else {
 			string ice_ufrag, ice_pwd;
@@ -294,8 +294,10 @@ int PeerConnection::apply_ice_candidates(const std::deque<std::shared_ptr<rtc::I
 			LOG_ERROR(this->config->logger, "PeerConnection::apply_ice_candidates", "Failed to find nice handle for %s (%u)", candidate->sdpMid.c_str(), candidate->sdpMLineIndex);
 			continue;
 		}
-		if(!this->nice->apply_remote_ice_candidates(nice_handle, {"a=" + candidate->candidate})) {
-			LOG_ERROR(this->config->logger, "PeerConnection::apply_ice_candidates", "Failed to apply candidate %s for %s (%u)", candidate->candidate.c_str(), candidate->sdpMid.c_str(), candidate->sdpMLineIndex);
+
+		auto result = this->nice->apply_remote_ice_candidates(nice_handle, {"a=" + candidate->candidate});
+		if(result < 0) {
+			LOG_ERROR(this->config->logger, "PeerConnection::apply_ice_candidates", "Failed to apply candidate %s for %s (%u). Result: %d", candidate->candidate.c_str(), candidate->sdpMid.c_str(), candidate->sdpMLineIndex, result);
 		} else success_counter++;
 	}
 	return success_counter;

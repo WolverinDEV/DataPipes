@@ -31,6 +31,7 @@ namespace rtc {
 
 				size_t max_data_channels = 1024;
 				bool print_parse_sdp = false;
+				bool disable_merged_stream = false;
 
 				struct {
 					uint16_t local_port = 5000;

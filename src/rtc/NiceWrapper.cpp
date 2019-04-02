@@ -20,6 +20,11 @@ using namespace rtc;
 
 void _null_deleter(GMainLoop* loop) { }
 
+NiceStream::~NiceStream() {
+	if(this->cached_ice_candidates)
+		g_slist_free_full(this->cached_ice_candidates, (GDestroyNotify) &nice_candidate_free);
+}
+
 NiceWrapper::NiceWrapper(const std::shared_ptr<Config>& config) : config(config), agent(nullptr, nullptr), loop(nullptr, _null_deleter) {}
 NiceWrapper::~NiceWrapper() {
 	this->finalize();
@@ -302,7 +307,23 @@ void NiceWrapper::on_data_received(guint stream_id, guint component_id, void *da
 }
 
 void NiceWrapper::on_gathering_done(guint stream_id) {
-	LOG_DEBUG(this->_logger, "NiceWrapper::on_gathering_done", "Gathering completed for stream %u", stream_id);
+	std::lock_guard<std::recursive_mutex> lock(io_lock);
+
+	auto stream = this->find_stream(stream_id);
+	if(!stream) {
+		LOG_ERROR(this->_logger, "NiceWrapper::on_gathering_done", "Missing stream %i", stream_id);
+		return;
+	}
+
+	if(stream->cached_ice_candidates) {
+		LOG_DEBUG(this->_logger, "NiceWrapper::on_gathering_done", "Gathering completed for stream %u. Applying %u cached ICE candidates.", stream_id, g_slist_length(stream->cached_ice_candidates));
+		auto result = nice_agent_set_remote_candidates(this->agent.get(), stream_id, 1, stream->cached_ice_candidates);
+		g_slist_free_full(stream->cached_ice_candidates, (GDestroyNotify)&nice_candidate_free);
+		stream->cached_ice_candidates = nullptr;
+		LOG_DEBUG(this->_logger, "NiceWrapper::on_gathering_done", "Applied %d candidates", result);
+	} else {
+		LOG_DEBUG(this->_logger, "NiceWrapper::on_gathering_done", "Gathering completed for stream %u. No remote ICE candidates to apply.", stream_id);
+	}
 }
 
 void NiceWrapper::on_selected_pair(guint stream_id, guint component_id, NiceCandidate *local, NiceCandidate *remote) {
@@ -405,7 +426,6 @@ ssize_t NiceWrapper::apply_remote_ice_candidates(const std::shared_ptr<rtc::Nice
 	std::lock_guard<std::recursive_mutex> lock(io_lock);
 
 	if(candidates.empty()) return -1;
-	//if(nice_agent_get_component_state(this->agent.get(), this->stream_id(), 1) > NICE_COMPONENT_STATE_CONNECTING) return -1; //Not disconnected or gathering
 
 	GSList* list = nullptr; //nice_agent_get_remote_candidates(this->agent.get(), stream->stream_id, 1);
 	for (const auto& candidate_sdp : candidates) {
@@ -416,11 +436,25 @@ ssize_t NiceWrapper::apply_remote_ice_candidates(const std::shared_ptr<rtc::Nice
 		}
 		list = g_slist_append(list, candidate);
 	}
-	if(!list) return -2;
+	if(!list) return -3;
 
-	LOG_VERBOSE(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Setting remote candidates for %u", stream->stream_id);
-	auto result = nice_agent_set_remote_candidates(this->agent.get(), stream->stream_id, 1, list);
-	g_slist_free_full(list, (GDestroyNotify)&nice_candidate_free);
+	int result;
+	if(nice_agent_get_component_state(this->agent.get(), stream->stream_id, 1) == NICE_COMPONENT_STATE_GATHERING) {
+		LOG_DEBUG(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Tried to apply ICE candidates while gathering... Registering %u candidates for later register", candidates.size());
+
+		result = 0;
+		GSList* pointer = list;
+		while(pointer) {
+			stream->cached_ice_candidates = g_slist_append(stream->cached_ice_candidates, pointer->data);
+			pointer = pointer->next;
+			result++;
+		}
+		g_slist_free(list); /* candidates will be freed when cached list will be cleared */
+	} else {
+		LOG_VERBOSE(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Setting remote candidates for %u", stream->stream_id);
+		result = nice_agent_set_remote_candidates(this->agent.get(), stream->stream_id, 1, list);
+		g_slist_free_full(list, (GDestroyNotify)&nice_candidate_free);
+	}
 	return result;
 }
 
