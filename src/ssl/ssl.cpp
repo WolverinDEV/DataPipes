@@ -131,7 +131,10 @@ bool pipes::SSL::initialize(const std::shared_ptr<pipes::SSL::Options> &options)
 }
 
 bool pipes::SSL::do_handshake() {
-	if(this->type != CLIENT) return false;
+	if(this->options->type != CLIENT) {
+		LOG_ERROR(this->logger(), "SSL::do_handshake", "Tried to do a handshake, but we're not in client mode!");
+		return false;
+	}
 	auto code = SSL_do_handshake(this->sslLayer);
 	return code == 0;
 }

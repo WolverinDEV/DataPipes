@@ -78,7 +78,6 @@ namespace pipes {
 			std::shared_ptr<Options> options;
 			std::shared_ptr<SSL_CTX> sslContext = nullptr;
 			::SSL *sslLayer = nullptr;
-			Type type;
 			SSLSocketState sslState = SSLSocketState::SSL_STATE_INIT;
 			std::chrono::system_clock::time_point handshakeStart;
 
