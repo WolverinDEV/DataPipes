@@ -63,6 +63,11 @@ namespace rtc {
 				std::string ice_pwd;
 
 				std::shared_ptr<GMainLoop> main_loop;
+
+				bool allow_ice_tcp = true;
+				bool allow_ice_udp = true;
+
+				bool use_upnp = false;
 			};
 
 			explicit NiceWrapper(const std::shared_ptr<Config>& /* config */);

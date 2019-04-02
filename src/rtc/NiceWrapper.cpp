@@ -93,8 +93,10 @@ bool NiceWrapper::initialize(std::string& error) {
 	this->agent = std::unique_ptr<NiceAgent, decltype(&g_object_unref)>(nice_agent_new(g_main_loop_get_context(loop.get()), NICE_COMPATIBILITY_RFC5245), g_object_unref);
 	if (!this->agent) ERRORQ("Failed to initialize nice agent");
 
+	g_object_set(G_OBJECT(agent.get()), "ice-tcp", this->config->allow_ice_tcp, nullptr);
+	g_object_set(G_OBJECT(agent.get()), "ice-udp", this->config->allow_ice_udp, nullptr);
 
-	g_object_set(G_OBJECT(agent.get()), "upnp", false, nullptr);
+	g_object_set(G_OBJECT(agent.get()), "upnp", this->config->use_upnp, nullptr);
 	g_object_set(G_OBJECT(agent.get()), "controlling-mode", 0, NULL);
 
 	struct addrinfo hints{}, *info_ptr = nullptr;
