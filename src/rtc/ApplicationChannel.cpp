@@ -82,11 +82,7 @@ bool ApplicationStream::initialize(std::string &error) {
 			this->on_dtls_initialized(this->dtls);
 		};
 
-		auto certificate = pipes::TLSCertificate::generate("DataPipes", 365);
-		if(!this->dtls->initialize(error, std::move(certificate), pipes::DTLS_v1_2)) {
-			error = "Failed to initialize dtls (" + error + ")";
-			return false;
-		}
+		this->dtls_certificate = pipes::TLSCertificate::generate("DataPipes", 365);
 	}
 
 	{
@@ -387,8 +383,12 @@ std::string ApplicationStream::generate_sdp() {
 	sdp << "m=application 9 DTLS/SCTP " + to_string(this->sctp->local_port()) + "\r\n"; //The 9 is the port? https://tools.ietf.org/html/rfc4566#page-22
 	sdp << "c=IN IP4 0.0.0.0\r\n";
 
-	if(this->dtls)
-		sdp << "a=fingerprint:sha-256 " << dtls->getCertificate()->getFingerprint() << "\r\n";
+	if(this->dtls) {
+		if(this->dtls_certificate)
+			sdp << "a=fingerprint:sha-256 " << this->dtls_certificate->getFingerprint() << "\r\n";
+		else
+			sdp << "a=fingerprint:sha-256 " << dtls->getCertificate()->getFingerprint() << "\r\n";
+	}
 	sdp << "a=setup:" << (this->role == Client ? "active" : "passive") << "\r\n";
 	sdp << "a=mid:" << this->mid << "\r\n";
 	sdp << "a=sctpmap:" << to_string(this->sctp->local_port()) << " webrtc-datachannel 1024\r\n";
@@ -631,6 +631,21 @@ void ApplicationStream::close_datachannel(rtc::DataChannel *channel) {
 
 void ApplicationStream::on_nice_ready() {
 	this->resend_buffer(true);
-	if(this->role == Client && this->dtls)
-		this->dtls->do_handshake();
+
+	if(this->dtls) {
+		LOG_DEBUG(this->config->logger, "ApplicationStream::on_nice_ready", "Nice stream has been initialized successfully. Initializing DTLS as %s", this->role == Role::Client ? "client" : "server");
+
+		string error;
+		if(!this->dtls->initialize(error, this->dtls_certificate, pipes::DTLS_v1_2,this->role == Role::Client ? pipes::SSL::CLIENT : pipes::SSL::SERVER, [](SSL_CTX* ctx) {
+			SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32"); //Required for rt(c)p
+			return true;
+		})) {
+			LOG_ERROR(this->config->logger, "AudioStream::on_nice_ready", "Failed to initialize DTLS (%s)", error.c_str());
+			return;
+		}
+
+		if(this->role == Role::Client) {
+			this->dtls->do_handshake();
+		}
+	}
 }

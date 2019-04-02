@@ -237,14 +237,7 @@ bool AudioStream::initialize(std::string &error) {
 			this->on_dtls_initialized(this->dtls);
 		};
 
-		auto certificate = pipes::TLSCertificate::generate("DataPipes", 365);
-		if(!this->dtls->initialize(error, std::move(certificate), pipes::DTLS_v1, [](SSL_CTX* ctx) {
-			SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32");
-			return true;
-		})) {
-			error = "Failed to initialize tls (" + error + ")";
-			return false;
-		}
+		this->dtls_certificate = pipes::TLSCertificate::generate("DataPipes", 365);
 	}
 
 	return true;
@@ -542,8 +535,12 @@ string AudioStream::generate_sdp() {
 		codec->write_sdp(sdp);
 	}
 
-	if(this->dtls)
-		sdp << "a=fingerprint:sha-256 " << dtls->getCertificate()->getFingerprint() << "\r\n";
+	if(this->dtls) {
+		if(this->dtls_certificate)
+			sdp << "a=fingerprint:sha-256 " << this->dtls_certificate->getFingerprint() << "\r\n";
+		else
+			sdp << "a=fingerprint:sha-256 " << dtls->getCertificate()->getFingerprint() << "\r\n";
+	}
 	sdp << "a=setup:" << (this->role == Client ? "active" : "passive") << "\r\n";
 
 	for(const auto& channel : this->local_channels) {
@@ -830,6 +827,21 @@ void AudioStream::process_rtcp_data(const pipes::buffer_view&in) {
 
 void AudioStream::on_nice_ready() {
 	this->resend_buffer(true);
-	if(this->role == Client)
-		this->dtls->do_handshake();
+
+	if(this->dtls) {
+		LOG_DEBUG(this->config->logger, "AudioStream::on_nice_ready", "Nice stream has been initialized successfully. Initializing DTLS as %s", this->role == Role::Client ? "client" : "server");
+
+		string error;
+		if(!this->dtls->initialize(error, std::move(this->dtls_certificate), pipes::DTLS_v1_2,this->role == Role::Client ? pipes::SSL::CLIENT : pipes::SSL::SERVER, [](SSL_CTX* ctx) {
+			SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32"); //Required for rt(c)p
+			return true;
+		})) {
+			LOG_ERROR(this->config->logger, "AudioStream::on_nice_ready", "Failed to initialize DTLS (%s)", error.c_str());
+			return;
+		}
+
+		if(this->role == Role::Client) {
+			this->dtls->do_handshake();
+		}
+	}
 }

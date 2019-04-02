@@ -42,7 +42,7 @@ namespace pipes {
 	class TLS : public pipes::SSL {
 		public:
 			typedef std::function<bool(SSL_CTX*)> initialize_function;
-			bool initialize(std::string& /* error */, const std::shared_ptr<TLSCertificate>& /* certificate */, TLSMode /* mode */, const initialize_function& /* initialize */ = nullptr);
+			bool initialize(std::string& /* error */, const std::shared_ptr<TLSCertificate>& /* certificate */, TLSMode /* mode */, Type /* server/client */, const initialize_function& /* initialize */ = nullptr);
 
 			inline std::shared_ptr<TLSCertificate> getCertificate() { return this->certificate; }
 		private:

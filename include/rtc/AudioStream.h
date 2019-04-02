@@ -5,6 +5,7 @@
 #include <vector>
 #include <srtp2/srtp.h>
 #include "Stream.h"
+#include "../tls.h"
 
 namespace rtc {
 	/* Most copied from janus */
@@ -219,6 +220,7 @@ namespace rtc {
 			std::shared_ptr<Configuration> config;
 
 			bool dtls_initialized = false;
+			std::shared_ptr<pipes::TLSCertificate> dtls_certificate; /* here 'till dtls has been initialized */
 			std::unique_ptr<pipes::TLS> dtls;
 
 			srtp_t srtp_in = nullptr;

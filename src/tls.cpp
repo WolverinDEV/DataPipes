@@ -38,7 +38,7 @@ static int verify_peer_certificate(int ok, X509_STORE_CTX *ctx) {
 	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
 	EC_KEY_free(ecdh);
  */
-bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &certificate, TLSMode mode, const initialize_function& fn) {
+bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &certificate, TLSMode mode, Type handshake_mode, const initialize_function& fn) {
 	this->certificate = certificate;
 
 	const SSL_METHOD* method = nullptr;
@@ -72,7 +72,7 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 	}
 
 	auto options = make_shared<SSL::Options>();
-	options->type = CLIENT;
+	options->type = handshake_mode;
 	options->context_method = method;
 	options->free_unused_keypairs = true;
 	options->context_initializer = [&, fn](SSL_CTX* context) {

@@ -37,6 +37,7 @@ namespace rtc {
 			std::shared_ptr<Configuration> config;
 			enum Role { Client, Server } role = Client;
 
+			std::shared_ptr<pipes::TLSCertificate> dtls_certificate; /* here 'till dtls has been initialized */
 			std::unique_ptr<pipes::TLS> dtls;
 			bool dtls_initialized = false;
 	};
