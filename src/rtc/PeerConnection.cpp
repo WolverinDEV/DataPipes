@@ -261,7 +261,6 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 		m_index = target_sdp.find("m=", m_index + 1);
 		if(m_index != string::npos) target_sdp = target_sdp.substr(0, m_index);
 
-		cout << target_sdp << endl;
 		if(!nice->apply_remote_sdp(error, target_sdp)) return false;
 	} else {
 		if(!nice->apply_remote_sdp(error, raw_sdp)) return false;
