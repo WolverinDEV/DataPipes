@@ -43,7 +43,7 @@ namespace pipes {
 
 			typedef std::function<void()> InitializedHandler;
 
-			static bool is_ssl(const u_char* buf) {
+			static bool is_ssl(const uint8_t* buf) {
 				return ((*buf >= 20) && (*buf <= 64));
 			}
 
@@ -88,23 +88,23 @@ namespace pipes {
 			static BIO_METHOD *SSLSocketBioMethods;
 
 			//Required methods
-			static int (*bio_read)(BIO *, char *, int);
+			static int bio_read(BIO *, char *, int);
 
-			static int (*bio_write)(BIO *, const char *, int);
+			static int bio_write(BIO *, const char *, int);
 
-			static long (*bio_ctrl)(BIO *, int, long, void *);
+			static long bio_ctrl(BIO *, int, long, void *);
 
-			static int (*bio_create)(BIO *);
+			static int bio_create(BIO *);
 
-			static int (*bio_destroy)(BIO *);
+			static int bio_destroy(BIO *);
 
 			//"empty" methods
-			static int (*bio_puts)(BIO *, const char *);
+			static int bio_puts(BIO *, const char *);
 
-			static int (*bio_gets)(BIO *, char *, int);
+			static int bio_gets(BIO *, char *, int);
 
 #ifdef USE_BORINGSSL
-			static long (*bio_callback_ctrl)(BIO *, int, bio_info_cb);
+			static long bio_callback_ctrl(BIO *, int, bio_info_cb);
 			static constexpr int included_boringssl = 1;
 #else
 			static long (*bio_callback_ctrl)(BIO *, int, bio_info_cb *);

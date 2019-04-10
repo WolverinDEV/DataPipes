@@ -32,6 +32,7 @@ namespace pipes {
 	typedef system_allocator default_allocator;
 	typedef system_deleter default_deleter;
 
+#ifndef WIN32
 	//Each chunk has a size of 32768 bytes
 	//The header has a prefix of 5 bytes
 	//The header has n bits (n / 8) bytes of block flags
@@ -44,7 +45,6 @@ namespace pipes {
 		uint8_t flag_deleted: 1;
 		uint8_t __unused: 6;
 	    uint8_t block_free_flags[0];
-		uint8_t block_free_end;
 	};
 
 	struct chunk_type_info {
@@ -79,4 +79,5 @@ namespace pipes {
 			mapped_chunk* allocate_chunk(uint8_t /* type */);
 			void allocate_chunk_array(size_t /* length */);
 	};
+#endif
 }

@@ -8,6 +8,14 @@
 #include "misc/logger.h"
 #include "buffer.h"
 
+#ifndef __attribute_deprecated__
+    #ifdef WIN32
+        #define __attribute_deprecated__ __declspec(deprecated)
+    #else
+        #define __attribute_deprecated__
+    #endif
+#endif
+
 namespace pipes {
 	enum ProcessResult {
 		PROCESS_RESULT_OK,

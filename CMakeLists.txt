@@ -10,16 +10,11 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules")
 #set(CMAKE_CXX_COMPILER "c++")
 
-# Find packages
-set(THREADS_PREFER_PTHREAD_FLAG ON)
-find_package(Threads REQUIRED)
-find_package(LibNice REQUIRED)
-find_package(UsrSCTP REQUIRED)
-
 include_directories(libraries/sdptransform/include)
 
 add_definitions(-DLOG_LEVEL=0) #FIXME!
 
+option(BUILD_WEBRTC "Build the WebRTC package" ON)
 
 set(HEADER_FILES
 		#General definitions
@@ -55,6 +50,10 @@ set(SOURCE_FILES
 
 		src/tls.cpp
 )
+if (NOT WIN32)
+	message("We're not on windows (${WIN32}")
+	set(SOURCE_FILES ${SOURCE_FILES} src/allocator_paged.cpp)
+endif ()
 
 #Crypto librarie (OpenSSL or BoringSSL)
 find_package(Crypto REQUIRED)
@@ -86,8 +85,13 @@ else()
 	message(FATAL_ERROR "Failed to detect crypto library type!")
 endif()
 
-option(BUILD_WEBRTC "Build the WebRTC package" ON)
 if(BUILD_WEBRTC)
+	# Find packages
+	set(THREADS_PREFER_PTHREAD_FLAG ON)
+	find_package(Threads REQUIRED)
+	find_package(LibNice REQUIRED)
+	find_package(UsrSCTP REQUIRED)
+
 	execute_process(
 			COMMAND bash -c "pkg-config --cflags --libs glib-2.0"
 			OUTPUT_VARIABLE GLIB_FLAGS
@@ -121,27 +125,37 @@ if(BUILD_WEBRTC)
 	)
 endif()
 
-add_library(DataPipes-Static STATIC ${HEADER_FILES} ${SOURCE_FILES})
-add_library(DataPipes SHARED ${HEADER_FILES} ${SOURCE_FILES})
-install(TARGETS DataPipes DESTINATION lib)
-install(TARGETS DataPipes-Static DESTINATION lib)
-install(DIRECTORY include/ DESTINATION include/pipes)
-set_target_properties(DataPipes-Static PROPERTIES OUTPUT_NAME DataPipes)
+option(BUILD_STATIC "Build static library" ON)
+option(BUILD_SHARED "Build shared library" ON)
 
-target_link_libraries(
-		DataPipes
-		LibNice::LibNice
-		#SctpLab::UsrSCTP
-		usrsctp.a
-		sdptransform
-		#srtp
-		${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
-		stdc++fs.a
-)
+if(BUILD_STATIC)
+	add_library(DataPipes-Static STATIC ${HEADER_FILES} ${SOURCE_FILES})
+	install(TARGETS DataPipes-Static DESTINATION lib)
+	set_target_properties(DataPipes-Static PROPERTIES OUTPUT_NAME DataPipes)
+endif()
+if(BUILD_SHARED)
+	add_library(DataPipes-Shared STATIC ${HEADER_FILES} ${SOURCE_FILES})
+	install(TARGETS DataPipes-Shared DESTINATION lib)
+	set_target_properties(DataPipes-Shared PROPERTIES OUTPUT_NAME DataPipes)
+endif()
+install(DIRECTORY include/ DESTINATION include/pipes)
+
+if(BUILD_WEBRTC)
+	target_link_libraries(
+			DataPipes-Shared
+			LibNice::LibNice
+			#SctpLab::UsrSCTP
+			usrsctp.a
+			sdptransform
+			#srtp
+			${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
+			stdc++fs.a
+	)
+endif()
 
 if(BUILD_TESTS)
 	set(TEST_LIBRARIES
-			DataPipes
+			DataPipes-Shared
 			event
 			event_pthreads
 			#/home/wolverindev/clib/boringssl/build/ssl/libssl.so

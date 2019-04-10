@@ -40,13 +40,15 @@ elseif(Crypto_CRYPTO_H MATCHES ".*to the OpenSSL project.*" OR Crypto_CRYPTO_H M
 endif()
 
 find_library(Crypto_SSL_LIBRARY
-		NAMES libssl.so
-		HINTS ${Crypto_ROOT_DIR}/build/ssl ${Crypto_ROOT_DIR}/ssl ${Crypto_ROOT_DIR}/libs
+		NAMES libssl.so ssl.dll ssl.lib
+		PATH_SUFFIXES win32_x64 win32_amd64 win32_x64/ssl win32_amd64/ssl/Release
+		HINTS ${Crypto_ROOT_DIR} ${Crypto_ROOT_DIR}/out ${Crypto_ROOT_DIR}/build "${Crypto_ROOT_DIR}/libs/"
 )
 
 find_library(Crypto_CRYPTO_LIBRARY
-		NAMES libcrypto.so
-		HINTS "${Crypto_ROOT_DIR}/build/crypto/" "${Crypto_ROOT_DIR}/crypto/" "${Crypto_ROOT_DIR}/libs/"
+		NAMES libcrypto.so crypto.dll crypto.lib
+		PATH_SUFFIXES win32_x64 win32_amd64 win32_x64/crypto win32_amd64/crypto/Release crypto
+		HINTS "${Crypto_ROOT_DIR}" "${Crypto_ROOT_DIR}/build/" "${Crypto_ROOT_DIR}/out/"
 )
 
 set(Crypto_LIBRARIES ${Crypto_SSL_LIBRARY} ${Crypto_CRYPTO_LIBRARY} CACHE STRING "BoringSSL/OpenSSL SSL and crypto libraries" FORCE)

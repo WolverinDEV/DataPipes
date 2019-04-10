@@ -186,7 +186,7 @@ int WebSocket::process_handshake() {
 
     char keyDigest[SHA_DIGEST_LENGTH];
     SHA1(reinterpret_cast<const unsigned char *>(key.data()), key.length(), reinterpret_cast<unsigned char *>(keyDigest));
-    key = base64_encode((u_char*) keyDigest, SHA_DIGEST_LENGTH);
+    key = base64_encode((uint8_t*) keyDigest, SHA_DIGEST_LENGTH);
     response.header.push_back({"Sec-WebSocket-Accept", {key}});
 	success = true;
 
@@ -201,6 +201,9 @@ int WebSocket::process_handshake() {
     return ProcessResult::PROCESS_RESULT_OK;
 }
 
+#ifdef WIN32
+__pragma(pack(push, 1));
+#endif
 struct WSHead {
     unsigned int len     : 7;
     bool mask   : 1;
@@ -209,7 +212,12 @@ struct WSHead {
     bool rsv2   : 1;
     bool rsv1   : 1;
     bool fin    : 1;
-} __attribute__((packed)); //sizeof(WSHead) == 2
+}
+#ifdef WIN32
+__pragma(pack(pop));
+#else
+__attribute__((packed)); //sizeof(WSHead) == 2
+#endif
 
 struct WSFrame {
     WSHead head{};

@@ -1,14 +1,15 @@
 #include <sstream>
 #include <algorithm>
+#include <memory>
 #include "include/misc/http.h"
 
 using namespace std;
 using namespace http;
 
 
-code_t code::_200 = std::make_shared<HTTPCode>(200, "OK");
-code_t code::_101 = std::make_shared<HTTPCode>(101, "Switching Protocols");
-extern code_t code::code(int code, const std::string& message) { return std::make_shared<HTTPCode>(code, message); }
+code_t code::_200 = std::make_shared<code::HTTPCode>(200, "OK");
+code_t code::_101 = std::make_shared<code::HTTPCode>(101, "Switching Protocols");
+extern code_t code::code(int code, const std::string& message) { return std::make_shared<code::HTTPCode>(code, message); }
 
 inline uint8_t hex_parse_nibble(char in) {
 	if(in >= 'A' && in <= 'F') return (uint8_t) (in - 'A' + 0x0A);
