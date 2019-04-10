@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(plugin CXX)
+project(DataPipes CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_VERBOSE_MAKEFILE ON)

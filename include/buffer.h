@@ -99,16 +99,22 @@ namespace pipes {
 
 			template <typename T = char, typename N_T = T, typename std::enable_if<std::is_integral<T>::value && std::is_integral<N_T>::value, int>::type = 0>
 			inline N_T at(size_t index) const {
-				if(this->length() <= index)
-					std::__throw_out_of_range_fmt("Index %lu is out of range. Max allowed %lu", index, this->length());
+				if(this->length() <= index) {
+                    char buffer[256];
+                    sprintf_s(buffer, 256, "Index %lu is out of range. Max allowed %lu", index, this->length());
+                    throw std::out_of_range(buffer);
+                }
 				return (N_T) *(T*) (this->data_ptr<char>() + index);
 			}
 
 
 			template <typename T = char, typename __unused = void, typename std::enable_if<std::is_integral<T>::value && std::is_same<__unused, void>::value, int>::type = 0>
 			const T& at(size_t index) const {
-				if(this->length() <= index)
-					std::__throw_out_of_range_fmt("Index %lu is out of range. Max allowed %lu", index, this->length());
+				if(this->length() <= index) {
+                    char buffer[256];
+                    sprintf_s(buffer, 256, "Index %lu is out of range. Max allowed %lu", index, this->length());
+                    throw std::out_of_range(buffer);
+                }
 				return *(T*) (this->data_ptr<char>() + index);
 			}
 
