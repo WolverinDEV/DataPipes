@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(DataPipes CXX)
+project(plugin CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_VERBOSE_MAKEFILE ON)
@@ -190,6 +190,16 @@ endif()
 
 if(BUILD_TESTS)
 	set(TEST_LIBRARIES
+			DataPipes-Static
+
+			LibNice::LibNice
+			#SctpLab::UsrSCTP
+			usrsctp.a
+			sdptransform
+			#srtp
+			${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
+			stdc++fs.a
+
 			DataPipes-Shared
 			event
 			event_pthreads
@@ -201,6 +211,9 @@ if(BUILD_TESTS)
 			asound
 			opus
 	)
+
+
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libgcc -static-libstdc++")
 
 	add_executable(DataPipes-Test-SSL test/ssl_pipeline_server.cpp test/utils/socket.cpp)
 	target_link_libraries(DataPipes-Test-SSL ${TEST_LIBRARIES})

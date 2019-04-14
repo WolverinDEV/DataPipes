@@ -68,22 +68,6 @@ void initializes_certificates() {
     certificates->save_file(TEST_CERTIFICATE_PATH, TEST_PRIVATE_KEY_PATH);
 }
 
-void configure_context(SSL_CTX *ctx) {
-    assert(SSL_CTX_set_ecdh_auto(ctx, 1));
-    if(!certificates)
-        initializes_certificates();
-
-    if (SSL_CTX_use_PrivateKey(ctx, certificates->getPrivateKey()) <= 0 ) {
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
-
-    if (SSL_CTX_use_certificate(ctx, certificates->getCertificate()) <= 0 ) {
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
-}
-
 void initialize_client(const std::shared_ptr<Socket::Client>& client) {
     cout << "Got new client" << endl;
     auto ssl_pipeline = new pipes::SSL{};

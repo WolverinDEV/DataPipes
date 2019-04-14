@@ -34,6 +34,14 @@ button.on('click', () => {
     });
 });
 
+$("#disconnect").on('click', event => {
+    if(connection) {
+        connection.peer.close();
+        connection.socket.close();
+        connection = undefined;
+    }
+});
+
 $("#send").on('click', () => {
     let message = $("#message").val().toString();
     console.log("Send message: %s", message);
@@ -254,7 +262,8 @@ function connect_peer(config?: PeerConnectionConfig) : Promise<PeerConnection> {
         let result = new PeerConnection();
         result.config = config;
 
-        result.socket = new WebSocket("wss://192.168.43.141:1111");
+        //result.socket = new WebSocket("wss://192.168.43.141:1111");
+        result.socket = new WebSocket("wss://felix.did.science:1111");
 
         result.socket.onopen = event => {
             console.log("[WS] WebSocket connected!");
