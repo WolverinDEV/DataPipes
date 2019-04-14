@@ -45,6 +45,7 @@ namespace pipes {
 		uint8_t flag_deleted: 1;
 		uint8_t __unused: 6;
 	    uint8_t block_free_flags[0];
+	    uint8_t block_free_end;
 	};
 
 	struct chunk_type_info {

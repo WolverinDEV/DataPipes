@@ -9,9 +9,12 @@
 
 #if defined(_MSC_VER)
     #include <BaseTsd.h>
-#include <stdexcept>
+	#include <stdexcept>
 
-typedef SSIZE_T ssize_t;
+	typedef SSIZE_T ssize_t;
+	#define print_formated sprintf_s
+#else
+	#define print_formated snprintf
 #endif
 
 namespace pipes {
@@ -101,7 +104,7 @@ namespace pipes {
 			inline N_T at(size_t index) const {
 				if(this->length() <= index) {
                     char buffer[256];
-                    sprintf_s(buffer, 256, "Index %lu is out of range. Max allowed %lu", index, this->length());
+					print_formated(buffer, 256, "Index %lu is out of range. Max allowed %lu", index, this->length());
                     throw std::out_of_range(buffer);
                 }
 				return (N_T) *(T*) (this->data_ptr<char>() + index);
@@ -112,7 +115,7 @@ namespace pipes {
 			const T& at(size_t index) const {
 				if(this->length() <= index) {
                     char buffer[256];
-                    sprintf_s(buffer, 256, "Index %lu is out of range. Max allowed %lu", index, this->length());
+					print_formated(buffer, 256, "Index %lu is out of range. Max allowed %lu", index, this->length());
                     throw std::out_of_range(buffer);
                 }
 				return *(T*) (this->data_ptr<char>() + index);
@@ -205,7 +208,7 @@ namespace pipes {
 			T& at(size_t index) {
 				if(this->length() <= index) {
 				    char buffer[256];
-				    sprintf_s(buffer, 256, "Index %lu is out of range. Max allowed %lu", index, this->length());
+					print_formated(buffer, 256, "Index %lu is out of range. Max allowed %lu", index, this->length());
                     throw std::out_of_range(buffer);
 				}
 				return *(T*) ((char*) this->data_ptr() + index);

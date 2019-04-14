@@ -1,4 +1,5 @@
 #include "include/allocator.h"
+#include <cstdlib>
 
 using namespace std;
 using namespace pipes;
