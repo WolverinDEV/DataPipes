@@ -41,7 +41,7 @@ endif()
 
 find_library(Crypto_SSL_LIBRARY
 		NAMES libssl.so ssl.dll ssl.lib
-		PATH_SUFFIXES win32_x64 win32_amd64 win32_x64/ssl win32_amd64/ssl/Release
+		PATH_SUFFIXES ssl win32_x64 win32_amd64 win32_x64/ssl win32_amd64/ssl/Release
 		HINTS ${Crypto_ROOT_DIR} ${Crypto_ROOT_DIR}/out ${Crypto_ROOT_DIR}/build "${Crypto_ROOT_DIR}/libs/"
 )
 
