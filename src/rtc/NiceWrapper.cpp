@@ -322,6 +322,7 @@ void NiceWrapper::on_gathering_done(guint stream_id) {
 	LOG_DEBUG(this->_logger, "NiceWrapper::on_gathering_done", "Gathering completed for stream %u. Found %u ICE local ice candidates.", stream_id, candidate_count);
 	auto candidates = stream->ice_local_candidate_list;
 	stream->ice_local_candidate_list = nullptr;
+	stream->gathering_done = true;
 	lock.unlock();
 
 	if(this->callback_local_candidates) {
@@ -374,6 +375,7 @@ void NiceWrapper::on_state_change(guint stream_id, guint component_id, guint sta
 			LOG_INFO(this->_logger, "NiceWrapper::on_state_change", "Received new state for stream %i (%u). State: %s", stream_id, component_id, "DISCONNECTED");
 			break;
 		case (NICE_COMPONENT_STATE_GATHERING):
+			stream->gathering_done = false;
 			LOG_INFO(this->_logger, "NiceWrapper::on_state_change", "Received new state for stream %i (%u). State: %s", stream_id, component_id, "GATHERING");
 			break;
 		case (NICE_COMPONENT_STATE_CONNECTING):
@@ -470,7 +472,7 @@ ssize_t NiceWrapper::apply_remote_ice_candidates(const std::shared_ptr<rtc::Nice
 
 bool NiceWrapper::execute_negotiation(const std::shared_ptr<rtc::NiceStream> &stream) {
 	std::lock_guard<std::recursive_mutex> lock(io_lock);
-	if(nice_agent_get_component_state(&*this->agent, stream->stream_id, 1) == NiceComponentState::NICE_COMPONENT_STATE_GATHERING) {
+	if(!stream->gathering_done) {
 		LOG_ERROR(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Negotiation not allowed before candidates have been gathered!");
 		return false;
 	}

@@ -33,6 +33,7 @@ namespace rtc {
 		GSList* ice_remote_candidate_list = nullptr; /* protected with the IO lock */
 		GSList* ice_local_candidate_list = nullptr; /* protected with the IO lock */
 		bool negotiation_required = false;
+		bool gathering_done = false;
 
 		~NiceStream();
 	};
