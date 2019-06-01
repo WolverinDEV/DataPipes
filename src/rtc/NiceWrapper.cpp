@@ -472,7 +472,7 @@ ssize_t NiceWrapper::apply_remote_ice_candidates(const std::shared_ptr<rtc::Nice
 
 bool NiceWrapper::execute_negotiation(const std::shared_ptr<rtc::NiceStream> &stream) {
 	std::lock_guard<std::recursive_mutex> lock(io_lock);
-	if(!stream->gathering_done) {
+	if(nice_agent_get_component_state(&*this->agent, stream->stream_id, 1) == NiceComponentState::NICE_COMPONENT_STATE_GATHERING && !stream->gathering_done) {
 		LOG_ERROR(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Negotiation not allowed before candidates have been gathered!");
 		return false;
 	}
