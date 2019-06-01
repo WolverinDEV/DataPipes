@@ -43,7 +43,8 @@ namespace rtc {
 				DTLS,
 				SCTP
 			};
-			typedef std::function<void(const IceCandidate&)> cb_ice_candidate;
+
+			typedef std::function<void(const IceCandidate& /* candidate */, bool /* last candidate */)> cb_ice_candidate;
 			typedef std::function<void(ConnectionComponent /* component */, const std::string& /* reason */)> cb_setup_fail;
 
 			typedef std::function<void(const std::shared_ptr<Stream>& /* stream */)> cb_new_stream;
@@ -58,6 +59,8 @@ namespace rtc {
 			//TODO vice versa (we create a offer and parse the answer?)
 			bool apply_offer(std::string& /* error */, const std::string& /* offer */);
 			int apply_ice_candidates(const std::deque<std::shared_ptr<IceCandidate>>& /* candidates */);
+			bool execute_negotiation();
+
 			cb_ice_candidate callback_ice_candidate;
 
 			std::string generate_answer(bool /* candidates */);

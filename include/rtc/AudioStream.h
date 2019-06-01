@@ -230,9 +230,6 @@ namespace rtc {
 			srtp_policy_t remote_policy;
 			srtp_policy_t local_policy;
 
-			std::string mid;
-			enum Role { Client, Server } role = Client;
-
 			std::deque<std::shared_ptr<codec::TypedAudio>> offered_codecs;
 			std::vector<std::shared_ptr<HeaderExtension>> remote_extensions;
 			std::vector<std::shared_ptr<HeaderExtension>> local_extensions;

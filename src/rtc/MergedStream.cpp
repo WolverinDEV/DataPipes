@@ -70,7 +70,7 @@ void MergedStream::on_nice_ready() {
 	string error;
 
 	LOG_DEBUG(this->config->logger, "MergedStream::on_nice_ready", "Nice stream has been initialized successfully. Initializing DTLS as %s", this->role == Role::Client ? "client" : "server");
-	if(!this->dtls->initialize(error, this->dtls_certificate, pipes::DTLS_v1_2,this->role == Role::Client ? pipes::SSL::CLIENT : pipes::SSL::SERVER, [](SSL_CTX* ctx) {
+	if(!this->dtls->initialize(error, this->dtls_certificate, pipes::DTLS_v1_2, this->role == Role::Client ? pipes::SSL::CLIENT : pipes::SSL::SERVER, [](SSL_CTX* ctx) {
 		SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32"); //Required for rt(c)p
 		return true;
 	})) {

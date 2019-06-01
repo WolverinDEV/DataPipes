@@ -35,8 +35,6 @@ namespace rtc {
 			void process_incoming_data(const pipes::buffer_view& /* data */) override;
 		private:
 			std::shared_ptr<Configuration> config;
-			enum Role { Client, Server } role = Client;
-
 			std::shared_ptr<pipes::TLSCertificate> dtls_certificate; /* here 'till dtls has been initialized */
 			std::unique_ptr<pipes::TLS> dtls;
 			bool dtls_initialized = false;

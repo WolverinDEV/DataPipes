@@ -29,7 +29,10 @@ namespace rtc {
 		cb_receive callback_receive;
 		cb_ready callback_ready;
 
-		GSList* cached_ice_candidates = nullptr; /* protected with the IO lock */
+		/* will be applied to the nice stream when gathering candidates */
+		GSList* ice_remote_candidate_list = nullptr; /* protected with the IO lock */
+		GSList* ice_local_candidate_list = nullptr; /* protected with the IO lock */
+		bool negotiation_required = false;
 
 		~NiceStream();
 	};
@@ -56,7 +59,7 @@ namespace rtc {
 
 	class NiceWrapper {
 		public:
-			typedef std::function<void(const std::shared_ptr<NiceStream>& /* stream */, const std::string& /* sdp */)> cb_candidate;
+			typedef std::function<void(const std::shared_ptr<NiceStream>& /* stream */, const std::vector<std::string>& /* sdps */, bool /* more candidates */)> cb_candidate;
 			typedef std::function<void(const std::shared_ptr<NiceStream>& /* stream */)> cb_failed;
 
 			struct Config {
@@ -80,10 +83,13 @@ namespace rtc {
 			bool initialize(std::string& /* error */);
 			void finalize();
 
-			bool gather_candidates(const std::shared_ptr<NiceStream>& /* stream */);
-			ssize_t apply_remote_ice_candidates(const std::shared_ptr<NiceStream>& /* stream */, const std::deque<std::string>& /* candidates */);
+
 			bool apply_remote_sdp(std::string& /* error */, std::string /* sdp */);
 			std::deque<std::unique_ptr<LocalSdpEntry>> generate_local_sdp(bool /* with candidates */);
+
+			bool gather_candidates(const std::shared_ptr<NiceStream>& /* stream */); /* generate a list of candidates */
+			ssize_t apply_remote_ice_candidates(const std::shared_ptr<NiceStream>& /* stream */, const std::deque<std::string>& /* candidates */);
+			bool execute_negotiation(const std::shared_ptr<rtc::NiceStream> &stream); /* sets the remote candidates and begin to connect */
 
 
 			bool send_data(guint /* stream */, guint /* component */, const pipes::buffer_view& /* buffer */);
@@ -108,10 +114,11 @@ namespace rtc {
 		protected:
 			virtual void on_data_received(guint /* stream */, guint /* component */, void * /* buffer */, size_t /* length */);
 
+			virtual void on_local_ice_candidate(guint /* stream */, guint /* component */, gchar* /* foundation */);
 			virtual void on_gathering_done(guint stream_id);
+
 			virtual void on_selected_pair(guint /* stream */, guint /* component */, NiceCandidate* /* local candidate */, NiceCandidate* /* remote candidate */);
 			virtual void on_state_change(guint /* stream */, guint /* component */, guint /* state */);
-			virtual void on_local_ice_candidate(guint /* stream */, guint /* component */, gchar* /* foundation */);
 			virtual void on_transport_writeable(guint /* stream */, guint /* component */);
 		private:
 			std::recursive_mutex io_lock;
@@ -126,7 +133,7 @@ namespace rtc {
 			std::recursive_mutex streams_lock;
 			std::deque<std::shared_ptr<NiceStream>> streams;
 
-			cb_candidate callback_local_candidate;
+			cb_candidate callback_local_candidates;
 			cb_failed callback_failed;
 	};
 }

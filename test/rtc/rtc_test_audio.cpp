@@ -217,7 +217,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 							deque<shared_ptr<rtc::IceCandidate>> { make_shared<rtc::IceCandidate>(root["msg"]["candidate"].asString(), root["msg"]["sdpMid"].asString(), root["msg"]["sdpMLineIndex"].asInt()) }
 					) << endl;
 				} else if (root["type"] == "candidate_finish") {
-					//client->peer->gather();
+					cout << "Remote client finished candidates. Negotiate streams" << endl;
+					client->peer->execute_negotiation();
 				}
 			} else {
 				cerr << "Failed to parse json" << endl;
@@ -226,15 +227,30 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 	}
 
 	{
-		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice) {
+		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice, bool last_candidate) {
 			Json::Value jsonCandidate;
 			jsonCandidate["type"] = "candidate";
 			jsonCandidate["msg"]["candidate"] = ice.candidate;
 			jsonCandidate["msg"]["sdpMid"] = ice.sdpMid;
 			jsonCandidate["msg"]["sdpMLineIndex"] = ice.sdpMLineIndex;
+			{
+				pipes::buffer buffer;
+				buffer += Json::writeString(client->json_writer, jsonCandidate);
+				client->websocket->send({pipes::OpCode::TEXT, buffer});
+			}
 
 			cout << "Sending ice candidate " << ice.candidate << " (" << ice.sdpMid << " | " << ice.sdpMLineIndex << ")" << endl;
-			//client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, jsonCandidate)});
+
+			if(last_candidate) {
+				Json::Value candidate_finish;
+				jsonCandidate["type"] = "candidate_finish";
+				{
+					pipes::buffer buffer;
+					buffer += Json::writeString(client->json_writer, candidate_finish);
+					client->websocket->send({pipes::OpCode::TEXT, buffer});
+				}
+				cout << "Sending ice candidate finish" << endl;
+			}
 		};
 
 		client->peer->callback_new_stream = [client](const shared_ptr<rtc::Stream>& stream) {

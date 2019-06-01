@@ -97,9 +97,6 @@ namespace rtc {
 			std::shared_ptr<Configuration> config;
 			std::map<uint16_t, std::shared_ptr<DataChannel>> active_channels;
 
-			std::string mid;
-			enum Role { Client, Server } role = Client;
-
 			bool external_sctp_port;
 			std::shared_ptr<pipes::TLSCertificate> dtls_certificate; /* here 'till dtls has been initialized */
 			std::unique_ptr<pipes::TLS> dtls;

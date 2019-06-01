@@ -138,8 +138,10 @@ bool pipes::SSL::do_handshake() {
 		return false;
 	}
 	auto code = SSL_do_handshake(this->sslLayer);
-	if(code == 1)
+	if(code == 1) {
+		LOG_VERBOSE(this->logger(), "SSL::do_handshake", "Handshake as server succeeded");
 		return true;
+	}
 	auto error_code = SSL_get_error(this->sslLayer, code);
 	auto error_message = ERR_reason_error_string(error_code);
 	LOG_ERROR(this->logger(), "SSL::do_handshake", "Failed to process SSL handshake. Result: %u => Error code %u (%s)!", code, error_code, error_message);
