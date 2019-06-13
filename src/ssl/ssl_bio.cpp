@@ -9,24 +9,24 @@
 #define BIO_C_SET_SSLHANDLE (1 | 0x8000)
 
 
-int  (*pipes::SSL::bio_puts)             (BIO *, const char *) = [](BIO *, const char *) {
+int pipes::SSL::bio_puts(BIO *, const char *) {
 	return 0;
 };
-int  (*pipes::SSL::bio_gets)             (BIO *, char *, int) = [](BIO *, char*, int) {
+int pipes::SSL::bio_gets(BIO *, char*, int) {
 	return 0;
 };
 
 #ifdef USE_BORINGSSL
-	long (*pipes::SSL::bio_callback_ctrl)    (BIO *, int, bio_info_cb) = [](BIO *, int, bio_info_cb) {
+	long pipes::SSL::bio_callback_ctrl(BIO *, int, bio_info_cb) {
 		return 0L;
 	};
 #else
-	long (*pipes::SSL::bio_callback_ctrl)    (BIO *, int, bio_info_cb *) = [](BIO *, int, bio_info_cb *) {
+	long pipes::SSL::bio_callback_ctrl(BIO *, int, bio_info_cb *) {
 		return 0L;
 	};
 #endif
 
-int(*pipes::SSL::bio_write)(BIO*, const char *, int) = [](BIO* self, const char* buffer, int length) -> int {
+int pipes::SSL::bio_write(BIO* self, const char* buffer, int length) {
 	auto handle = static_cast<SSL*>(self->ptr);
 	assert(handle);
 
@@ -36,14 +36,14 @@ int(*pipes::SSL::bio_write)(BIO*, const char *, int) = [](BIO* self, const char*
 };
 
 using namespace std;
-int(*pipes::SSL::bio_read)(BIO *, char *, int) = [](BIO* self, char* buffer, int length) -> int {
+int pipes::SSL::bio_read(BIO* self, char* buffer, int length) {
 	auto handle = static_cast<SSL*>(self->ptr);
 	assert(handle);
 
 	return handle->buffer_read_read_bytes(buffer, length);
 };
 
-long(*pipes::SSL::bio_ctrl)(BIO *, int, long, void*) = [](BIO* self, int operation, long larg, void* parg) -> long {
+long pipes::SSL::bio_ctrl(BIO* self, int operation, long larg, void* parg) {
 	//printf("ctrl(%p, %d, %li, %p);\n", self, operation, larg, parg);
     auto handle = static_cast<SSL*>(self->ptr);
 
@@ -64,12 +64,12 @@ long(*pipes::SSL::bio_ctrl)(BIO *, int, long, void*) = [](BIO* self, int operati
 	}
 };
 
-int(*pipes::SSL::bio_create)(BIO *) = [](BIO* self) -> int {
+int pipes::SSL::bio_create(BIO* self) {
 	self->ptr = nullptr;
 	return 1;
 };
 
-int(*pipes::SSL::bio_destroy)(BIO *) = [](BIO* self) -> int {
+int pipes::SSL::bio_destroy(BIO* self) {
 	self->ptr = nullptr;
 	self->init = 0;
 	return 1;

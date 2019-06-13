@@ -1,6 +1,8 @@
 #include <include/errors.h>
 #include <cstring>
 #include <iostream>
+#include <openssl/err.h>
+
 #define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
 #include "include/ssl.h"
@@ -23,25 +25,127 @@ pipes::SSL::~SSL() {
 	this->finalize();
 }
 
-bool pipes::SSL::initialize(const std::shared_ptr<SSL_CTX>& ctx, Type type) {
-    this->type = type;
-    this->sslContext = ctx;
-    this->sslLayer = SSL_new(ctx.get());
-    if(!this->sslLayer) { return false; }
-    if(type == SERVER)
-        SSL_set_accept_state(this->sslLayer);
-    else
-        SSL_set_connect_state(this->sslLayer);
-    if(!this->initializeBio()) return false;
-    this->sslState = SSLSocketState::SSL_STATE_INIT;
+const pipes::SSL::Options::KeyPair pipes::SSL::Options::EmptyKeyPair{nullptr, nullptr};
 
-    return true;
+int pipes::SSL::_sni_callback(::SSL* handle, int* ad, void* _ptr_ssl) {
+	auto ssl = reinterpret_cast<pipes::SSL*>(_ptr_ssl);
+	assert(ssl->ssl_handle() == handle);
+
+	auto servername = SSL_get_servername(handle, TLSEXT_NAMETYPE_host_name);
+	if(servername != nullptr) {
+		LOG_DEBUG(ssl->logger(), "SSL::sni_callback", "Received SNI extension with value \"%s\"", servername);
+		if(ssl->options->servername_keys.count(servername) > 0) {
+			auto key = ssl->options->servername_keys.at(servername);
+			if(key.first && key.second) {
+				LOG_DEBUG(ssl->logger(), "SSL::sni_callback", "Using special defined certificate.");
+
+				if(!SSL_use_PrivateKey(handle, &*key.first))
+					return SSL_TLSEXT_ERR_ALERT_FATAL;
+
+				if(!SSL_use_certificate(handle, &*key.second))
+					return SSL_TLSEXT_ERR_ALERT_FATAL;
+
+				if(ssl->options->free_unused_keypairs)
+					ssl->options->servername_keys.clear();
+				return SSL_TLSEXT_ERR_OK;
+			}
+		}
+	} else {
+		LOG_DEBUG(ssl->logger(), "SSL::sni_callback", "Received SNI extension with empty value.");
+	}
+
+	{
+		auto key = ssl->options->default_keypair();
+		if(key.first && key.second) {
+			LOG_DEBUG(ssl->logger(), "SSL::sni_callback", "Using default certificate");
+
+			if(!SSL_use_PrivateKey(handle,&*key.first))
+				return SSL_TLSEXT_ERR_ALERT_FATAL;
+
+			if(!SSL_use_certificate(handle, &*key.second))
+				return SSL_TLSEXT_ERR_ALERT_FATAL;
+		} else {
+			LOG_DEBUG(ssl->logger(), "SSL::sni_callback", "Haven't yet setupped any certificate. Trying without.");
+		}
+
+		if(ssl->options->free_unused_keypairs)
+			ssl->options->servername_keys.clear();
+	}
+	return SSL_TLSEXT_ERR_OK;
+}
+
+bool pipes::SSL::initialize(const std::shared_ptr<pipes::SSL::Options> &options) {
+	if(!options->context_method)
+		return false;
+
+	this->options = options;
+
+
+	this->sslContext = shared_ptr<SSL_CTX>(SSL_CTX_new(options->context_method), SSL_CTX_free);
+	if(!this->sslContext)
+		return false;
+
+	if(options->context_initializer)
+		options->context_initializer(&*this->sslContext); /* TODO: Test result */
+
+	this->sslLayer = SSL_new(&*this->sslContext);
+	if(!this->sslLayer)
+		return false;
+
+	if(options->type == SERVER) {
+		SSL_set_accept_state(this->sslLayer);
+	} else {
+		SSL_set_connect_state(this->sslLayer);
+	}
+	if(options->ssl_initializer)
+		options->ssl_initializer(this->sslLayer); /* TODO: Test result */
+
+	if(options->servername_keys.size() > 1 || options->enforce_sni) {
+		SSL_CTX_set_tlsext_servername_callback(&*this->sslContext, pipes::SSL::_sni_callback);
+		SSL_CTX_set_tlsext_servername_arg(&*this->sslContext, this);
+	} else if(options->servername_keys.size() == 1) {
+		auto default_keypair = options->servername_keys.begin();
+		if(!SSL_use_PrivateKey(this->sslLayer, &*default_keypair->second.first))
+			return false;
+
+		if(!SSL_use_certificate(this->sslLayer, &*default_keypair->second.second))
+			return false;
+
+		if(options->type == CLIENT && !default_keypair->first.empty()) {
+			if(!SSL_set_tlsext_host_name(this->sslLayer, default_keypair->first.c_str()))
+				return false;
+		}
+
+		if(options->free_unused_keypairs)
+			options->servername_keys.clear();
+	} else {
+		if(!SSL_CTX_get0_privatekey(&*this->sslContext))
+			return false;
+
+		if(!SSL_CTX_get0_certificate(&*this->sslContext))
+			return false;
+	}
+
+	if(!this->initializeBio()) return false;
+	this->sslState = SSLSocketState::SSL_STATE_INIT;
+
+	return true;
 }
 
 bool pipes::SSL::do_handshake() {
-	if(this->type != CLIENT) return false;
+	if(this->options->type != CLIENT) {
+		LOG_ERROR(this->logger(), "SSL::do_handshake", "Tried to do a handshake, but we're not in client mode!");
+		return false;
+	}
 	auto code = SSL_do_handshake(this->sslLayer);
-	return code == 0;
+	if(code == 1) {
+		LOG_VERBOSE(this->logger(), "SSL::do_handshake", "Handshake as server succeeded");
+		return true;
+	}
+	auto error_code = SSL_get_error(this->sslLayer, code);
+	auto error_message = ERR_reason_error_string(error_code);
+	LOG_ERROR(this->logger(), "SSL::do_handshake", "Failed to process SSL handshake. Result: %u => Error code %u (%s)!", code, error_code, error_message);
+	return false;
 }
 
 void pipes::SSL::finalize() {

@@ -39,16 +39,9 @@ bool MergedStream::initialize(std::string &error) {
 		this->dtls->callback_initialized = [&](){
 			this->on_dtls_initialized(this->dtls);
 		};
-
-		auto certificate = pipes::TLSCertificate::generate("DataPipes", 365);
-		if(!this->dtls->initialize(error, std::move(certificate), pipes::DTLS_v1_2, [](SSL_CTX* ctx) {
-			SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32"); //Required for rt(c)p
-			return true;
-		})) {
-			error = "Failed to initialize dtls (" + error + ")";
-			return false;
-		}
 	}
+
+	this->dtls_certificate = pipes::TLSCertificate::generate("DataPipes", 365);
 	return true;
 }
 
@@ -64,6 +57,8 @@ void MergedStream::send_data_dtls(const pipes::buffer_view &data) {
 }
 
 std::string MergedStream::generate_local_fingerprint() {
+	if(this->dtls_certificate)
+		return this->dtls_certificate->getFingerprint();
 	return this->dtls->getCertificate()->getFingerprint();
 }
 
@@ -72,7 +67,20 @@ bool MergedStream::apply_sdp(const nlohmann::json &sdp, const nlohmann::json &) 
 }
 
 void MergedStream::on_nice_ready() {
-	this->dtls->do_handshake(); //FIXME test which role we have!
+	string error;
+
+	LOG_DEBUG(this->config->logger, "MergedStream::on_nice_ready", "Nice stream has been initialized successfully. Initializing DTLS as %s", this->role == Role::Client ? "client" : "server");
+	if(!this->dtls->initialize(error, this->dtls_certificate, pipes::DTLS_v1_2, this->role == Role::Client ? pipes::SSL::CLIENT : pipes::SSL::SERVER, [](SSL_CTX* ctx) {
+		SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32"); //Required for rt(c)p
+		return true;
+	})) {
+		LOG_ERROR(this->config->logger, "MergedStream::on_nice_ready", "Failed to initialize DTLS (%s)", error.c_str());
+		return;
+	}
+
+	if(this->role == Role::Client) {
+		this->dtls->do_handshake();
+	}
 }
 
 string MergedStream::generate_sdp() {

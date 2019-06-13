@@ -240,7 +240,8 @@ ssize_t buffer::write(const pipes::buffer_view &buffer, ssize_t length, ssize_t 
 	if(offset_source < 0) offset_source = 0;
 	if(offset_target < 0) offset_target = 0;
 
-	if(length + offset_source > buffer.length()) std::__throw_out_of_range("Source is out of buffer range!");
+	if(length + offset_source > buffer.length())
+	    throw std::out_of_range("Source is out of buffer range!");
 
 	return this->write((void *)buffer.data_ptr(), length, offset_target, offset_source);
 }
@@ -249,7 +250,8 @@ ssize_t buffer::write(void *buffer, size_t length, ssize_t offset_target, ssize_
 	if(offset_source < 0) offset_source = 0;
 	if(offset_target < 0) offset_target = 0;
 
-	if(length + offset_target > this->length()) std::__throw_out_of_range("Destination is out of buffer range!");
+	if(length + offset_target > this->length())
+	    throw std::out_of_range("Destination is out of buffer range!");
 
 	memcpy((char*) this->data_ptr() + offset_target, (char*) buffer + offset_source, length);
 	return length;

@@ -9,6 +9,8 @@ namespace pipes {
 			static std::unique_ptr<TLSCertificate> generate(const std::string& /* name */, int /* days */);
 			TLSCertificate(const std::string& /* certificate pen */, const std::string& /* key pen */, bool /* files */ = false);
 
+			std::shared_ptr<X509> ref_certificate();
+			std::shared_ptr<EVP_PKEY> ref_private_key();
 			X509* getCertificate() const { return this->certificate.get(); }
 			EVP_PKEY* getPrivateKey() const { return this->evp_key.get(); }
 
@@ -40,7 +42,7 @@ namespace pipes {
 	class TLS : public pipes::SSL {
 		public:
 			typedef std::function<bool(SSL_CTX*)> initialize_function;
-			bool initialize(std::string& /* error */, const std::shared_ptr<TLSCertificate>& /* certificate */, TLSMode /* mode */, const initialize_function& /* initialize */ = nullptr);
+			bool initialize(std::string& /* error */, const std::shared_ptr<TLSCertificate>& /* certificate */, TLSMode /* mode */, Type /* server/client */, const initialize_function& /* initialize */ = nullptr);
 
 			inline std::shared_ptr<TLSCertificate> getCertificate() { return this->certificate; }
 		private:

@@ -86,59 +86,23 @@ std::string random_string( size_t length )
 	return str;
 }
 
-std::pair<EVP_PKEY*, X509*> certs{nullptr, nullptr};
-std::pair<EVP_PKEY*, X509*> createCerts(pem_password_cb* password) {
-	auto key = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>(EVP_PKEY_new(), ::EVP_PKEY_free);
+#define TEST_CERTIFICATE_PATH "test_certificate.pem"
+#define TEST_PRIVATE_KEY_PATH "test_private_key.pem"
+std::unique_ptr<pipes::TLSCertificate> certificates;
 
-	auto rsa = RSA_new();
-	auto e = std::unique_ptr<BIGNUM, decltype(&BN_free)>(BN_new(), ::BN_free);
-	BN_set_word(e.get(), RSA_F4);
-	if(!RSA_generate_key_ex(rsa, 2048, e.get(), nullptr)) return {nullptr, nullptr};
-	EVP_PKEY_assign_RSA(key.get(), rsa);
-
-	auto cert = X509_new();
-	X509_set_pubkey(cert, key.get());
-
-	ASN1_INTEGER_set(X509_get_serialNumber(cert), 3);
-	X509_gmtime_adj(X509_get_notBefore(cert), 0);
-	X509_gmtime_adj(X509_get_notAfter(cert), 31536000L);
-
-	X509_NAME* name = X509_get_subject_name(cert);
-
-	//This was an example for TeaSpeak
-	X509_NAME_add_entry_by_txt(name, "C",  MBSTRING_ASC, (unsigned char *) "DE", -1, -1, 0);
-	X509_NAME_add_entry_by_txt(name, "O",  MBSTRING_ASC, (unsigned char *) ("DataPipes Text (" + random_string(12) + ")").c_str(), -1, -1, 0); //We need something random here else some browsers say: SEC_ERROR_REUSED_ISSUER_AND_SERIAL
-	X509_NAME_add_entry_by_txt(name, "OU",  MBSTRING_ASC, (unsigned char *) "DataPipes", -1, -1, 0);
-	X509_NAME_add_entry_by_txt(name, "emailAddress",  MBSTRING_ASC, (unsigned char *)"contact@teaspeak.de", -1, -1, 0);
-
-	X509_set_issuer_name(cert, name);
-	X509_set_subject_name(cert, name);
-
-	X509_sign(cert, key.get(), EVP_sha512());
-
-	return {key.release(), cert};
-};
-
-void configure_context(SSL_CTX *ctx) {
-	assert(SSL_CTX_set_ecdh_auto(ctx, 1));
-	if(!certs.first || !certs.second)
-		certs = createCerts([](char* buffer, int length, int rwflag, void* data) -> int {
-			std::string password = "markus";
-			memcpy(buffer, password.data(), password.length());
-			return password.length();
-		});
-
-	PEM_write_X509(stdout, certs.second);
-
-	if (SSL_CTX_use_PrivateKey(ctx, certs.first) <= 0 ) {
-		ERR_print_errors_fp(stderr);
-		exit(EXIT_FAILURE);
+void initializes_certificates() {
+	try {
+		certificates = make_unique<pipes::TLSCertificate>(TEST_CERTIFICATE_PATH, TEST_PRIVATE_KEY_PATH, true);
+		return;
+	} catch(const std::exception& ex) {
+		cerr << "Failed to load certificates from file: " << ex.what() << endl;
+		cerr << "Generating new one" << endl;
 	}
 
-	if (SSL_CTX_use_certificate(ctx, certs.second) <= 0 ) {
-		ERR_print_errors_fp(stderr);
-		exit(EXIT_FAILURE);
-	}
+	certificates = pipes::TLSCertificate::generate("TeaSpeak-Test", 356);
+	assert(certificates);
+
+	certificates->save_file(TEST_CERTIFICATE_PATH, TEST_PRIVATE_KEY_PATH);
 }
 
 void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
@@ -155,9 +119,20 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 		client->ssl->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
 		client->ssl->direct_process(pipes::PROCESS_DIRECTION_IN, true);
 
-		auto ctx = create_context();
-		configure_context(ctx);
-		client->ssl->initialize(shared_ptr<SSL_CTX>(ctx, SSL_CTX_free), pipes::SSL::SERVER);
+		{
+
+			auto options = make_shared<pipes::SSL::Options>();
+			options->context_method = SSLv23_method();
+			options->type = pipes::SSL::SERVER;
+			options->free_unused_keypairs = true;
+			options->enforce_sni = true;
+
+			options->default_keypair(pipes::SSL::Options::KeyPair{certificates->ref_private_key(), certificates->ref_certificate()});
+			if(!client->ssl->initialize(options)) {
+				cerr << "Failed to initialize client" << endl;
+				return; //FIXME Cleanup?
+			}
+		}
 
 		client->ssl->callback_data([client](const pipes::buffer_view& data) {
 			client->websocket->process_incoming_data(data);
@@ -291,6 +266,8 @@ int main() {
 	srand(chrono::system_clock::now().time_since_epoch().count());
 	SSL_library_init();
 	OpenSSL_add_all_algorithms();
+
+	initializes_certificates();
 
 	Socket socket{};
 	socket.callback_accept = initialize_client;

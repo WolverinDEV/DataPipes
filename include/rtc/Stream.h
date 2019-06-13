@@ -63,6 +63,9 @@ namespace rtc {
 
 			bool buffer_fails = true;
 
+			std::string mid;
+			enum Role { Undefined, Client, Server } role = Client;
+
 			std::mutex fail_buffer_lock;
 			std::deque<pipes::buffer> fail_buffer;
 			virtual bool resend_buffer(bool /* lock owner */);

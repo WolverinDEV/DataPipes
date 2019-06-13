@@ -8,13 +8,13 @@
 #include <memory>
 
 namespace http {
-	namespace code { class HTTPCode; }
+	namespace code { struct HTTPCode; }
 	typedef std::shared_ptr<code::HTTPCode> code_t;
 
 	namespace code {
 		struct HTTPCode {
 			public:
-				HTTPCode(const int code, std::string message) : message(std::move(message)), code(code) { }
+				HTTPCode(int code, std::string message) : message(std::move(message)), code(code) { }
 
 				const std::string message;
 				const int code;

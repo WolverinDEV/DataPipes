@@ -89,8 +89,14 @@ auto config = []{
 
 	//config->nice_config->ice_pwd = "asdasdasasdasdasdasdasdasddasdasdasd";
 	//config->nice_config->ice_ufrag = "asdasd";
-	config->nice_config->main_loop = std::shared_ptr<GMainLoop>(g_main_loop_new(nullptr, false), g_main_loop_unref);
-	std::thread(g_main_loop_run, config->nice_config->main_loop.get()).detach(); //FIXME
+	//config->nice_config->main_loop = std::shared_ptr<GMainLoop>(g_main_loop_new(nullptr, false), g_main_loop_unref);
+	//std::thread(g_main_loop_run, config->nice_config->main_loop.get()).detach(); //FIXME
+
+	//config->nice_config->ice_servers.push_back({"stun.l.google.com", 19302});
+	config->nice_config->ice_port_range = {50000, 56000};
+
+	config->nice_config->allow_ice_udp = true;
+	config->nice_config->allow_ice_tcp = false;
 
 	config->logger = make_shared<pipes::Logger>();
 	config->logger->callback_log = log;
@@ -98,39 +104,6 @@ auto config = []{
 	return config;
 }();
 
-
-SSL_CTX* create_context()
-{
-	const SSL_METHOD *method;
-	SSL_CTX *ctx;
-
-	method = SSLv23_server_method();
-
-	ctx = SSL_CTX_new(method);
-	if (!ctx) {
-		perror("Unable to create SSL context");
-		ERR_print_errors_fp(stderr);
-		exit(EXIT_FAILURE);
-	}
-
-	return ctx;
-}
-
-std::string random_string( size_t length )
-{
-	auto randchar = []() -> char
-	{
-		const char charset[] =
-				"0123456789"
-				"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-				"abcdefghijklmnopqrstuvwxyz";
-		const size_t max_index = (sizeof(charset) - 1);
-		return charset[ rand() % max_index ];
-	};
-	std::string str(length,0);
-	std::generate_n( str.begin(), length, randchar );
-	return str;
-}
 
 #define TEST_CERTIFICATE_PATH "test_certificate.pem"
 #define TEST_PRIVATE_KEY_PATH "test_private_key.pem"
@@ -151,22 +124,6 @@ void initializes_certificates() {
 	certificates->save_file(TEST_CERTIFICATE_PATH, TEST_PRIVATE_KEY_PATH);
 }
 
-void configure_context(SSL_CTX *ctx) {
-	assert(SSL_CTX_set_ecdh_auto(ctx, 1));
-	if(!certificates)
-		initializes_certificates();
-
-	if (SSL_CTX_use_PrivateKey(ctx, certificates->getPrivateKey()) <= 0 ) {
-		ERR_print_errors_fp(stderr);
-		exit(EXIT_FAILURE);
-	}
-
-	if (SSL_CTX_use_certificate(ctx, certificates->getCertificate()) <= 0 ) {
-		ERR_print_errors_fp(stderr);
-		exit(EXIT_FAILURE);
-	}
-}
-
 void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 	cout << "Got new client" << endl;
 
@@ -181,9 +138,20 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 		client->ssl->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
 		client->ssl->direct_process(pipes::PROCESS_DIRECTION_IN, true);
 
-		auto ctx = create_context();
-		configure_context(ctx);
-		client->ssl->initialize(shared_ptr<SSL_CTX>(ctx, SSL_CTX_free), pipes::SSL::SERVER);
+		{
+
+			auto options = make_shared<pipes::SSL::Options>();
+			options->context_method = SSLv23_method();
+			options->type = pipes::SSL::SERVER;
+			options->free_unused_keypairs = true;
+			options->enforce_sni = true;
+
+			options->default_keypair(pipes::SSL::Options::KeyPair{certificates->ref_private_key(), certificates->ref_certificate()});
+			if(!client->ssl->initialize(options)) {
+				cerr << "Failed to initialize client" << endl;
+				return; //FIXME Cleanup?
+			}
+		}
 
 		client->ssl->callback_data([client](const pipes::buffer_view& data) {
 			client->websocket->process_incoming_data(data);
@@ -249,7 +217,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 							deque<shared_ptr<rtc::IceCandidate>> { make_shared<rtc::IceCandidate>(root["msg"]["candidate"].asString(), root["msg"]["sdpMid"].asString(), root["msg"]["sdpMLineIndex"].asInt()) }
 					) << endl;
 				} else if (root["type"] == "candidate_finish") {
-					//client->peer->gather();
+					cout << "Remote client finished candidates. Negotiate streams" << endl;
+					client->peer->execute_negotiation();
 				}
 			} else {
 				cerr << "Failed to parse json" << endl;
@@ -258,15 +227,30 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 	}
 
 	{
-		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice) {
+		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice, bool last_candidate) {
 			Json::Value jsonCandidate;
 			jsonCandidate["type"] = "candidate";
 			jsonCandidate["msg"]["candidate"] = ice.candidate;
 			jsonCandidate["msg"]["sdpMid"] = ice.sdpMid;
 			jsonCandidate["msg"]["sdpMLineIndex"] = ice.sdpMLineIndex;
+			{
+				pipes::buffer buffer;
+				buffer += Json::writeString(client->json_writer, jsonCandidate);
+				client->websocket->send({pipes::OpCode::TEXT, buffer});
+			}
 
 			cout << "Sending ice candidate " << ice.candidate << " (" << ice.sdpMid << " | " << ice.sdpMLineIndex << ")" << endl;
-			//client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, jsonCandidate)});
+
+			if(last_candidate) {
+				Json::Value candidate_finish;
+				jsonCandidate["type"] = "candidate_finish";
+				{
+					pipes::buffer buffer;
+					buffer += Json::writeString(client->json_writer, candidate_finish);
+					client->websocket->send({pipes::OpCode::TEXT, buffer});
+				}
+				cout << "Sending ice candidate finish" << endl;
+			}
 		};
 
 		client->peer->callback_new_stream = [client](const shared_ptr<rtc::Stream>& stream) {
@@ -308,8 +292,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					if(opus_codec.empty()) {
 						return; //FIXME disconnect client
 					}
-					for(const auto& codec: opus_codec)
-						astream->register_local_channel("voice_bridge_" + to_string(codec->id), "client_" + to_string(codec->id), opus_codec.back());
+					//for(const auto& codec: opus_codec)
+					//	astream->register_local_channel("voice_bridge_" + to_string(codec->id), "client_" + to_string(codec->id), opus_codec.back());
 				}
 				astream->register_local_extension("urn:ietf:params:rtp-hdrext:ssrc-audio-level");
 
@@ -355,6 +339,8 @@ int main() {
 	init_alsa();
 	SSL_library_init();
 	OpenSSL_add_all_algorithms();
+
+	initializes_certificates();
 
 	Socket socket{};
 	socket.callback_accept = initialize_client;

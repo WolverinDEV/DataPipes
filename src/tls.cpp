@@ -15,6 +15,11 @@ do { \
 	return false; \
 } while(0)
 
+#define ERRORQ_I(message) \
+do { \
+	return false; \
+} while(0)
+
 static int verify_peer_certificate(int ok, X509_STORE_CTX *ctx) {
 	// XXX: This function should ask the user if they trust the cert
 	return 1;
@@ -33,7 +38,7 @@ static int verify_peer_certificate(int ok, X509_STORE_CTX *ctx) {
 	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
 	EC_KEY_free(ecdh);
  */
-bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &certificate, TLSMode mode, const initialize_function& fn) {
+bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &certificate, TLSMode mode, Type handshake_mode, const initialize_function& fn) {
 	this->certificate = certificate;
 
 	const SSL_METHOD* method = nullptr;
@@ -66,24 +71,34 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 			return false;
 	}
 
-	auto ctx = shared_ptr<SSL_CTX>(SSL_CTX_new(method), ::SSL_CTX_free);
-	if (!ctx) ERRORQ("Could not create ctx");
+	auto options = make_shared<SSL::Options>();
+	options->type = handshake_mode;
+	options->context_method = method;
+	options->free_unused_keypairs = true;
+	options->context_initializer = [&, fn](SSL_CTX* context) {
+		if (SSL_CTX_set_cipher_list(context, "ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") != 1)
+			ERRORQ_I("Failed to set cipher list!");
 
-	if (SSL_CTX_set_cipher_list(ctx.get(), "ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") != 1) ERRORQ("Failed to set cipher list!");
+		SSL_CTX_set_read_ahead(context, 1);
+		SSL_CTX_set_verify(context, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_peer_certificate);
+		SSL_CTX_use_PrivateKey(context, certificate->getPrivateKey());
+		SSL_CTX_use_certificate(context, certificate->getCertificate());
 
-	SSL_CTX_set_read_ahead(ctx.get(), 1);
-	SSL_CTX_set_verify(ctx.get(), SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, verify_peer_certificate);
-	SSL_CTX_use_PrivateKey(ctx.get(), certificate->getPrivateKey());
-	SSL_CTX_use_certificate(ctx.get(), certificate->getCertificate());
-	if (SSL_CTX_check_private_key(ctx.get()) != 1)  ERRORQ("Failed to verify key!");
+		if (SSL_CTX_check_private_key(context) != 1)
+			ERRORQ_I("Failed to verify key!");
 
-	if(fn && !fn(ctx.get())) return false;
-	if(!SSL::initialize(ctx, SSL::CLIENT)) ERRORQ("SSL initialize failed!");
+		if(fn && !fn(context))
+			return false;
+		return true;
+	};
+	options->ssl_initializer = [&](::SSL* ssl) {
+		std::shared_ptr<EC_KEY> ecdh = std::shared_ptr<EC_KEY>(EC_KEY_new_by_curve_name(NID_X9_62_prime256v1), EC_KEY_free);
+		SSL_set_options(this->sslLayer, SSL_OP_SINGLE_ECDH_USE);
+		SSL_set_tmp_ecdh(this->sslLayer, ecdh.get());
+		return true;
+	};
 
-	std::shared_ptr<EC_KEY> ecdh = std::shared_ptr<EC_KEY>(EC_KEY_new_by_curve_name(NID_X9_62_prime256v1), EC_KEY_free);
-	SSL_set_options(this->sslLayer, SSL_OP_SINGLE_ECDH_USE);
-	SSL_set_tmp_ecdh(this->sslLayer, ecdh.get());
-
+	if(!SSL::initialize(options)) ERRORQ("SSL initialize failed!");
 	return true;
 }
 
@@ -264,4 +279,12 @@ bool TLSCertificate::save_file(const std::string &certificate_path, const std::s
 	if(PEM_write_bio_X509(bio.get(), this->certificate.get()) != 1) return false;
 
 	return true;
+}
+
+std::shared_ptr<X509> TLSCertificate::ref_certificate() {
+	return this->certificate;
+}
+
+std::shared_ptr<EVP_PKEY> TLSCertificate::ref_private_key() {
+	return this->evp_key;
 }

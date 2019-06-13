@@ -1,3 +1,5 @@
+#include <memory>
+
 #include <netdb.h>
 #include <iostream>
 #include <sstream>
@@ -16,7 +18,16 @@
 using namespace std;
 using namespace rtc;
 
-NiceWrapper::NiceWrapper(const std::shared_ptr<Config>& config) : config(config), agent(nullptr, nullptr), loop(nullptr) {}
+void _null_deleter(GMainLoop* loop) { }
+
+NiceStream::~NiceStream() {
+	if(this->ice_local_candidate_list)
+		g_slist_free_full(this->ice_local_candidate_list, (GDestroyNotify) &nice_candidate_free);
+	if(this->ice_remote_candidate_list)
+		g_slist_free_full(this->ice_remote_candidate_list, (GDestroyNotify) &nice_candidate_free);
+}
+
+NiceWrapper::NiceWrapper(const std::shared_ptr<Config>& config) : config(config), agent(nullptr, nullptr), loop(nullptr, _null_deleter) {}
 NiceWrapper::~NiceWrapper() {
 	this->finalize();
 }
@@ -72,13 +83,15 @@ bool NiceWrapper::initialize(std::string& error) {
 
 	/* log setup */
 	int log_flags = G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION;
-	g_log_set_handler(NULL, (GLogLevelFlags) log_flags, g_log_handler, this);
+	g_log_set_handler(nullptr, (GLogLevelFlags) log_flags, g_log_handler, this);
 
 	if(this->config->main_loop) {
-		this->loop = this->config->main_loop;
+		this->loop = std::unique_ptr<GMainLoop, void(*)(GMainLoop*)>(&*this->config->main_loop, _null_deleter);//std::unique_ptr<GMainLoop, void(*)(GMainLoop*)>(g_main_loop_ref(&*this->config->main_loop), g_main_loop_unref);
+		if(!this->loop)
+			ERRORQ("Failed to reference the main loop");
 		this->own_loop = false;
 	} else {
-		this->loop = std::shared_ptr<GMainLoop>(g_main_loop_new(nullptr, false), g_main_loop_unref);
+		this->loop = std::unique_ptr<GMainLoop, void(*)(GMainLoop*)>(g_main_loop_new(nullptr, false), g_main_loop_unref);
 		this->own_loop = true;
 		this->g_main_loop_thread = std::thread(g_main_loop_run, this->loop.get());
 	}
@@ -87,33 +100,51 @@ bool NiceWrapper::initialize(std::string& error) {
 	this->agent = std::unique_ptr<NiceAgent, decltype(&g_object_unref)>(nice_agent_new(g_main_loop_get_context(loop.get()), NICE_COMPATIBILITY_RFC5245), g_object_unref);
 	if (!this->agent) ERRORQ("Failed to initialize nice agent");
 
+	g_object_set(G_OBJECT(agent.get()), "ice-tcp", this->config->allow_ice_tcp, nullptr);
+	g_object_set(G_OBJECT(agent.get()), "ice-udp", this->config->allow_ice_udp, nullptr);
 
-	g_object_set(G_OBJECT(agent.get()), "upnp", false, nullptr);
+	g_object_set(G_OBJECT(agent.get()), "upnp", this->config->use_upnp, nullptr);
 	g_object_set(G_OBJECT(agent.get()), "controlling-mode", 0, NULL);
 
+	struct addrinfo hints{}, *info_ptr = nullptr;
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET; //IPv4 only
+
+	char address_buffer[256];
 
 	for (const auto& ice_server : config->ice_servers) {
-		struct hostent *stun_host = gethostbyname(ice_server.host.c_str());
-		if (stun_host == nullptr) {
-			LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to lookup host for ice server %s:%i", ice_server.host.c_str(), ice_server.port);
-		} else {
-			auto address = (in_addr *)stun_host->h_addr;
-			const char *ip_address = inet_ntoa(*address);
-
-			g_object_set(G_OBJECT(agent.get()), "stun-server", ip_address, NULL);
-		}
-
-		if (ice_server.port > 0) {
-			g_object_set(G_OBJECT(agent.get()), "stun-server-port", ice_server.port, NULL);
-		} else {
+		if (ice_server.port <= 0) {
 			LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Invalid stun port! (%i)", ice_server.port);
+			continue;
 		}
+
+		int state = getaddrinfo(ice_server.host.c_str(), nullptr, &hints, &info_ptr);
+		if(state) {
+			LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to lookup host for ice server %s:%i (State: %i)", ice_server.host.c_str(), ice_server.port, state);
+			continue;
+		}
+
+		struct addrinfo *address;
+		for (address = info_ptr; address != nullptr; address = address->ai_next) {
+			if(getnameinfo(address->ai_addr, address->ai_addrlen, address_buffer, sizeof(address_buffer), nullptr, 0, NI_NUMERICHOST)> 0)
+				continue;
+
+			g_object_set(G_OBJECT(agent.get()), "stun-server", address_buffer, NULL);
+			LOG_DEBUG(this->_logger, "NiceWrapper::initialize", "Set stun server to %s:%i, resolved from hostname %s", address_buffer, ice_server.port, ice_server.host.c_str());
+			break;
+		}
+		freeaddrinfo(info_ptr);
+		info_ptr = nullptr;
+
+		g_object_set(G_OBJECT(agent.get()), "stun-server-port", ice_server.port, NULL);
+		break; /* only one server */
 	}
 
-	g_signal_connect(G_OBJECT(agent.get()), "candidate-gathering-done", G_CALLBACK(NiceWrapper::cb_candidate_gathering_done), this);
-	g_signal_connect(G_OBJECT(agent.get()), "component-state-changed", G_CALLBACK(NiceWrapper::cb_component_state_changed), this);
 	g_signal_connect(G_OBJECT(agent.get()), "new-candidate", G_CALLBACK(NiceWrapper::cb_new_local_candidate), this);
-	g_signal_connect(G_OBJECT(agent.get()), "new-selected-pair", G_CALLBACK(NiceWrapper::cb_new_selected_pair), this);
+	g_signal_connect(G_OBJECT(agent.get()), "candidate-gathering-done", G_CALLBACK(NiceWrapper::cb_candidate_gathering_done), this);
+
+	g_signal_connect(G_OBJECT(agent.get()), "component-state-changed", G_CALLBACK(NiceWrapper::cb_component_state_changed), this);
+	g_signal_connect(G_OBJECT(agent.get()), "new-selected-pair-full", G_CALLBACK(NiceWrapper::cb_new_selected_pair), this);
 	g_signal_connect(G_OBJECT(agent.get()), "reliable-transport-writable", G_CALLBACK(NiceWrapper::cb_transport_writeable), this);
 
 	/* Add all local addresses, except those in the ignore list */
@@ -121,10 +152,10 @@ bool NiceWrapper::initialize(std::string& error) {
 	int family, s, n;
 	char host[NI_MAXHOST];
 	if(getifaddrs(&ifaddr) == -1) {
-		LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to getting a list of interfaces...");
+		LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to getting a list of interfaces for local turn server...");
 	} else {
-		for(ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
-			if(ifa->ifa_addr == NULL)
+		for(ifa = ifaddr, n = 0; ifa != nullptr; ifa = ifa->ifa_next, n++) {
+			if(ifa->ifa_addr == nullptr)
 				continue;
 			/* Skip interfaces which are not up and running */
 			if (!((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)))
@@ -143,7 +174,7 @@ bool NiceWrapper::initialize(std::string& error) {
 			//	continue;
 			s = getnameinfo(ifa->ifa_addr,
 			                (family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6),
-			                host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+			                host, NI_MAXHOST, nullptr, 0, NI_NUMERICHOST);
 			if(s != 0) {
 				LOG_ERROR(this->_logger, "NiceWrapper::initialize", "getnameinfo() failed: %s", gai_strerror(s));
 				continue;
@@ -211,7 +242,7 @@ std::shared_ptr<NiceStream> NiceWrapper::find_stream(rtc::StreamId id) {
 void NiceWrapper::finalize() {
 	std::unique_lock<std::recursive_mutex> lock(io_lock);
 
-	{ //Finish handling
+	if(this->loop && this->agent) { //Finish handling
 		auto context = g_main_loop_get_context(loop.get());
 		if(!g_main_context_ref(context)) {
 			//TODO error
@@ -219,16 +250,22 @@ void NiceWrapper::finalize() {
 
 		for(const auto& stream : this->available_streams()) {
 			nice_agent_attach_recv(agent.get(), stream->stream_id, 1, context, nullptr, nullptr);
+			nice_agent_remove_stream(agent.get(), stream->stream_id);
 		}
 		{ //Let the other thread so something with IO
 			lock.unlock();
-			if(!g_main_context_iteration(context, false)) {
-				//TODO log error (cant flush ip!)
-			}
+			size_t iterations = 0, max_iterations = 1024;
+			while(g_main_context_iteration(context, false) && iterations < max_iterations) { } /* flush */
+			if(max_iterations == iterations); //TODO error?
 			lock.lock();
 		}
 		g_main_context_unref(context);
 		this->streams.clear();
+	}
+	{ /* allow the agent to remove all events from the event loop, may event triggers some events then */
+		lock.unlock();
+		this->agent.reset();
+		lock.lock();
 	}
 
 	if(this->own_loop && this->loop) {
@@ -236,11 +273,8 @@ void NiceWrapper::finalize() {
 
 		if (this->g_main_loop_thread.joinable())
 			this->g_main_loop_thread.join();
-
-		this->loop.reset();
 	}
-
-	this->agent.reset();
+	this->loop.reset();
 }
 
 bool NiceWrapper::send_data(guint stream, guint component, const pipes::buffer_view &data) {
@@ -256,7 +290,7 @@ bool NiceWrapper::send_data(guint stream, guint component, const pipes::buffer_v
 }
 
 void NiceWrapper::set_callback_local_candidate(const rtc::NiceWrapper::cb_candidate &cb) {
-	this->callback_local_candidate = cb;
+	this->callback_local_candidates = cb;
 }
 
 void NiceWrapper::set_callback_failed(const rtc::NiceWrapper::cb_failed &cb) {
@@ -276,7 +310,36 @@ void NiceWrapper::on_data_received(guint stream_id, guint component_id, void *da
 }
 
 void NiceWrapper::on_gathering_done(guint stream_id) {
-	LOG_DEBUG(this->_logger, "NiceWrapper::on_gathering_done", "Gathering completed for stream %u", stream_id);
+	std::unique_lock<std::recursive_mutex> lock(io_lock);
+
+	auto stream = this->find_stream(stream_id);
+	if(!stream) {
+		LOG_ERROR(this->_logger, "NiceWrapper::on_gathering_done", "Missing stream %i", stream_id);
+		return;
+	}
+
+	auto candidate_count = g_slist_length(stream->ice_local_candidate_list);
+	LOG_DEBUG(this->_logger, "NiceWrapper::on_gathering_done", "Gathering completed for stream %u. Found %u ICE local ice candidates.", stream_id, candidate_count);
+	auto candidates = stream->ice_local_candidate_list;
+	stream->ice_local_candidate_list = nullptr;
+	stream->gathering_done = true;
+	lock.unlock();
+
+	if(this->callback_local_candidates) {
+		vector<string> candidate_strings;
+		candidate_strings.reserve(candidate_count);
+
+		auto it = candidates;
+		do {
+			auto candidate_string = unique_ptr<gchar, decltype(g_free)*>(nice_agent_generate_local_candidate_sdp(this->agent.get(), (NiceCandidate*) it->data), ::g_free);
+			if(!candidate_string) {
+				LOG_ERROR(this->_logger, "NiceWrapper::on_gathering_done", "Failed to generate candidate string for stream %u.", stream_id);
+				continue;
+			}
+			candidate_strings.emplace_back(&*candidate_string);
+		} while((it = it->next));
+		this->callback_local_candidates(stream, candidate_strings, false);
+	}
 }
 
 void NiceWrapper::on_selected_pair(guint stream_id, guint component_id, NiceCandidate *local, NiceCandidate *remote) {
@@ -286,11 +349,9 @@ void NiceWrapper::on_selected_pair(guint stream_id, guint component_id, NiceCand
 		return;
 	}
 
-	/* Dosn't work that well
 	auto local_string = unique_ptr<gchar, decltype(g_free)*>(nice_agent_generate_local_candidate_sdp(this->agent.get(), local), ::g_free);
 	auto remote_string = unique_ptr<gchar, decltype(g_free)*>(nice_agent_generate_local_candidate_sdp(this->agent.get(), remote), ::g_free);
 	LOG_DEBUG(this->_logger, "NiceWrapper::on_selected_pair", "Gathered ICE pair for %u (%u): local=%s, remote=%s", stream_id, component_id, local_string.get(), remote_string.get());
-	 */
 }
 
 void NiceWrapper::on_transport_writeable(guint stream_id, guint component) {
@@ -314,6 +375,7 @@ void NiceWrapper::on_state_change(guint stream_id, guint component_id, guint sta
 			LOG_INFO(this->_logger, "NiceWrapper::on_state_change", "Received new state for stream %i (%u). State: %s", stream_id, component_id, "DISCONNECTED");
 			break;
 		case (NICE_COMPONENT_STATE_GATHERING):
+			stream->gathering_done = false;
 			LOG_INFO(this->_logger, "NiceWrapper::on_state_change", "Received new state for stream %i (%u). State: %s", stream_id, component_id, "GATHERING");
 			break;
 		case (NICE_COMPONENT_STATE_CONNECTING):
@@ -340,6 +402,10 @@ void NiceWrapper::on_state_change(guint stream_id, guint component_id, guint sta
 	}
 }
 
+void candidate_list_free(GSList* list) {
+	g_slist_free_full(list, (GDestroyNotify) &nice_candidate_free);
+}
+
 void NiceWrapper::on_local_ice_candidate(guint stream_id, guint component_id, gchar *foundation) {
 	auto stream = this->find_stream(stream_id);
 	if(!stream) {
@@ -347,50 +413,76 @@ void NiceWrapper::on_local_ice_candidate(guint stream_id, guint component_id, gc
 		return;
 	}
 
+	auto candidates = unique_ptr<GSList, decltype(&candidate_list_free)>(nice_agent_get_local_candidates(this->agent.get(), stream_id, component_id), &candidate_list_free);
+
 	NiceCandidate* candidate = nullptr;
-	auto candidates = nice_agent_get_local_candidates(this->agent.get(), stream_id, component_id), index = candidates;
+	GSList* index = &*candidates;
+
 	while(index) {
 		auto can = (NiceCandidate *) index->data;
 		if(!strcasecmp(can->foundation, foundation)) { //Search for the candidate
 			candidate = can;
 			break;
 		}
-		nice_candidate_free(can);
 		index = index->next;
 	}
-	g_slist_free(candidates);
 	if(!candidate) {
 		LOG_ERROR(this->_logger, "NiceWrapper::on_local_ice_candidate", "Got local candidate without handle! (Foundation %s)", foundation);
 		return;
 	}
-
-	auto candidate_string = unique_ptr<gchar, decltype(g_free)*>(nice_agent_generate_local_candidate_sdp(this->agent.get(), candidate), ::g_free);
-	if(this->callback_local_candidate)
-		this->callback_local_candidate(stream, string(candidate_string.get()));
+	auto copied_candidate = nice_candidate_copy(candidate);
+	std::lock_guard<std::recursive_mutex> lock(io_lock);
+	stream->ice_local_candidate_list = g_slist_append(stream->ice_local_candidate_list, copied_candidate);
+	LOG_DEBUG(this->_logger, "NiceWrapper::on_local_ice_candidate", "Found new candidate for stream %i (%i). (%s)", stream_id, component_id, foundation);
 }
 
 
 ssize_t NiceWrapper::apply_remote_ice_candidates(const std::shared_ptr<rtc::NiceStream> &stream, const std::deque<std::string> &candidates) {
 	std::lock_guard<std::recursive_mutex> lock(io_lock);
 
-	if(candidates.empty()) return -1;
-	//if(nice_agent_get_component_state(this->agent.get(), this->stream_id(), 1) > NICE_COMPONENT_STATE_CONNECTING) return -1; //Not disconnected or gathering
+	if(candidates.empty())
+		return -1;
 
+	//TODO: Add own parser
 	GSList* list = nullptr; //nice_agent_get_remote_candidates(this->agent.get(), stream->stream_id, 1);
 	for (const auto& candidate_sdp : candidates) {
 		auto candidate = nice_agent_parse_remote_candidate_sdp(this->agent.get(), stream->stream_id, candidate_sdp.c_str());
 		if(!candidate) {
-			LOG_ERROR(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Failed to parse candidate. Ignoring it! Candidate: %s", candidate_sdp.c_str());
+			LOG_ERROR(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Failed to parse candidate for stream %u. Ignoring it! Candidate: %s", stream->stream_id, candidate_sdp.c_str());
 			continue;
 		}
 		list = g_slist_append(list, candidate);
 	}
-	if(!list) return -2;
+	if(!list)
+		return -3;
 
-	LOG_VERBOSE(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Setting remote candidates for %u", stream->stream_id);
-	auto result = nice_agent_set_remote_candidates(this->agent.get(), stream->stream_id, 1, list);
-	g_slist_free_full(list, (GDestroyNotify)&nice_candidate_free);
+	LOG_DEBUG(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Registering %u remote candidates for stream %u. Stream needs negotiation", candidates.size(), stream->stream_id);
+
+	int result = 0;
+	GSList* pointer = list;
+	while(pointer) {
+		stream->ice_remote_candidate_list = g_slist_append(stream->ice_remote_candidate_list, pointer->data);
+		stream->negotiation_required = true;
+		pointer = pointer->next;
+		result++;
+	}
+	g_slist_free(list); /* candidates will be freed when cached list will be cleared */
 	return result;
+}
+
+bool NiceWrapper::execute_negotiation(const std::shared_ptr<rtc::NiceStream> &stream) {
+	std::lock_guard<std::recursive_mutex> lock(io_lock);
+	if(nice_agent_get_component_state(&*this->agent, stream->stream_id, 1) == NiceComponentState::NICE_COMPONENT_STATE_GATHERING && !stream->gathering_done) {
+		LOG_ERROR(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Negotiation not allowed before candidates have been gathered!");
+		return false;
+	}
+
+	LOG_VERBOSE(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Setting remote candidates for %u. Connecting...", stream->stream_id);
+	auto result = nice_agent_set_remote_candidates(this->agent.get(), stream->stream_id, 1, stream->ice_remote_candidate_list); /* Note: this will trigger the start of negotiation */
+	g_slist_free_full(stream->ice_remote_candidate_list, (GDestroyNotify)&nice_candidate_free);
+	stream->ice_remote_candidate_list = nullptr;
+	stream->negotiation_required = false;
+	return result > 0; //NiceAgent::candidate-gathering-done
 }
 
 bool NiceWrapper::apply_remote_sdp(std::string& error, std::string sdp) {
@@ -429,7 +521,7 @@ std::deque<std::unique_ptr<LocalSdpEntry>> NiceWrapper::generate_local_sdp(bool 
 		if(g_str_has_prefix(line.c_str(), "m=")) {
 			if(current)
 				result.push_back(std::move(current));
-			current.reset(new LocalSdpEntry());
+			current = std::make_unique<LocalSdpEntry>();
 			current->index = (int) result.size();
 			current->has_bitset = 0;
 

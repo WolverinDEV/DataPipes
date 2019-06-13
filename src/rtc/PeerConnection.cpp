@@ -112,11 +112,14 @@ bool PeerConnection::initialize(std::string &error) {
 		this->nice = make_unique<NiceWrapper>(this->config->nice_config);
 		this->nice->logger(this->config->logger);
 
-		this->nice->set_callback_local_candidate([&](const std::shared_ptr<NiceStream>& stream, const std::string& candidate){
+		this->nice->set_callback_local_candidate([&](const std::shared_ptr<NiceStream>& stream, const std::vector<std::string>& candidates, bool more_candidates){
 			if(this->merged_stream) {
 				for(const auto& s : this->available_streams()) {
-					if(this->callback_ice_candidate) //application
-						this->callback_ice_candidate(IceCandidate{candidate.length() > 2 ? candidate.substr(2) : candidate, s->get_mid(), this->sdp_mline_index(s)});
+					if(this->callback_ice_candidate) {
+						for(auto it = candidates.begin(); it != candidates.end(); it++) {
+							this->callback_ice_candidate(IceCandidate{it->length() > 2 ? it->substr(2) : *it, s->get_mid(), this->sdp_mline_index(s)}, !more_candidates && (it + 1) == candidates.end());
+						}
+					}
 				}
 			} else {
 				std::shared_ptr<Stream> handle;
@@ -133,8 +136,11 @@ bool PeerConnection::initialize(std::string &error) {
 					return;
 				}
 
-				if(this->callback_ice_candidate) //application
-					this->callback_ice_candidate(IceCandidate{candidate.length() > 2 ? candidate.substr(2) : candidate, handle->get_mid(), this->sdp_mline_index(handle)});
+				if(this->callback_ice_candidate) {
+					for(auto it = candidates.begin(); it != candidates.end(); it++) {
+						this->callback_ice_candidate(IceCandidate{it->length() > 2 ? it->substr(2) : *it, handle->get_mid(), this->sdp_mline_index(handle)}, !more_candidates && (it + 1) == candidates.end());
+					}
+				}
 			}
 		});
 
@@ -186,15 +192,17 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 		return false;
 	}
 
-	LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "Got sdp offer:");
-	LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "%s", sdp.dump(4).c_str());
+	if(this->config->print_parse_sdp) {
+		LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "Got sdp offer:");
+		LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "%s", sdp.dump(4).c_str());
+	}
 
 	//merged_nice_channels
 	json& media = sdp["media"];
 	if(!media.is_array()) return false;
 
 	{
-		if(media.size() <= 1) {
+		if(media.size() <= 1 || this->config->disable_merged_stream) {
 			this->merged_stream = nullptr;
 		} else {
 			string ice_ufrag, ice_pwd;
@@ -215,8 +223,19 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 					unique_lock stream_lock(this->stream_lock);
 					this->merged_stream = make_unique<MergedStream>(this, stream->stream_id, config);
 					stream->callback_ready = [&] {
-						if(this->merged_stream)
+						if(this->merged_stream) {
+							auto role = Stream::Undefined;
+							for(const auto& stream : this->available_streams()) {
+								if(role == Stream::Undefined || stream->role == role)
+									role = stream->role;
+								else {
+									LOG_ERROR(this->config->logger, "PeerConnection::apply_offer", "We got a merged stream, but dtls roles are differen!");
+									role = Stream::Server; /* we perform the do_handshake and if it doesnt work SSL is capible of active like a client as well */
+								}
+							}
+							this->merged_stream->role = role;
 							this->merged_stream->on_nice_ready();
+						}
 					};
 					stream->callback_receive = [&](const pipes::buffer_view& data) {
 						if(this->merged_stream)
@@ -292,7 +311,6 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 		m_index = target_sdp.find("m=", m_index + 1);
 		if(m_index != string::npos) target_sdp = target_sdp.substr(0, m_index);
 
-		cout << target_sdp << endl;
 		if(!nice->apply_remote_sdp(error, target_sdp)) return false;
 	} else {
 		if(!nice->apply_remote_sdp(error, raw_sdp)) return false;
@@ -309,7 +327,10 @@ int PeerConnection::apply_ice_candidates(const std::deque<std::shared_ptr<rtc::I
 	for(const auto& candidate : candidates) {
 		std::shared_ptr<NiceStream> nice_handle;
 		if(this->merged_stream) {
-			if(candidate->sdpMLineIndex != 0) continue;
+			if(candidate->sdpMLineIndex != 0) {
+				success_counter++; /* lets assume that this candidate is equal to one we've already received for the "master" stream */
+				continue;
+			}
 
 			nice_handle = this->nice->find_stream(this->merged_stream->stream_id());
 		} else {
@@ -324,11 +345,20 @@ int PeerConnection::apply_ice_candidates(const std::deque<std::shared_ptr<rtc::I
 			LOG_ERROR(this->config->logger, "PeerConnection::apply_ice_candidates", "Failed to find nice handle for %s (%u)", candidate->sdpMid.c_str(), candidate->sdpMLineIndex);
 			continue;
 		}
-		if(!this->nice->apply_remote_ice_candidates(nice_handle, {"a=" + candidate->candidate})) {
-			LOG_ERROR(this->config->logger, "PeerConnection::apply_ice_candidates", "Failed to apply candidate %s for %s (%u)", candidate->candidate.c_str(), candidate->sdpMid.c_str(), candidate->sdpMLineIndex);
+
+		auto result = this->nice->apply_remote_ice_candidates(nice_handle, {"a=" + candidate->candidate});
+		if(result < 0) {
+			LOG_ERROR(this->config->logger, "PeerConnection::apply_ice_candidates", "Failed to apply candidate %s for %s (%u). Result: %d", candidate->candidate.c_str(), candidate->sdpMid.c_str(), candidate->sdpMLineIndex, result);
 		} else success_counter++;
 	}
 	return success_counter;
+}
+
+bool PeerConnection::execute_negotiation() {
+	for(const auto& stream : this->nice->available_streams())
+		if(stream->negotiation_required)
+			this->nice->execute_negotiation(stream);
+	return true;
 }
 
 #define SESSION_ID_SIZE 16
