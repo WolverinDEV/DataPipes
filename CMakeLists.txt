@@ -229,4 +229,7 @@ if(BUILD_TESTS)
 
 	add_executable(DataPipes-Test-buffers test/buffer.cpp)
 	target_link_libraries(DataPipes-Test-buffers ${TEST_LIBRARIES})
+
+	add_executable(DataPipes-Test-video test/video.cpp test/video/ivfenc.cpp)
+	target_link_libraries(DataPipes-Test-video ${TEST_LIBRARIES} vpx)
 endif()
