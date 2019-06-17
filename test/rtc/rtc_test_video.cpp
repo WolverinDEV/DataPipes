@@ -12,7 +12,68 @@
 #include <include/rtc/VideoStream.h>
 #include "test/json/json.h"
 
+#include "./video_utils.h"
+
+#include <vpx/vpx_encoder.h>
+#include <vpx/vpx_decoder.h>
+#include <vpx/vpx_image.h>
+#include <vpx/vpx_codec.h>
+#include <vpx/vp8cx.h>
+#include <vpx/vp8dx.h>
+
 using namespace std;
+
+
+#define V_FPS 1
+#define V_KEYFRAME_INTERVAL 1
+
+#define V_WIDTH  (16)
+#define V_HEIGHT (16)
+
+struct Color {
+	uint8_t r;
+	uint8_t g;
+	uint8_t b;
+};
+
+const static Color c_pattern[6] {
+		Color{0xFF, 0, 0},
+		Color{0, 0, 0},
+		Color{0, 0xFF, 0},
+		Color{0, 0, 0},
+		Color{0, 0, 0xFF},
+		Color{0, 0, 0}
+};
+
+static int frame = 0;
+static vpx_image_t* vpx_img_generate(vpx_image_t* handle) {
+	auto rgb_buffer = new uint8_t[V_WIDTH * V_HEIGHT * 3];
+	auto yuv420_buffer = new uint8_t[vutils::codec::I430_size(V_WIDTH, V_HEIGHT)];
+
+	int c_index = frame++;
+	{ /* generate RGB image */
+		size_t buffer_index = 0;
+		for(int d_w = 0; d_w < V_WIDTH; d_w++) {
+			for(int d_h = 0; d_h < V_HEIGHT; d_h++) {
+				auto& color = c_pattern[c_index++ % 6];
+				rgb_buffer[buffer_index++] = color.r;
+				rgb_buffer[buffer_index++] = color.b;
+				rgb_buffer[buffer_index++] = color.g;
+			}
+		}
+	}
+
+	vutils::codec::RGBtoI420(rgb_buffer, yuv420_buffer, V_WIDTH, V_HEIGHT);
+	handle = vpx_img_wrap(handle, VPX_IMG_FMT_I420, V_WIDTH, V_HEIGHT, 1, (u_char*) yuv420_buffer);
+
+	delete[] handle->user_priv;
+	handle->user_priv = yuv420_buffer;
+
+	delete[] rgb_buffer;
+	return handle;
+}
+
+
 
 struct Client {
 	std::weak_ptr<Socket::Client> connection;
@@ -70,40 +131,6 @@ auto config = []{
 	return config;
 }();
 
-
-SSL_CTX* create_context()
-{
-	const SSL_METHOD *method;
-	SSL_CTX *ctx;
-
-	method = SSLv23_server_method();
-
-	ctx = SSL_CTX_new(method);
-	if (!ctx) {
-		perror("Unable to create SSL context");
-		ERR_print_errors_fp(stderr);
-		exit(EXIT_FAILURE);
-	}
-
-	return ctx;
-}
-
-std::string random_string( size_t length )
-{
-	auto randchar = []() -> char
-	{
-		const char charset[] =
-				"0123456789"
-				"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-				"abcdefghijklmnopqrstuvwxyz";
-		const size_t max_index = (sizeof(charset) - 1);
-		return charset[ rand() % max_index ];
-	};
-	std::string str(length,0);
-	std::generate_n( str.begin(), length, randchar );
-	return str;
-}
-
 #define TEST_CERTIFICATE_PATH "test_certificate.pem"
 #define TEST_PRIVATE_KEY_PATH "test_private_key.pem"
 std::unique_ptr<pipes::TLSCertificate> certificates;
@@ -123,22 +150,6 @@ void initializes_certificates() {
 	certificates->save_file(TEST_CERTIFICATE_PATH, TEST_PRIVATE_KEY_PATH);
 }
 
-void configure_context(SSL_CTX *ctx) {
-	assert(SSL_CTX_set_ecdh_auto(ctx, 1));
-	if(!certificates)
-		initializes_certificates();
-
-	if (SSL_CTX_use_PrivateKey(ctx, certificates->getPrivateKey()) <= 0 ) {
-		ERR_print_errors_fp(stderr);
-		exit(EXIT_FAILURE);
-	}
-
-	if (SSL_CTX_use_certificate(ctx, certificates->getCertificate()) <= 0 ) {
-		ERR_print_errors_fp(stderr);
-		exit(EXIT_FAILURE);
-	}
-}
-
 void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 	cout << "Got new client" << endl;
 
@@ -153,9 +164,19 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 		client->ssl->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
 		client->ssl->direct_process(pipes::PROCESS_DIRECTION_IN, true);
 
-		auto ctx = create_context();
-		configure_context(ctx);
-		client->ssl->initialize(shared_ptr<SSL_CTX>(ctx, SSL_CTX_free), pipes::SSL::SERVER);
+		{
+			auto options = make_shared<pipes::SSL::Options>();
+			options->context_method = SSLv23_method();
+			options->type = pipes::SSL::SERVER;
+			options->free_unused_keypairs = true;
+			options->enforce_sni = true;
+
+			options->default_keypair(pipes::SSL::Options::KeyPair{certificates->ref_private_key(), certificates->ref_certificate()});
+			if(!client->ssl->initialize(options)) {
+				cerr << "Failed to initialize client" << endl;
+				return; //FIXME Cleanup?
+			}
+		}
 
 		client->ssl->callback_data([client](const pipes::buffer_view& data) {
 			client->websocket->process_incoming_data(data);
@@ -222,6 +243,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					) << endl;
 				} else if (root["type"] == "candidate_finish") {
 					//client->peer->gather();
+					client->peer->execute_negotiation();
 				}
 			} else {
 				cerr << "Failed to parse json" << endl;
@@ -230,14 +252,15 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 	}
 
 	{
-		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice) {
+		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice, bool finished) {
 			Json::Value jsonCandidate;
 			jsonCandidate["type"] = "candidate";
+			jsonCandidate["finished"] = finished;
 			jsonCandidate["msg"]["candidate"] = ice.candidate;
 			jsonCandidate["msg"]["sdpMid"] = ice.sdpMid;
 			jsonCandidate["msg"]["sdpMLineIndex"] = ice.sdpMLineIndex;
 
-			cout << "Sending ice candidate " << ice.candidate << " (" << ice.sdpMid << " | " << ice.sdpMLineIndex << ")" << endl;
+			cout << "Sending ice candidate " << ice.candidate << " (" << ice.sdpMid << " | " << ice.sdpMLineIndex << "). Last: " << finished << endl;
 			//client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, jsonCandidate)});
 		};
 
@@ -280,6 +303,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					if(opus_codec.empty()) {
 						return; //FIXME disconnect client
 					}
+
+					opus_codec[0]->accepted = true; /* we accept the codec opus */
 					for(const auto& codec: opus_codec)
 						astream->register_local_channel("voice_bridge_" + to_string(codec->id), "client_" + to_string(codec->id), opus_codec.back());
 				}
@@ -313,23 +338,79 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				{
 					std::shared_ptr<rtc::codec::Codec> channel_codec;
 					for(const auto& codec : vstream->list_codecs()) {
-						cout << "Codec: " << codec->codec << " (" << (uint32_t) codec->id << ")" << endl;
-						if(!channel_codec) {
+						//cout << "Codec: " << codec->codec << " (" << (uint32_t) codec->id << ")" << endl;
+						if(!channel_codec && codec->codec == "VP8") {
+							cout << "Enable VP8 codec" << endl;
 							codec->accepted = true;
 							channel_codec = codec;
 						}
 					}
 
+					/*
+					 * 				↵a=rtpmap:96 VP8/90000
+									↵a=rtcp-fb:96 goog-remb
+									↵a=rtcp-fb:96 transport-cc
+									↵a=rtcp-fb:96 ccm fir
+									↵a=rtcp-fb:96 nack
+									↵a=rtcp-fb:96 nack pli
+					 */
+
 					//vstream->register_local_channel("video_response", "video_response_normal", channel_codec);
 				}
 
-				{
+				if(false) {
 					for(const auto& extension : vstream->list_extensions(rtc::direction::incoming))
-						vstream->register_local_extension(extension->name,extension->direction,extension->config,extension->id);
+						vstream->register_local_extension(extension->name, extension->direction, extension->config, extension->id);
+				}
+
+				struct VPXData {
+					vpx_codec_err_t err;
+
+					vpx_codec_iface_t* codec_interface = nullptr;
+					vpx_codec_enc_cfg_t codec_enc_config;
+					vpx_codec_dec_cfg_t codec_dec_config;
+
+					vpx_image_t vpx_image_handle{};
+					vpx_codec_ctx_t codec{};
+				};
+
+				auto vpx = new VPXData();
+
+				{
+					vpx_img_alloc(&vpx->vpx_image_handle, VPX_IMG_FMT_RGB32, V_WIDTH, V_HEIGHT, 1);
+					vpx->vpx_image_handle.user_priv = nullptr;
+
+					/*
+					{
+						vpx->codec_interface = vpx_codec_vp8_cx();
+
+						vpx->err = vpx_codec_enc_config_default(vpx->codec_interface, &vpx->codec_enc_config, 0);
+						assert(vpx->err == VPX_CODEC_OK);
+
+						vpx->codec_enc_config.g_w = V_WIDTH;
+						vpx->codec_enc_config.g_h = V_HEIGHT;
+						vpx->codec_enc_config.g_timebase.num = 1;
+						vpx->codec_enc_config.g_timebase.den = V_FPS;
+						vpx->codec_enc_config.rc_target_bitrate = 90000;
+						vpx->codec_enc_config.g_error_resilient = (vpx_codec_er_flags_t) VPX_ERROR_RESILIENT_DEFAULT;
+					}
+					 */
+					{
+						vpx->codec_dec_config.threads = 2;
+						vpx->codec_dec_config.w = V_WIDTH;
+						vpx->codec_dec_config.h = V_HEIGHT;
+					}
+
+					vpx->codec_interface = vpx_codec_vp9_dx();
+					vpx->err = vpx_codec_dec_init(&vpx->codec, vpx->codec_interface, &vpx->codec_dec_config, 0);
+					assert(vpx->err == VPX_CODEC_OK);
+
+					chrono::system_clock::time_point timestamp_base = chrono::system_clock::now();
+					int frame_index = 0, flags = 0;
 				}
 
 				weak_ptr<rtc::VideoStream> weak_astream = vstream;
-				vstream->incoming_data_handler = [weak_astream](const std::shared_ptr<rtc::Channel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
+				vstream->incoming_data_handler = [weak_astream, vpx](const std::shared_ptr<rtc::Channel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
 					auto vs = weak_astream.lock();
 					if(!vs) return;
 
@@ -338,18 +419,128 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					cerr.write(raw_data.data_ptr<char>(), raw_data.length());
 					cerr << flush;
 					*/
+					auto header = (rtc::protocol::rtp_header*) buffer.data_ptr();
 					auto buf = buffer.view(sizeof(rtc::protocol::rtp_header));
+
 					auto channels = vs->list_channels();
 
-					for(const auto& extension : vs->list_extensions(rtc::direction::incoming)) {
-						if(rtc::protocol::rtp_header_extension_find(buf, extension->id, nullptr, nullptr, nullptr) == 0)
-							cout << "Got extension: " << extension->name << endl;
+					{
+						bool success;
+						auto vector = rtc::protocol::rtp_header_extension_ids(buffer, success);
+						if(!vector.empty()) {
+							if(vector.size() == 2 ? !(vector[0] == 2 && vector[1] == 3) : !(vector.size() == 3 && vector[0] == 2 && vector[1] == 3 && vector[2] == 7)) {
+								cout << "Extension: ";
+								for(int id : vector)
+									cout << id << ",";
+								cout << endl;
+							}
+						}
 					}
+					if(false) {
+						for(const auto& extension : vs->list_extensions(rtc::direction::incoming)) {
+							if(rtc::protocol::rtp_header_extension_find(buffer, extension->id, nullptr, nullptr, nullptr) == 0)
+								cout << "Got extension: " << extension->name << endl;
+						}
+					}
+					if(header->csrccount > 0)
+						cout << "CCount: " << header->csrccount << endl;
 
 					for(const auto& ch : channels)
-						if(ch->local)
-							vs->send_rtp_data(ch, buf, ch->timestamp_last_receive, buffer.data_ptr<rtc::protocol::rtp_header>()->extension > 0);
+						if(ch->local) {
+							//vs->send_rtp_data(ch, buf, ch->timestamp_last_receive, header->extension > 0);
+							//vs->send_rtp_data(ch, buffer.view(payload_offset), ch->timestamp_last_receive, 0);
+						}
+
+					vpx->err = vpx_codec_decode(&vpx->codec, (uint8_t*) &buffer[payload_offset], buffer.length() - payload_offset, nullptr, VPX_DL_GOOD_QUALITY);
+					cout << "Decode result: " << vpx->err << endl;
 				};
+
+#if false /* Create video generator */
+				{
+					std::thread([weak_astream]{
+						vpx_codec_err_t err;
+
+						auto codec_interface = vpx_codec_vp8_cx();
+						vpx_codec_enc_cfg_t codec_config;
+
+						vpx_image_t* vpx_image_handle = nullptr;
+						vpx_codec_ctx_t vpx_encoder;
+
+						vpx_image_handle = vpx_img_alloc(nullptr, VPX_IMG_FMT_RGB32, V_WIDTH, V_HEIGHT, 1);
+						vpx_image_handle->user_priv = nullptr;
+
+						{
+							err = vpx_codec_enc_config_default(codec_interface, &codec_config, 0);
+							assert(err == VPX_CODEC_OK);
+
+							codec_config.g_w = V_WIDTH;
+							codec_config.g_h = V_HEIGHT;
+							codec_config.g_timebase.num = 1;
+							codec_config.g_timebase.den = V_FPS;
+							codec_config.rc_target_bitrate = 90000;
+							codec_config.g_error_resilient = (vpx_codec_er_flags_t) VPX_ERROR_RESILIENT_DEFAULT;
+						}
+
+						err = vpx_codec_enc_init_ver(&vpx_encoder, codec_interface, &codec_config, 0, VPX_ENCODER_ABI_VERSION);
+						assert(err == VPX_CODEC_OK);
+
+						chrono::system_clock::time_point timestamp_base = chrono::system_clock::now();
+						int frame_index = 0, flags = 0;
+
+						vpx_codec_err_t res;
+						while(true) {
+							{
+								auto vs = weak_astream.lock();
+								if(!vs) break; /* client disconnected */
+
+								vpx_image_handle = vpx_img_generate(vpx_image_handle);
+								flags = 0;
+								if(frame_index % V_KEYFRAME_INTERVAL == 0)
+									flags |= VPX_EFLAG_FORCE_KF;
+
+								assert(res == VPX_CODEC_OK);
+								{ /* encode and send */
+									int got_pkts = 0;
+									vpx_codec_iter_t iter = nullptr;
+									const vpx_codec_cx_pkt_t *pkt = nullptr;
+									res = vpx_codec_encode(&vpx_encoder, vpx_image_handle, frame_index, 1, flags, VPX_DL_REALTIME);
+									const auto detail = vpx_codec_error_detail(&vpx_encoder);
+									assert(res == VPX_CODEC_OK);
+
+									while ((pkt = vpx_codec_get_cx_data(&vpx_encoder, &iter)) != nullptr) {
+										got_pkts = 1;
+
+										if (pkt->kind == VPX_CODEC_CX_FRAME_PKT) {
+											uint32_t timestamp = (uint32_t) chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now() - timestamp_base).count();
+
+											cout << "Size: " << pkt->data.frame.sz << endl;
+											for(const auto& ch : vs->list_channels(rtc::direction::outgoing)) {
+												size_t index = 0, length = pkt->data.frame.sz;
+												while(index < length) {
+													auto cl = min((size_t) 2000, length - index);
+													vs->send_rtp_data(ch, {(char*) pkt->data.frame.buf + index, cl}, timestamp, false);
+													index += length;
+												}
+											}
+
+											const int keyframe = (pkt->data.frame.flags & VPX_FRAME_IS_KEY) != 0;
+											//printf(keyframe ? "K" : ".");
+											//fflush(stdout);
+										}
+									}
+								}
+
+								frame_index++;
+							}
+
+							this_thread::sleep_for(chrono::milliseconds(1000 / V_FPS));
+						}
+
+						//TODO: Cleanup
+						cout << "Video sender canceled" << endl;
+					}).detach();
+				}
+#endif
 			} else {
 				cerr << "Remote offers invalid stream type! (" << stream->type() << ")" << endl;
 				return; //We only want audio here!
@@ -370,6 +561,7 @@ int main() {
 	srand(time(nullptr));
 	SSL_library_init();
 	OpenSSL_add_all_algorithms();
+	initializes_certificates();
 
 	Socket socket{};
 	socket.callback_accept = initialize_client;

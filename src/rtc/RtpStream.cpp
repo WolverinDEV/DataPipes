@@ -64,11 +64,21 @@ std::shared_ptr<Codec> codec::create(const nlohmann::json& sdp) {
 	if(sdp.count("codec") <= 0 || !sdp["codec"].is_string()) return nullptr;
 	if(sdp.count("payload") <= 0 || !sdp["payload"].is_number()) return nullptr;
 
+	cout << "OP: " << sdp.dump() << endl;
 	std::shared_ptr<Codec> result;
 
 	//TODO implement more codecs
 
-	if(!result) result = make_shared<UnknownCodec>();
+	if(sdp["codec"] == "opus") {
+		if(sdp.count("encoding") <= 0 || !sdp["encoding"].is_string()) return nullptr;
+
+		result = make_shared<OpusCodec>();
+		result->type = Codec::OPUS;
+		static_pointer_cast<OpusCodec>(result)->encoding = stol((string) sdp["encoding"]);
+	}
+
+	if(!result)
+		result = make_shared<UnknownCodec>();
 
 	if(!result->type)
 		result->type = Codec::UNKNOWN;
@@ -82,7 +92,17 @@ std::shared_ptr<Codec> codec::create(const nlohmann::json& sdp) {
 	return result;
 }
 
+bool Codec::local_accepted() {
+	return this->accepted;
+}
+
 bool UnknownCodec::write_sdp(std::ostringstream &os) {
+	if(!this->write_sdp_fmtp(os))
+		return false;
+	return this->write_sdp_rtpmap(os);
+}
+
+bool UnknownCodec::write_sdp_rtpmap(std::ostringstream &os) {
 	/* we need a=fmtp:97 apt=96 */
 	os << "a=rtpmap:" << (uint32_t) this->id << " " << this->codec;
 
@@ -90,13 +110,19 @@ bool UnknownCodec::write_sdp(std::ostringstream &os) {
 		os << "/" << this->rate;
 
 	os  << endl;
-
-	for(const auto& parameter : this->parameters)
-		os << "a=fmtp:" << (uint32_t) this->id << " " << parameter << endl;
-
 	return true;
 }
-bool UnknownCodec::local_supported() const { return this->accepted; }
+
+bool UnknownCodec::write_sdp_fmtp(std::ostringstream &os) {
+	for(const auto& parameter : this->parameters)
+		os << "a=fmtp:" << (uint32_t) this->id << " " << parameter << endl;
+	return true;
+}
+
+bool OpusCodec::write_sdp(std::ostringstream &os) {
+	os << "a=rtpmap:" << (uint32_t) this->id << " " << this->codec << "/" << this->rate << "/" << (uint32_t) this->encoding << endl;
+	return this->write_sdp_fmtp(os);
+}
 
 std::deque<std::shared_ptr<codec::Codec>> RTPStream::list_codecs() {
 	return this->offered_codecs;
@@ -247,14 +273,7 @@ bool RTPStream::initialize(std::string &error) {
 			this->on_dtls_initialized(this->dtls);
 		};
 
-		auto certificate = pipes::TLSCertificate::generate("DataPipes", 365);
-		if(!this->dtls->initialize(error, std::move(certificate), pipes::DTLS_v1, [](SSL_CTX* ctx) {
-			SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32");
-			return true;
-		})) {
-			error = "Failed to initialize tls (" + error + ")";
-			return false;
-		}
+		this->dtls_certificate = pipes::TLSCertificate::generate("DataPipes", 365);
 	}
 
 	return true;
@@ -478,7 +497,7 @@ bool RTPStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& media
 					//TODO log error
 					continue;
 				}
-				if(map->local_supported()) supported += 1;
+				if(map->local_accepted()) supported += 1;
 				this->offered_codecs.push_back(map);
 			}
 		}
@@ -534,7 +553,7 @@ string RTPStream::generate_sdp() {
 
 	string ids;
 	for(const auto& codec : this->offered_codecs) {
-		if(!codec->local_supported()) continue;
+		if(!codec->local_accepted()) continue;
 		ids += " " + to_string((uint32_t) codec->id);
 	}
 	sdp << "m=" << this->sdp_media_type() << " 9 UDP/TLS/RTP/SAVPF " << (ids.empty() ? "" : ids.substr(1)) << "\r\n";
@@ -563,12 +582,17 @@ string RTPStream::generate_sdp() {
 	}
 
 	for(const auto& codec : this->offered_codecs) {
-		if(!codec->local_supported()) continue;
+		if(!codec->local_accepted()) continue;
 		codec->write_sdp(sdp);
 	}
 
-	if(this->dtls)
-		sdp << "a=fingerprint:sha-256 " << dtls->getCertificate()->getFingerprint() << "\r\n";
+	if(this->dtls) {
+		if(this->dtls_certificate)
+			sdp << "a=fingerprint:sha-256 " << this->dtls_certificate->getFingerprint() << "\r\n";
+		else
+			sdp << "a=fingerprint:sha-256 " << dtls->getCertificate()->getFingerprint() << "\r\n";
+	}
+
 	sdp << "a=setup:" << (this->role == Client ? "active" : "passive") << "\r\n";
 
 	for(const auto& channel : this->local_channels) {
@@ -651,7 +675,7 @@ void RTPStream::process_rtp_data(const pipes::buffer_view&in) {
 	}
 #endif
 
-	auto payload_offset = protocol::rtp_payload_offset(in, buflen);
+	auto payload_offset = protocol::rtp_payload_offset(in);
 	if(payload_offset > buflen); //FIXME break here
 
 	shared_ptr<Channel> channel;
@@ -673,7 +697,7 @@ void RTPStream::process_rtp_data(const pipes::buffer_view&in) {
 	if(!channel->codec) {
 		for(const auto& codec : this->offered_codecs) {
 			if(codec->id == header->type) {
-				if(codec->local_supported()) {
+				if(codec->local_accepted()) {
 					channel->codec = codec; //TODO fire event?
 					break;
 				}
@@ -706,7 +730,7 @@ bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::bu
 		return false;
 	}
 
-	auto allocated = sizeof(protocol::rtp_header) + (sizeof(protocol::rtp_header_extension) + 4) + data.length() + SRTP_MAX_TRAILER_LEN;
+	auto allocated = sizeof(protocol::rtp_header) + data.length() + SRTP_MAX_TRAILER_LEN;
 	allocated += allocated % 4; //Align 32 bits
 
 	pipes::buffer buffer(allocated);
@@ -774,17 +798,16 @@ void RTPStream::process_rtcp_data(const pipes::buffer_view& in) {
 		}
 	}
 
-	auto data = in.view(8);
 	if(header->type == 200) { /* sender report */
 		//https://www4.cs.fau.de/Projects/JRTP/pmt/node83.html
 
-		if(ntohs(header->length) < 6 || data.length() < protocol::rtcp::sender_report::size) {
+		if(ntohs(header->length) < 6 || in.length() < protocol::rtcp::sender_report::size + protocol::rtcp::rtcp_header::size) {
 			LOG_ERROR(this->config->logger, "RTPStream::process_rtcp_data", "Received invalid sender report for stream %ui (Length: %i (shall be equal or greater 6))", (int) header->ssrc, (int) ntohs(header->length));
 			return;
 		}
 		//TODO validate stream
 
-		protocol::rtcp::sender_report report{(uint32_t*) data.data_ptr()};
+		protocol::rtcp::sender_report report{(uint32_t*) in.data_ptr(), in.length()};
 		LOG_DEBUG(this->config->logger,
 				"RTPStream::process_rtcp_data", "Received sender report for stream %" PRIu32 ": {network_timestamp: %" PRIu64 " rtp_timestamp: %" PRIu32 " packets: %" PRIu32 "; bytes: %" PRIu32 "}",
 				be32toh(header->ssrc),
@@ -793,29 +816,27 @@ void RTPStream::process_rtcp_data(const pipes::buffer_view& in) {
 				report.packet_count(),
 				report.octet_count()
 		);
-		data = data.view(protocol::rtcp::sender_report::size);
-		if(data.length() > 0) {
-			protocol::rtcp::receiver_report report{(uint32_t*) data.data_ptr(), data.length()};
-			LOG_DEBUG(this->config->logger, "RTPStream::process_rtcp_data", "Received %" PRIu32 " receiver reports", report.report_blocks_count());
-			for(auto& block : report.report_blocks()) {
-				LOG_DEBUG(this->config->logger,
-				          "RTPStream::process_rtcp_data", "  ssrc %" PRIu32 ": {lost.{fraction: %" PRIu8 " packets: %" PRIu32 "} highest_sequence_number: %" PRIu32 " interarrival_jitter: %" PRIu32 " last_sender_report: %" PRIu32 " delay_last_sender_report: %" PRIu32 " }",
-				          block.ssrc(),
-				          block.fraction_lost(),
-				          block.packets_lost(),
-				          block.highest_sequence_number(),
-				          block.interarrival_jitter(),
-				          block.delay_last_sender_report(),
-				          block.delay_last_sender_report()
-				);
-			}
+
+
+		LOG_DEBUG(this->config->logger, "RTPStream::process_rtcp_data", "Received %" PRIu32 " receiver reports within sender report", report.receiver_report_blocks().size());
+		for(auto& block : report.receiver_report_blocks()) {
+			LOG_DEBUG(this->config->logger,
+			          "RTPStream::process_rtcp_data", "  ssrc %" PRIu32 ": {lost.{fraction: %" PRIu8 " packets: %" PRIu32 "} highest_sequence_number: %" PRIu32 " interarrival_jitter: %" PRIu32 " last_sender_report: %" PRIu32 " delay_last_sender_report: %" PRIu32 " }",
+			          block.ssrc(),
+			          block.fraction_lost(),
+			          block.packets_lost(),
+			          block.highest_sequence_number(),
+			          block.interarrival_jitter(),
+			          block.delay_last_sender_report(),
+			          block.delay_last_sender_report()
+			);
 		}
 		return;
 	} else if(header->type == 201) { /* receiver report */
 		//https://www4.cs.fau.de/Projects/JRTP/pmt/node84.html
 
-		protocol::rtcp::receiver_report report{(uint32_t*) data.data_ptr(), data.length()};
-		LOG_DEBUG(this->config->logger, "RTPStream::process_rtcp_data", "Received %" PRIu32 " receiver reports", report.report_blocks_count());
+		protocol::rtcp::receiver_report report{(uint32_t*) in.data_ptr(), in.length()};
+		LOG_DEBUG(this->config->logger, "RTPStream::process_rtcp_data", "Received %" PRIu32 " receiver reports. (Total length: %" PRIu32 ")", report.report_count(), report.length());
 		for(auto& block : report.report_blocks()) {
 			LOG_DEBUG(this->config->logger,
 					"RTPStream::process_rtcp_data", "  ssrc %" PRIu32 ": {lost.{fraction: %" PRIu8 " packets: %" PRIu32 "} highest_sequence_number: %" PRIu32 " interarrival_jitter: %" PRIu32 " last_sender_report: %" PRIu32 " delay_last_sender_report: %" PRIu32 " }",
@@ -835,6 +856,23 @@ void RTPStream::process_rtcp_data(const pipes::buffer_view& in) {
 
 void RTPStream::on_nice_ready() {
 	this->resend_buffer(true);
-	if(this->role == Client)
-		this->dtls->do_handshake();
+
+	if(this->dtls) {
+		LOG_DEBUG(this->config->logger, "RTPStream::on_nice_ready", "Nice stream has been initialized successfully. Initializing DTLS as %s", this->role == Role::Client ? "client" : "server");
+
+		string error;
+		if(!this->dtls->initialize(error, this->dtls_certificate, pipes::DTLS_v1_2, this->role == Role::Client ? pipes::SSL::CLIENT : pipes::SSL::SERVER, [](SSL_CTX* ctx) {
+			SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32"); //Required for rt(c)p
+			return true;
+		})) {
+			LOG_ERROR(this->config->logger, "RTPStream::on_nice_ready", "Failed to initialize DTLS (%s)", error.c_str());
+			return;
+		}
+
+		if(this->role == Role::Client) {
+			if(!this->dtls->do_handshake()) {
+				LOG_ERROR(this->config->logger, "RTPStream::on_nice_ready", "Failed to process dtls handshake!");
+			}
+		}
+	}
 }

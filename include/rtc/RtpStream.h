@@ -7,6 +7,10 @@
 #include "Stream.h"
 #include "Protocol.h"
 
+namespace pipes {
+	class TLSCertificate;
+}
+
 namespace rtc {
 	namespace codec {
 		typedef uint8_t id_t;
@@ -17,25 +21,34 @@ namespace rtc {
 				UNKNOWN,
 
 				OPUS
-			} type;
+			} type = UNSET;
 
-			id_t id;
+			id_t id = 0;
 			std::string codec;
-			int32_t rate;
+			int32_t rate = 0;
 
 			std::vector<std::string> parameters;
 
 			bool accepted = false;
 			virtual bool write_sdp(std::ostringstream& /* ss */) = 0;
-			virtual bool local_supported() const = 0;
+			virtual bool local_accepted();
 		};
 
 
 		extern std::shared_ptr<Codec> create(const nlohmann::json& /* sdp */);
 
 		struct UnknownCodec : public Codec {
+			public:
+				bool write_sdp(std::ostringstream& /* ss */) override;
+
+			protected:
+				bool write_sdp_rtpmap(std::ostringstream& /* ss */);
+				bool write_sdp_fmtp(std::ostringstream& /* ss */);
+		};
+
+		struct OpusCodec : public UnknownCodec {
+			uint8_t encoding = 2; /* must be 2 */
 			bool write_sdp(std::ostringstream& /* ss */) override;
-			bool local_supported() const override;
 		};
 	}
 
@@ -131,9 +144,7 @@ namespace rtc {
 			srtp_policy_t remote_policy;
 			srtp_policy_t local_policy;
 
-			std::string mid;
-			enum Role { Client, Server } role = Client;
-
+			std::shared_ptr<pipes::TLSCertificate> dtls_certificate; /* here 'till dtls has been initialized */
 			std::deque<std::shared_ptr<codec::Codec>> offered_codecs;
 			std::vector<std::shared_ptr<HeaderExtension>> remote_extensions;
 			std::vector<std::shared_ptr<HeaderExtension>> local_extensions;

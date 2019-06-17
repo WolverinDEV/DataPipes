@@ -43,7 +43,10 @@ class PeerConnection {
     data_channels: RTCDataChannel[] = [];
 
     initialized_peer() : boolean {
-        const config = { /*iceServers: [{ url: 'stun:stun.l.google.com:19302' }]*/ };
+        const config = {
+            /*iceServers: [{ url: 'stun:stun.l.google.com:19302' }]*/
+
+        };
         this.peer = new RTCPeerConnection(config);
 
         for(const field in this.peer) {
@@ -133,8 +136,8 @@ class PeerConnection {
 
 
         let sdpConstraints: RTCOfferOptions = {};
-        sdpConstraints.offerToReceiveVideo = true;
-
+        sdpConstraints.offerToReceiveVideo = false;
+        sdpConstraints.offerToReceiveAudio = false;
 
         console.log("[RTC] Initializing stream");
         //this.peer.createDataChannel("test_channel");
@@ -144,7 +147,7 @@ class PeerConnection {
                 alert('Missing required function: video_source.captureStream');
             video_source_stream = video_source.captureStream(25);
             console.log("Created source stream: %o", video_source_stream);
-            //video_target.srcObject = video_source_stream;
+            video_target.srcObject = video_source_stream;
         }
         this.peer.addStream(video_source_stream);
 

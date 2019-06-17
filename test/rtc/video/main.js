@@ -31,7 +31,9 @@ class PeerConnection {
         this.data_channels = [];
     }
     initialized_peer() {
-        const config = { /*iceServers: [{ url: 'stun:stun.l.google.com:19302' }]*/};
+        const config = {
+        /*iceServers: [{ url: 'stun:stun.l.google.com:19302' }]*/
+        };
         this.peer = new RTCPeerConnection(config);
         for (const field in this.peer) {
             if (field.indexOf('on') != 0)
@@ -106,7 +108,8 @@ class PeerConnection {
             this.initialize_data_channel(event.channel);
         };
         let sdpConstraints = {};
-        sdpConstraints.offerToReceiveVideo = true;
+        sdpConstraints.offerToReceiveVideo = false;
+        sdpConstraints.offerToReceiveAudio = false;
         console.log("[RTC] Initializing stream");
         //this.peer.createDataChannel("test_channel");
         if (!video_source_stream) {
@@ -114,7 +117,7 @@ class PeerConnection {
                 alert('Missing required function: video_source.captureStream');
             video_source_stream = video_source.captureStream(25);
             console.log("Created source stream: %o", video_source_stream);
-            //video_target.srcObject = video_source_stream;
+            video_target.srcObject = video_source_stream;
         }
         this.peer.addStream(video_source_stream);
         console.log("[RTC] Generating offer");

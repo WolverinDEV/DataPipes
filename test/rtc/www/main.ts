@@ -26,8 +26,8 @@ button.on('click', () => {
     }
 
     let config = new PeerConnectionConfig();
-    config.open_data_channel = true;
-    config.open_audio_channel = true;
+    config.open_data_channel = false;
+    config.open_audio_channel = false;
 
     connect_peer(config).then(c => connection = c, error => {
         console.log("Got connect error %o", error);
@@ -209,13 +209,14 @@ class PeerConnection {
                     console.log("[RTC][TRACK] Got ssrc conflict %o", error);
                 }
                 */
+
                 //let s = context.createMediaStreamSource(stream);
                 //s.connect(context.destination);
                 
                 //document.getElementById("local_video").srcObject = stream;
 
                 this.peer.createOffer(sdp => {
-                    console.log("Got SDP: %s", sdp.sdp);
+                    console.log("[RTC][SDP] Local SDP: %s\n", sdp.sdp);
                     this.peer.setLocalDescription(sdp).then(() => {
                         console.log("[RTC] Got local sdp. Sending to partner");
                         this.socket.send(JSON.stringify({
@@ -294,7 +295,7 @@ function connect_peer(config?: PeerConnectionConfig) : Promise<PeerConnection> {
                     candidate_buffer.push(new RTCIceCandidate(data["msg"]));
                 } else candidate_apply(new RTCIceCandidate(data["msg"]));
             } else if(data["type"] == "answer") {
-                console.log("[RTC][SDP] Setting remote answer!");
+                console.log("[RTC][SDP] Remote SDP: %s\n", data["msg"]["sdp"]);
                 result.peer.setRemoteDescription(new RTCSessionDescription(data["msg"])).then(() => {
                     console.log("[RTC][SDP] Remote answer set!");
                     for(let can of candidate_buffer)

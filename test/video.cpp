@@ -11,6 +11,7 @@
 #include <zconf.h>
 #include <fcntl.h>
 #include <cerrno>
+#include <test/rtc/video_utils.h>
 
 #include "./video/ivfenc.h"
 
@@ -47,84 +48,40 @@ static int encode_frame(vpx_codec_ctx_t *codec, vpx_image_t *img, int frame_inde
 	return got_pkts;
 }
 
-static uint8_t rgb_to_y(int r, int g, int b)
-{
-	int y = ((9798 * r + 19235 * g + 3736 * b) >> 15);
-	return y>255? 255 : y<0 ? 0 : y;
-}
+struct Color {
+	uint8_t r;
+	uint8_t g;
+	uint8_t b;
+};
 
-static uint8_t rgb_to_u(int r, int g, int b)
-{
-	int u = ((-5538 * r + -10846 * g + 16351 * b) >> 15) + 128;
-	return u>255? 255 : u<0 ? 0 : u;
-}
-
-static uint8_t rgb_to_v(int r, int g, int b)
-{
-	int v = ((16351 * r + -13697 * g + -2664 * b) >> 15) + 128;
-	return v>255? 255 : v<0 ? 0 : v;
-}
-
-void bgrtoyuv420(uint8_t *plane_y, uint8_t *plane_u, uint8_t *plane_v, uint8_t *rgb, uint16_t width, uint16_t height)
-{
-	uint16_t x, y;
-	uint8_t *p;
-	uint8_t r, g, b;
-
-	for(y = 0; y != height; y += 2) {
-		p = rgb;
-		for(x = 0; x != width; x++) {
-			b = *rgb++;
-			g = *rgb++;
-			r = *rgb++;
-			*plane_y++ = rgb_to_y(r, g, b);
-		}
-
-		for(x = 0; x != width / 2; x++) {
-			b = *rgb++;
-			g = *rgb++;
-			r = *rgb++;
-			*plane_y++ = rgb_to_y(r, g, b);
-
-			b = *rgb++;
-			g = *rgb++;
-			r = *rgb++;
-			*plane_y++ = rgb_to_y(r, g, b);
-
-			b = ((int)b + (int)*(rgb - 6) + (int)*p + (int)*(p + 3) + 2) / 4; p++;
-			g = ((int)g + (int)*(rgb - 5) + (int)*p + (int)*(p + 3) + 2) / 4; p++;
-			r = ((int)r + (int)*(rgb - 4) + (int)*p + (int)*(p + 3) + 2) / 4; p++;
-
-			*plane_u++ = rgb_to_u(r, g, b);
-			*plane_v++ = rgb_to_v(r, g, b);
-
-			p += 3;
-		}
-	}
-}
+const static Color c_pattern[6] {
+	Color{0xFF, 0, 0},
+	Color{0, 0, 0},
+	Color{0, 0xFF, 0},
+	Color{0, 0, 0},
+	Color{0, 0, 0xFF},
+	Color{0, 0, 0}
+};
 
 static int frame = 0;
 static vpx_image_t* vpx_img_generate(vpx_image_t* handle) {
-	auto y_plane_size = V_WIDTH * V_HEIGHT;
-	auto z_plane_size = (V_WIDTH / 2) * (V_HEIGHT / 2);
-	auto v_plane_size = (V_WIDTH / 2) * (V_HEIGHT / 2);
-
 	auto rgb_buffer = new uint8_t[V_WIDTH * V_HEIGHT * 3];
-	auto yuv420_buffer = new uint8_t[y_plane_size + z_plane_size + v_plane_size];
+	auto yuv420_buffer = new uint8_t[vutils::codec::I430_size(V_WIDTH, V_HEIGHT)];
 
-	auto red = ((float) frame++ / (float) V_TARGET_FRAMES) * 0xFF;
+	int c_index = frame++;
 	{ /* generate RGB image */
 		size_t buffer_index = 0;
 		for(int d_w = 0; d_w < V_WIDTH; d_w++) {
 			for(int d_h = 0; d_h < V_HEIGHT; d_h++) {
-				rgb_buffer[buffer_index++] = 0x00; //Blue
-				rgb_buffer[buffer_index++] = 0x00; //Green
-				rgb_buffer[buffer_index++] = d_w % 2 == 0 ? red : 0; //Red
+				auto& color = c_pattern[c_index++ % 6];
+				rgb_buffer[buffer_index++] = color.r;
+				rgb_buffer[buffer_index++] = color.b;
+				rgb_buffer[buffer_index++] = color.g;
 			}
 		}
 	}
 
-	bgrtoyuv420(yuv420_buffer, yuv420_buffer + y_plane_size, yuv420_buffer + y_plane_size + v_plane_size, rgb_buffer, V_WIDTH, V_HEIGHT);
+	vutils::codec::RGBtoI420(rgb_buffer, yuv420_buffer, V_WIDTH, V_HEIGHT);
 	handle = vpx_img_wrap(handle, VPX_IMG_FMT_I420, V_WIDTH, V_HEIGHT, 1, (u_char*) yuv420_buffer);
 
 	delete[] handle->user_priv;
