@@ -5,6 +5,7 @@
 #include <cstring>
 #include <utility>
 #include <openssl/err.h>
+#include <openssl/ssl.h>
 #include <openssl/tls1.h>
 #include <openssl/dtls1.h>
 #include "include/tls.h"
