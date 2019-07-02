@@ -123,12 +123,15 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 
 
 std::string ssl_err_as_string () {
+	return string(ERR_reason_error_string(ERR_get_error())));
+/*
 	std::unique_ptr<BIO, decltype(BIO_free)*> bio(BIO_new(BIO_s_mem()), BIO_free);
 	ERR_print_errors(bio.get());
 
 	char* buf = nullptr;
 	long len = BIO_get_mem_data(bio.get(), &buf);
 	return string(buf, len);
+*/
 }
 
 TLSCertificate::TLSCertificate(const std::string &pem_certificate, const std::string &pem_key, bool files) {
