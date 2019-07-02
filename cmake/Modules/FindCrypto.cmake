@@ -46,7 +46,7 @@ find_library(Crypto_SSL_LIBRARY
 		)
 
 find_library(Crypto_CRYPTO_LIBRARY
-		NAMES gilibcrypto.so crypto.dll crypto.lib
+		NAMES libcrypto.so crypto.dll crypto.lib
 		PATH_SUFFIXES win32_x64 win32_amd64 win32_x64/crypto win32_amd64/crypto/Release crypto
 		HINTS "${Crypto_ROOT_DIR}" "${Crypto_ROOT_DIR}/build/" "${Crypto_ROOT_DIR}/out/"
 		)
