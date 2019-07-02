@@ -24,12 +24,12 @@
 find_path(Crypto_ROOT_DIR
 		NAMES include/openssl/ssl.h include/openssl/base.h include/openssl/opensslv.h
 		HINTS ${Crypto_ROOT_DIR}
-)
+		)
 
 find_path(Crypto_INCLUDE_DIR
 		NAMES openssl/ssl.h openssl/base.h openssl/hkdf.h include/openssl/opensslv.h
 		HINTS ${Crypto_ROOT_DIR}/include
-)
+		)
 
 #detect if its boringssl or openssl
 file(READ "${Crypto_INCLUDE_DIR}/openssl/crypto.h" Crypto_CRYPTO_H)
@@ -40,16 +40,16 @@ elseif(Crypto_CRYPTO_H MATCHES ".*to the OpenSSL project.*" OR Crypto_CRYPTO_H M
 endif()
 
 find_library(Crypto_SSL_LIBRARY
-		NAMES libssl.so ssl.dll ssl.lib
+		NAMES libssl.a libssl.so ssl.dll ssl.lib
 		PATH_SUFFIXES ssl win32_x64 win32_amd64 win32_x64/ssl win32_amd64/ssl/Release
 		HINTS ${Crypto_ROOT_DIR} ${Crypto_ROOT_DIR}/out ${Crypto_ROOT_DIR}/build "${Crypto_ROOT_DIR}/libs/"
-)
+		)
 
 find_library(Crypto_CRYPTO_LIBRARY
-		NAMES libcrypto.so crypto.dll crypto.lib
+		NAMES libcrypto.a gilibcrypto.so crypto.dll crypto.lib
 		PATH_SUFFIXES win32_x64 win32_amd64 win32_x64/crypto win32_amd64/crypto/Release crypto
 		HINTS "${Crypto_ROOT_DIR}" "${Crypto_ROOT_DIR}/build/" "${Crypto_ROOT_DIR}/out/"
-)
+		)
 
 set(Crypto_LIBRARIES ${Crypto_SSL_LIBRARY} ${Crypto_CRYPTO_LIBRARY} CACHE STRING "BoringSSL/OpenSSL SSL and crypto libraries" FORCE)
 
@@ -57,7 +57,7 @@ include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(Crypto DEFAULT_MSG
 		Crypto_LIBRARIES
 		Crypto_INCLUDE_DIR
-)
+		)
 
 mark_as_advanced(
 		Crypto_ROOT_DIR
