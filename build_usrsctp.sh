@@ -7,8 +7,8 @@ mkdir build && cd build
 
 gcc_version=$(gcc -v 2>&1 | sed -n -E 's:^gcc version ([0-9]+)\.(.*):\1:p')
 _cflags=""
-[[ ${gcc_version} -ge 9 ]] && _cflags="${_cflags} -Wno-error=format-truncation= -Wno-error=address-of-packed-member"
-cmake .. -DCMAKE_C_FLAGS="-fPIC $_cflags" -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
+[[ ${gcc_version} -ge 9 ]] && _cflags="${_cflags} -Wno-error=address-of-packed-member"
+cmake .. -DCMAKE_C_FLAGS="-fPIC -Wno-error=format-truncation=  $_cflags" -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
 if [[ $? -ne 0 ]]; then
 	echo "failed to generate cmake project!"
 	exit 1
