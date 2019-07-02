@@ -5,7 +5,8 @@
 #include <cstring>
 #include <utility>
 #include <openssl/err.h>
-#include <openssl/ssl.h>
+#include <openssl/tls1.h>
+#include <openssl/dtls1.h>
 #include "include/tls.h"
 
 using namespace std;
@@ -46,16 +47,20 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 	const SSL_METHOD* method = nullptr;
 	switch(mode) {
 		case TLSMode::TLS_X:
+		#ifndef USE_BORINGSSL
 			method = TLS_method();
 			break;
-		case TLSMode::TLS_v1:
-			method = TLSv1_method();
+		#else
+			//Lets fall through TLS1v2
+		#endif
+		case TLSMode::TLS_v1_2:
+			method = TLSv1_2_method();
 			break;
 		case TLSMode::TLS_v1_1:
 			method = TLSv1_1_method();
 			break;
-		case TLSMode::TLS_v1_2:
-			method = TLSv1_2_method();
+		case TLSMode::TLS_v1:
+			method = TLSv1_method();
 			break;
 
 		case DTLS_X:
