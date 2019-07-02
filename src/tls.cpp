@@ -4,6 +4,7 @@
 
 #include <cstring>
 #include <utility>
+#include <openssl/err.h>
 #include "include/tls.h"
 
 using namespace std;
