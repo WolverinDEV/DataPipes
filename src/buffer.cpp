@@ -138,11 +138,12 @@ buffer::buffer(size_t length, uint8_t fill) : buffer(length) {
 }
 
 buffer::buffer(const pipes::buffer_view &view) {
+	this->_construct_buffer_container();
+	this->_data_type = data_type::buffer_container;
+
 	if(!view.empty()) {
 		this->_length = view._length;
 		if(view.owns_buffer() && view._data_type == data_type::buffer_container) {
-			this->_construct_buffer_container();
-			this->_data_type = data_type::buffer_container;
 			this->_data.buffer_container = view._data.buffer_container;
 			this->view_offset = view.view_offset;
 		} else {
@@ -230,8 +231,10 @@ buffer buffer::range(size_t index, ssize_t length) {
 }
 
 buffer& buffer::operator=(const pipes::buffer &other) {
-	if(this->_data_type != data_type::buffer_container)
+	if(this->_data_type != data_type::buffer_container) {
 		this->_construct_buffer_container();
+		this->_data_type = data_type::buffer_container;
+	}
 
 	assert(other._data_type == data_type::buffer_container);
 	this->_data.buffer_container = other._data.buffer_container;
@@ -242,6 +245,11 @@ buffer& buffer::operator=(const pipes::buffer &other) {
 }
 
 buffer& buffer::operator=(pipes::buffer &&other) {
+	if(this->_data_type != data_type::buffer_container) {
+		this->_construct_buffer_container();
+		this->_data_type = data_type::buffer_container;
+	}
+
 	assert(other._data_type == data_type::buffer_container);
 	this->_data.buffer_container = std::move(other._data.buffer_container);
 	this->_length = other._length;
