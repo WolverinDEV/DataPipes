@@ -332,7 +332,7 @@ namespace pipes {
 				this->_data_type = data_type::buffer_container;
 
 				if(!this->_data.buffer_container)
-					this->_data.buffer_container.reset(new impl::buffer_container<allocator_t, deleter_t>(std::forward<allocator_t>(allocator), std::forward<deleter_t>(deleter)));
+					this->_data.buffer_container = std::make_shared<impl::buffer_container<allocator_t, deleter_t>>(std::forward<allocator_t>(allocator), std::forward<deleter_t>(deleter));
 
 				if(length > 0)
 					this->resize_data(length);
