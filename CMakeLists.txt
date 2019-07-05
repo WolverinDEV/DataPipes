@@ -227,8 +227,7 @@ if(BUILD_TESTS)
 	add_executable(DataPipes-Test-rtc-audio test/rtc/rtc_test_audio.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
 	target_link_libraries(DataPipes-Test-rtc-audio ${TEST_LIBRARIES})
 
-	add_executable(DataPipes-Test-buffers test/buffer.cpp)
-	target_link_libraries(DataPipes-Test-buffers ${TEST_LIBRARIES})
+	add_executable(DataPipes-Test-buffers include/buffer.h src/buffer.cpp src/allocator.cpp test/buffer.cpp)
 
 	add_executable(DataPipes-Test-video test/video.cpp test/video/ivfenc.cpp)
 	target_link_libraries(DataPipes-Test-video ${TEST_LIBRARIES} vpx)
