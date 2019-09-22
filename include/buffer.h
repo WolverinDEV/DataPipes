@@ -293,7 +293,7 @@ namespace pipes {
 			inline T& at(size_t index) {
 				if(this->length() <= index) {
 				    char buffer[256];
-					print_formated(buffer, 256, "Index %lu is out of range. Max allowed %lu", index, this->length());
+					print_formated(buffer, 256, "Index %zu is out of range. Max allowed %zu", (size_t) index, (size_t) this->length());
                     throw std::out_of_range(buffer);
 				}
 				return *(T*) ((char*) this->data_ptr() + index);

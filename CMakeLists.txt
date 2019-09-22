@@ -134,6 +134,7 @@ macro(configure_msvc_runtime)
 		if("${MSVC_RUNTIME}" STREQUAL "")
 			set(MSVC_RUNTIME "static")
 		endif()
+		add_compile_options(/EHsc) # Enable unwind semantics
 
 		# Set compiler options.
 		set(variables
