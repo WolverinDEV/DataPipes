@@ -92,15 +92,17 @@ if(BUILD_WEBRTC)
 	find_package(LibNice REQUIRED)
 	find_package(UsrSCTP REQUIRED)
 
-	execute_process(
-			COMMAND bash -c "pkg-config --cflags --libs glib-2.0"
-			OUTPUT_VARIABLE GLIB_FLAGS
-	)
-    string(REPLACE "\t" " " GLIB_FLAGS "${GLIB_FLAGS}")
-	string(REPLACE "\n" "" GLIB_FLAGS "${GLIB_FLAGS}")
+	if (NOT GLIBC_PREBUILD_PATH)
+		execute_process(
+				COMMAND bash -c "pkg-config --cflags --libs glib-2.0"
+				OUTPUT_VARIABLE GLIB_FLAGS
+		)
+		string(REPLACE "\t" " " GLIB_FLAGS "${GLIB_FLAGS}")
+		string(REPLACE "\n" "" GLIB_FLAGS "${GLIB_FLAGS}")
 
-	message("Got GLIB include directories ${GLIB_FLAGS}")
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GLIB_FLAGS}")
+		message("Got GLIB include directories ${GLIB_FLAGS}")
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GLIB_FLAGS}")
+	endif ()
 
 	set(HEADER_FILES ${HEADER_FILES}
 			#WebRTC
