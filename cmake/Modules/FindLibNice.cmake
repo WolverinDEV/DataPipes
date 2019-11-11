@@ -1,5 +1,12 @@
 # Used for TeaSpeak
 if (LIBNICE_PREBUILD_PATH AND GLIBC_PREBUILD_PATH)
+    if (NOT EXISTS "${CMAKE_SOURCE_DIR}/${GLIBC_PREBUILD_PATH}")
+        message(FATAL_ERROR "Missing GLIBC prebuild directory")
+    endif ()
+    if (NOT EXISTS "${CMAKE_SOURCE_DIR}/${LIBNICE_PREBUILD_PATH}")
+        message(FATAL_ERROR "Missing libnice prebuild directory")
+    endif ()
+
     add_library(LibNice__LibNice INTERFACE)
     target_include_directories(LibNice__LibNice INTERFACE ${CMAKE_SOURCE_DIR}/${GLIBC_PREBUILD_PATH}/include/)
     target_include_directories(LibNice__LibNice INTERFACE ${CMAKE_SOURCE_DIR}/${GLIBC_PREBUILD_PATH}/include/glib-2.0/)
