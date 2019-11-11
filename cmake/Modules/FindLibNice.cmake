@@ -8,6 +8,7 @@ if (LIBNICE_PREBUILD_PATH AND GLIBC_PREBUILD_PATH)
     endif ()
 
     add_library(LibNice__LibNice INTERFACE)
+    message("Include GLIB from: ${CMAKE_SOURCE_DIR}/${GLIBC_PREBUILD_PATH}/include/")
     target_include_directories(LibNice__LibNice INTERFACE ${CMAKE_SOURCE_DIR}/${GLIBC_PREBUILD_PATH}/include/)
     target_include_directories(LibNice__LibNice INTERFACE ${CMAKE_SOURCE_DIR}/${GLIBC_PREBUILD_PATH}/include/glib-2.0/)
     target_include_directories(LibNice__LibNice INTERFACE ${CMAKE_SOURCE_DIR}/${GLIBC_PREBUILD_PATH}/lib/x86_64-linux-gnu/glib-2.0/include/)

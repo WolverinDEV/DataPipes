@@ -51,7 +51,7 @@ set(SOURCE_FILES
 		src/tls.cpp
 )
 if (NOT WIN32)
-	message("We're not on windows (${WIN32}")
+	message("We're not on windows")
 	set(SOURCE_FILES ${SOURCE_FILES} src/allocator_paged.cpp)
 endif ()
 
@@ -170,26 +170,39 @@ if(BUILD_STATIC)
 	add_library(DataPipes-Static STATIC ${HEADER_FILES} ${SOURCE_FILES})
 	install(TARGETS DataPipes-Static DESTINATION lib)
 	set_target_properties(DataPipes-Static PROPERTIES OUTPUT_NAME DataPipes)
+
+	if(BUILD_WEBRTC)
+		target_link_libraries(
+				DataPipes-Static
+				LibNice::LibNice
+				#SctpLab::UsrSCTP
+				usrsctp.a
+				sdptransform
+				#srtp
+				${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
+				stdc++fs.a
+		)
+	endif()
 endif()
 if(BUILD_SHARED)
 	add_library(DataPipes-Shared SHARED ${HEADER_FILES} ${SOURCE_FILES})
 	install(TARGETS DataPipes-Shared DESTINATION lib)
 	set_target_properties(DataPipes-Shared PROPERTIES OUTPUT_NAME DataPipes)
+
+	if(BUILD_WEBRTC)
+		target_link_libraries(
+				DataPipes-Shared
+				LibNice::LibNice
+				#SctpLab::UsrSCTP
+				usrsctp.a
+				sdptransform
+				#srtp
+				${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
+				stdc++fs.a
+		)
+	endif()
 endif()
 install(DIRECTORY include/ DESTINATION include/pipes)
-
-if(BUILD_WEBRTC)
-	target_link_libraries(
-			DataPipes-Shared
-			LibNice::LibNice
-			#SctpLab::UsrSCTP
-			usrsctp.a
-			sdptransform
-			#srtp
-			${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
-			stdc++fs.a
-	)
-endif()
 
 if(BUILD_TESTS)
 	set(TEST_LIBRARIES
