@@ -194,7 +194,6 @@ endif()
 if(BUILD_TESTS)
 	set(TEST_LIBRARIES
 			DataPipes-Static
-
 			LibNice::LibNice
 			#SctpLab::UsrSCTP
 			usrsctp.a
