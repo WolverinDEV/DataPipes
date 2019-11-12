@@ -9,11 +9,25 @@
 #include "../buffer.h"
 #include "../misc/logger.h"
 
-extern "C" {
-	#include <nice/agent.h>
-}
+typedef struct _GSList GSList;
+typedef struct _GMainLoop GMainLoop;
+
+typedef struct _NiceAgent NiceAgent;
+typedef struct _NiceCandidate NiceCandidate;
 
 namespace rtc {
+	namespace g {
+#ifndef __G_TYPES_H__
+		#define _(t, ot) typedef ot t
+#else
+		#define _(t, ot) typedef ::g ##t t
+#endif
+		_(uint, unsigned int);
+		_(_char, char);
+		_(pointer, void*);
+#undef _
+	}
+
 	struct RTCIceServer {
 		std::string host;
 		uint16_t port;
@@ -93,7 +107,7 @@ namespace rtc {
 			bool execute_negotiation(const std::shared_ptr<rtc::NiceStream> &stream); /* sets the remote candidates and begin to connect */
 
 
-			bool send_data(guint /* stream */, guint /* component */, const pipes::buffer_view& /* buffer */);
+			bool send_data(g::uint /* stream */, g::uint /* component */, const pipes::buffer_view& /* buffer */);
 
 			void set_callback_local_candidate(const cb_candidate& /* callback */);
 			void set_callback_failed(const cb_failed& /* callback */);
@@ -105,28 +119,28 @@ namespace rtc {
 			std::shared_ptr<pipes::Logger> logger() { return this->_logger; }
 			void logger(const std::shared_ptr<pipes::Logger>& logger) { this->_logger = logger; }
 		private:
-			static void cb_received(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer user_data);
-			static void cb_candidate_gathering_done(NiceAgent *agent, guint stream_id, gpointer user_data);
-			static void cb_component_state_changed(NiceAgent *agent, guint stream_id, guint component_id, guint state, gpointer user_data);
-			static void cb_new_local_candidate(NiceAgent *agent, guint stream_id, guint component_id, gchar* foundation, gpointer user_data);
-			static void cb_new_selected_pair(NiceAgent *agent, guint stream_id, guint component_id, NiceCandidate *lcandidate, NiceCandidate *rcandidate, gpointer user_data);
-			static void cb_transport_writeable(NiceAgent *agent, guint sid, guint cid, gpointer data);
+			static void cb_received(NiceAgent *agent, g::uint stream_id, g::uint component_id, g::uint len, g::_char *buf, g::pointer user_data);
+			static void cb_candidate_gathering_done(NiceAgent *agent, g::uint stream_id, g::pointer user_data);
+			static void cb_component_state_changed(NiceAgent *agent, g::uint stream_id, g::uint component_id, g::uint state, g::pointer user_data);
+			static void cb_new_local_candidate(NiceAgent *agent, g::uint stream_id, g::uint component_id, g::_char* foundation, g::pointer user_data);
+			static void cb_new_selected_pair(NiceAgent *agent, g::uint stream_id, g::uint component_id, NiceCandidate *lcandidate, NiceCandidate *rcandidate, g::pointer user_data);
+			static void cb_transport_writeable(NiceAgent *agent, g::uint sid, g::uint cid, g::pointer data);
 
 		protected:
-			virtual void on_data_received(guint /* stream */, guint /* component */, void * /* buffer */, size_t /* length */);
+			virtual void on_data_received(g::uint /* stream */, g::uint /* component */, void * /* buffer */, size_t /* length */);
 
-			virtual void on_local_ice_candidate(guint /* stream */, guint /* component */, gchar* /* foundation */);
-			virtual void on_gathering_done(guint stream_id);
+			virtual void on_local_ice_candidate(g::uint /* stream */, g::uint /* component */, g::_char* /* foundation */);
+			virtual void on_gathering_done(g::uint stream_id);
 
-			virtual void on_selected_pair(guint /* stream */, guint /* component */, NiceCandidate* /* local candidate */, NiceCandidate* /* remote candidate */);
-			virtual void on_state_change(guint /* stream */, guint /* component */, guint /* state */);
-			virtual void on_transport_writeable(guint /* stream */, guint /* component */);
+			virtual void on_selected_pair(g::uint /* stream */, g::uint /* component */, NiceCandidate* /* local candidate */, NiceCandidate* /* remote candidate */);
+			virtual void on_state_change(g::uint /* stream */, g::uint /* component */, g::uint /* state */);
+			virtual void on_transport_writeable(g::uint /* stream */, g::uint /* component */);
 		private:
 			std::recursive_mutex io_lock;
 			std::shared_ptr<pipes::Logger> _logger;
 			std::shared_ptr<Config> config;
 
-			std::unique_ptr<NiceAgent, void (*)(gpointer)> agent;
+			std::unique_ptr<NiceAgent, void (*)(g::pointer)> agent;
 			std::unique_ptr<GMainLoop, void (*)(GMainLoop*)> loop;
 			bool own_loop = false;
 

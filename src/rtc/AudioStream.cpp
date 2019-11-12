@@ -687,8 +687,8 @@ void AudioStream::process_rtp_data(const pipes::buffer_view&in) {
 	if(res != srtp_err_status_ok) {
 		if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
 			/* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */
-			guint32 timestamp = ntohl(header->timestamp);
-			guint16 seq = ntohs(header->seq_number);
+			uint32_t timestamp = ntohl(header->timestamp);
+			uint16_t seq = ntohs(header->seq_number);
 			LOG_ERROR(this->config->logger, "AudioStream::process_rtp_data", "Failed to unprotect rtp packet. Error: %i (len=%i --> %i ts=%u, seq=%i)", res, in.length(), buflen, timestamp, seq);
 			return;
 		}
