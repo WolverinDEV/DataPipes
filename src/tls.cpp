@@ -115,7 +115,8 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 	#ifdef HAVE_STD_FS
 		#include <filesystem>
 		namespace fs = std::filesystem;
-	#else
+    #else
+        #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 		#include <experimental/filesystem>
 		namespace fs = std::experimental::filesystem;
 	#endif
