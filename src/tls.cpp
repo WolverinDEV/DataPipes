@@ -4,6 +4,10 @@
 
 #include <cstring>
 #include <utility>
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#include <openssl/tls1.h>
+#include <openssl/dtls1.h>
 #include "include/tls.h"
 
 using namespace std;
@@ -44,16 +48,20 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 	const SSL_METHOD* method = nullptr;
 	switch(mode) {
 		case TLSMode::TLS_X:
+		#ifndef USE_BORINGSSL
 			method = TLS_method();
 			break;
-		case TLSMode::TLS_v1:
-			method = TLSv1_method();
+		#else
+			//Lets fall through TLS1v2
+		#endif
+		case TLSMode::TLS_v1_2:
+			method = TLSv1_2_method();
 			break;
 		case TLSMode::TLS_v1_1:
 			method = TLSv1_1_method();
 			break;
-		case TLSMode::TLS_v1_2:
-			method = TLSv1_2_method();
+		case TLSMode::TLS_v1:
+			method = TLSv1_method();
 			break;
 
 		case DTLS_X:
@@ -107,7 +115,8 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 	#ifdef HAVE_STD_FS
 		#include <filesystem>
 		namespace fs = std::filesystem;
-	#else
+    #else
+        #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 		#include <experimental/filesystem>
 		namespace fs = std::experimental::filesystem;
 	#endif
@@ -115,12 +124,15 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 
 
 std::string ssl_err_as_string () {
+	return string(ERR_reason_error_string(ERR_get_error()));
+/*
 	std::unique_ptr<BIO, decltype(BIO_free)*> bio(BIO_new(BIO_s_mem()), BIO_free);
 	ERR_print_errors(bio.get());
 
 	char* buf = nullptr;
 	long len = BIO_get_mem_data(bio.get(), &buf);
 	return string(buf, len);
+*/
 }
 
 TLSCertificate::TLSCertificate(const std::string &pem_certificate, const std::string &pem_key, bool files) {

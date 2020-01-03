@@ -1,6 +1,6 @@
 #pragma once
 
-#if !defined(USE_BORINGSSL) && false
+#if !defined(USE_BORINGSSL)
 typedef struct bio_st {
 	BIO_METHOD *method;
 	/* bio, mode, argp, argi, argl, ret */

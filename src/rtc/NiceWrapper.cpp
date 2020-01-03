@@ -15,6 +15,10 @@
 #define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
 
+extern "C" {
+	#include <nice/agent.h>
+}
+
 using namespace std;
 using namespace rtc;
 

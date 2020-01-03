@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <memory>
+#include <cstring>
 #include <cassert>
 #include <exception>
 #include "allocator.h"
@@ -83,16 +84,73 @@ namespace pipes {
 	class buffer_view {
 			friend class buffer;
 		public:
-			buffer_view() = default;
-			buffer_view(const buffer_view& /* buffer */, size_t /* offset */ = 0, ssize_t /* length */ = -1);
+			struct data_type {
+				enum value : uint8_t {
+					buffer_container,
+					pointer
+				};
+			};
 
+			buffer_view() = default;
+			/* copy constructor */
+			inline buffer_view(const buffer_view& other) {
+				*this = other;
+			}
+
+			/* copy operator */
+			inline pipes::buffer_view& operator=(const pipes::buffer_view& other) {
+				if(other._data_type == data_type::pointer) {
+					if(this->_data_type != data_type::pointer)
+						this->_destruct_buffer_container();
+					memcpy((void*) &this->_data, (void*) &other._data, sizeof(this->_data)); /* the pointer data could be copied */
+				} else if(other._data_type == data_type::buffer_container) {
+					if(this->_data_type != data_type::buffer_container)
+						this->_construct_buffer_container();
+					this->_data.buffer_container = other._data.buffer_container;
+				}
+
+				this->_data_type = other._data_type;
+				this->_length = other._length;
+				this->view_offset = other.view_offset;
+				return *this;
+			}
+
+			/* move constructor */
+			inline buffer_view(buffer_view&& other) noexcept {
+				if(other._data_type == data_type::pointer) {
+					if(this->_data_type != data_type::pointer)
+						this->_destruct_buffer_container();
+					memcpy((void*) &this->_data, (void*) &other._data, sizeof(this->_data)); /* the pointer data could be copied */
+				} else if(other._data_type == data_type::buffer_container) {
+					if(this->_data_type != data_type::buffer_container)
+						this->_construct_buffer_container();
+					this->_data.buffer_container = std::move(other._data.buffer_container);
+				}
+
+				this->_data_type = other._data_type;
+				this->_length = other._length;
+				this->view_offset = other.view_offset;
+
+				/* cleanup the other side */
+				other._data_type = data_type::pointer;
+				other._length = 0;
+				other.view_offset = -1;
+				memset((void*) &other._data, 0, sizeof(this->_data));
+			}
+
+			virtual ~buffer_view() {
+				if(this->_data_type == data_type::buffer_container)
+					this->_destruct_buffer_container();
+			}
+
+			buffer_view(const buffer_view& /* buffer */, size_t /* offset */, ssize_t /* length */ = -1);
 			buffer_view(const void* /* address */, size_t /* length */); /* base pointer initialisation */
 
 			template <typename pointer_t, typename std::enable_if<!std::is_same<typename std::remove_all_extents<pointer_t>::type, void>::value, int>::type = 0>
-			buffer_view(pointer_t* address, size_t length) : buffer_view((const void*) address, length){ }  /* Allow multible pointer types */
+			buffer_view(pointer_t* address, size_t length) : buffer_view((const void*) address, length){ }  /* Allow multiple pointer types */
 
-			size_t length() const;
-			bool empty() const;
+			inline size_t length() const { return this->_length; }
+			inline bool empty() const { return this->_length == 0; }
 
 			template <typename pointer_t = void>
 			inline const pointer_t* data_ptr() const { return (pointer_t*) this->_data_ptr(); }
@@ -104,7 +162,7 @@ namespace pipes {
 			inline N_T at(size_t index) const {
 				if(this->length() <= index) {
                     char buffer[256];
-					print_formated(buffer, 256, "Index %lu is out of range. Max allowed %lu", index, this->length());
+					print_formated(buffer, 256, "Index %zu is out of range. Max allowed %zu", (size_t) index, (size_t) this->length());
                     throw std::out_of_range(buffer);
                 }
 				return (N_T) *(T*) (this->data_ptr<char>() + index);
@@ -112,10 +170,10 @@ namespace pipes {
 
 
 			template <typename T = char, typename __unused = void, typename std::enable_if<std::is_integral<T>::value && std::is_same<__unused, void>::value, int>::type = 0>
-			const T& at(size_t index) const {
+			inline const T& at(size_t index) const {
 				if(this->length() <= index) {
                     char buffer[256];
-					print_formated(buffer, 256, "Index %lu is out of range. Max allowed %lu", index, this->length());
+					print_formated(buffer, 256, "Index %zu is out of range. Max allowed %zu", (size_t) index, (size_t) this->length());
                     throw std::out_of_range(buffer);
                 }
 				return *(T*) (this->data_ptr<char>() + index);
@@ -125,23 +183,45 @@ namespace pipes {
 			inline N_T operator[](size_t index) const { return this->at<T, N_T>(index); }
 
 			template <typename T = char, typename __unused = void, typename std::enable_if<std::is_integral<T>::value && std::is_same<__unused, void>::value, int>::type = 0>
-			const T& operator[](size_t index) const { return this->at<T, __unused>(index); }
+			inline const T& operator[](size_t index) const { return this->at<T, __unused>(index); }
 
-			inline bool operator!() const { return !!this->data; }
-			inline operator bool() const { return this->data != nullptr; }
+			inline bool operator!() const { return this->empty(); }
+			inline operator bool() const { return !this->empty(); }
 
 			/* Converter functions */
-			std::string string() const;
-			const buffer_view view(size_t offset, ssize_t length = -1) const { return this->_view(offset, length); }
-			buffer_view view(size_t offset, ssize_t length = -1) { return this->_view(offset, length); }
+			inline std::string string() const { return std::string(this->data_ptr<const char>(), this->length()); }
+			inline const buffer_view view(size_t offset, ssize_t length = -1) const { return this->_view(offset, length); }
+			inline buffer_view view(size_t offset, ssize_t length = -1) { return this->_view(offset, length); }
 
-			bool owns_buffer() const;
+			inline bool owns_buffer() const {
+				if(this->_data_type != data_type::buffer_container)
+					return false;
+				auto buffer = this->_data.buffer_container;
+				return buffer && buffer->owns;
+			}
 			/* creates a new buffer any copy the data to it */
 			buffer own_buffer() const;
 			buffer dup() const;
 			buffer dup(pipes::buffer /* target buffer */) const;
 		protected:
-			std::shared_ptr<impl::abstract_buffer_container> data;
+			data_type::value _data_type = data_type::pointer;
+			union __data {
+				struct {
+					void* data;
+					size_t capacity = 0;
+				} pointer;
+
+				std::shared_ptr<impl::abstract_buffer_container> buffer_container;
+
+				__data() {
+					/* initialize the pointer to null */
+					memset((void*) this, 0, sizeof(__data));
+				}
+				~__data() {};
+
+				__data(const __data&) = delete;
+				__data(__data&&) = delete;
+			} _data{};
 
 			size_t _length = 0;
 			ssize_t view_offset = -1;
@@ -150,11 +230,16 @@ namespace pipes {
 			void* _data_ptr_origin() const;
 			buffer_view _view(size_t /* offset */, ssize_t /* length */ = -1) const;
 
+			void _destruct_buffer_container();
+			void _construct_buffer_container();
 	};
 
 	class buffer : public buffer_view {
 		public:
-			buffer() = default;
+			buffer() {
+				this->_data_type = data_type::buffer_container;
+				this->_construct_buffer_container();
+			}
 			buffer(const buffer&);
 			buffer(buffer&&);
 
@@ -170,9 +255,9 @@ namespace pipes {
 					this->resize_data(length); /* ensure that the data has this length */
 					this->write(source, length);
 				} else {
-					this->data->address = source;
-					this->data->capacity = length;
-					this->data->owns = true;
+					this->_data.buffer_container->address = source;
+					this->_data.buffer_container->capacity = length;
+					this->_data.buffer_container->owns = true;
 				}
 			}
 
@@ -205,20 +290,20 @@ namespace pipes {
 
 
 			template <typename T = char, typename __unused = void, typename std::enable_if<std::is_integral<T>::value && std::is_same<__unused, void>::value, int>::type = 0>
-			T& at(size_t index) {
+			inline T& at(size_t index) {
 				if(this->length() <= index) {
 				    char buffer[256];
-					print_formated(buffer, 256, "Index %lu is out of range. Max allowed %lu", index, this->length());
+					print_formated(buffer, 256, "Index %zu is out of range. Max allowed %zu", (size_t) index, (size_t) this->length());
                     throw std::out_of_range(buffer);
 				}
 				return *(T*) ((char*) this->data_ptr() + index);
 			}
 
 			template <typename T = char, typename N_T, typename std::enable_if<std::is_integral<T>::value && std::is_integral<N_T>::value, int>::type = 0>
-			N_T at(size_t index) { return this->buffer_view::at<T, N_T>(index); };
+			inline N_T at(size_t index) { return this->buffer_view::at<T, N_T>(index); };
 
 			template <typename T = char, typename __unused = void, typename std::enable_if<std::is_integral<T>::value && std::is_same<__unused, void>::value, int>::type = 0>
-			T& operator[](size_t index) { return this->at<T>(index); }
+			inline T& operator[](size_t index) { return this->at<T>(index); }
 
 			buffer& operator=(const buffer& /* other */);
 			buffer& operator=(buffer&& /* other */);
@@ -241,9 +326,13 @@ namespace pipes {
 			void resize_data(size_t /* length */);
 
 			template <typename allocator_t = default_allocator, typename deleter_t = default_deleter, typename std::enable_if<!std::is_integral<allocator_t>::value, int>::type = 0>
-			void allocate_data(size_t length, allocator_t&& allocator = allocator_t(), deleter_t&& deleter = deleter_t()) {
-				if(!this->data)
-					this->data.reset(new impl::buffer_container<allocator_t, deleter_t>(std::forward<allocator_t>(allocator), std::forward<deleter_t>(deleter)));
+			inline void allocate_data(size_t length, allocator_t&& allocator = allocator_t(), deleter_t&& deleter = deleter_t()) {
+				if(this->_data_type != data_type::buffer_container)
+					this->_construct_buffer_container();
+				this->_data_type = data_type::buffer_container;
+
+				if(!this->_data.buffer_container)
+					this->_data.buffer_container = std::make_shared<impl::buffer_container<allocator_t, deleter_t>>(std::forward<allocator_t>(allocator), std::forward<deleter_t>(deleter));
 
 				if(length > 0)
 					this->resize_data(length);

@@ -1,4 +1,24 @@
-if (NOT TARGET LibNice::LibNice)
+# Used for TeaSpeak
+if (LIBNICE_PREBUILD_PATH AND GLIBC_PREBUILD_PATH)
+    if (NOT EXISTS "${CMAKE_SOURCE_DIR}/${GLIBC_PREBUILD_PATH}")
+        message(FATAL_ERROR "Missing GLIBC prebuild directory")
+    endif ()
+    if (NOT EXISTS "${CMAKE_SOURCE_DIR}/${LIBNICE_PREBUILD_PATH}")
+        message(FATAL_ERROR "Missing libnice prebuild directory")
+    endif ()
+
+    add_library(LibNice__LibNice INTERFACE)
+    message("Include GLIB from: ${CMAKE_SOURCE_DIR}/${GLIBC_PREBUILD_PATH}/include/")
+    target_include_directories(LibNice__LibNice INTERFACE ${CMAKE_SOURCE_DIR}/${GLIBC_PREBUILD_PATH}/include/)
+    target_include_directories(LibNice__LibNice INTERFACE ${CMAKE_SOURCE_DIR}/${GLIBC_PREBUILD_PATH}/include/glib-2.0/)
+    target_include_directories(LibNice__LibNice INTERFACE ${CMAKE_SOURCE_DIR}/${GLIBC_PREBUILD_PATH}/lib/x86_64-linux-gnu/glib-2.0/include/)
+    target_include_directories(LibNice__LibNice INTERFACE ${CMAKE_SOURCE_DIR}/${GLIBC_PREBUILD_PATH}/lib/i386-linux-gnu/glib-2.0/include/)
+
+    target_include_directories(LibNice__LibNice INTERFACE ${CMAKE_SOURCE_DIR}/${LIBNICE_PREBUILD_PATH}/include)
+    target_link_libraries(LibNice__LibNice INTERFACE ${CMAKE_SOURCE_DIR}/${LIBNICE_PREBUILD_PATH}/lib/libnice.so.10)
+
+    add_library(LibNice::LibNice ALIAS LibNice__LibNice)
+elseif (NOT TARGET LibNice::LibNice)
     find_package(PkgConfig)
     pkg_check_modules(PC_LIBNICE nice)
     set(LIBNICE_DEFINITIONS ${PC_LIBNICE_CFLAGS_OTHER})

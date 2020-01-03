@@ -51,7 +51,7 @@ set(SOURCE_FILES
 		src/tls.cpp
 )
 if (NOT WIN32)
-	message("We're not on windows (${WIN32}")
+	message("We're not on windows")
 	set(SOURCE_FILES ${SOURCE_FILES} src/allocator_paged.cpp)
 endif ()
 
@@ -92,15 +92,17 @@ if(BUILD_WEBRTC)
 	find_package(LibNice REQUIRED)
 	find_package(UsrSCTP REQUIRED)
 
-	execute_process(
-			COMMAND bash -c "pkg-config --cflags --libs glib-2.0"
-			OUTPUT_VARIABLE GLIB_FLAGS
-	)
-    string(REPLACE "\t" " " GLIB_FLAGS "${GLIB_FLAGS}")
-	string(REPLACE "\n" "" GLIB_FLAGS "${GLIB_FLAGS}")
+	if (NOT GLIBC_PREBUILD_PATH)
+		execute_process(
+				COMMAND bash -c "pkg-config --cflags --libs glib-2.0"
+				OUTPUT_VARIABLE GLIB_FLAGS
+		)
+		string(REPLACE "\t" " " GLIB_FLAGS "${GLIB_FLAGS}")
+		string(REPLACE "\n" "" GLIB_FLAGS "${GLIB_FLAGS}")
 
-	message("Got GLIB include directories ${GLIB_FLAGS}")
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GLIB_FLAGS}")
+		message("Got GLIB include directories ${GLIB_FLAGS}")
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GLIB_FLAGS}")
+	endif ()
 
 	set(HEADER_FILES ${HEADER_FILES}
 			#WebRTC
@@ -139,6 +141,7 @@ macro(configure_msvc_runtime)
 		if("${MSVC_RUNTIME}" STREQUAL "")
 			set(MSVC_RUNTIME "static")
 		endif()
+		add_compile_options(/EHsc) # Enable unwind semantics
 
 		# Set compiler options.
 		set(variables
@@ -172,31 +175,43 @@ if(BUILD_STATIC)
 	add_library(DataPipes-Static STATIC ${HEADER_FILES} ${SOURCE_FILES})
 	install(TARGETS DataPipes-Static DESTINATION lib)
 	set_target_properties(DataPipes-Static PROPERTIES OUTPUT_NAME DataPipes)
+
+	if(BUILD_WEBRTC)
+		target_link_libraries(
+				DataPipes-Static
+				LibNice::LibNice
+				#SctpLab::UsrSCTP
+				usrsctp.a
+				sdptransform
+				#srtp
+				${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
+				stdc++fs.a
+		)
+	endif()
 endif()
 if(BUILD_SHARED)
 	add_library(DataPipes-Shared SHARED ${HEADER_FILES} ${SOURCE_FILES})
 	install(TARGETS DataPipes-Shared DESTINATION lib)
 	set_target_properties(DataPipes-Shared PROPERTIES OUTPUT_NAME DataPipes)
+
+	if(BUILD_WEBRTC)
+		target_link_libraries(
+				DataPipes-Shared
+				LibNice::LibNice
+				#SctpLab::UsrSCTP
+				usrsctp.a
+				sdptransform
+				#srtp
+				${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
+				stdc++fs.a
+		)
+	endif()
 endif()
 install(DIRECTORY include/ DESTINATION include/pipes)
-
-if(BUILD_WEBRTC)
-	target_link_libraries(
-			DataPipes-Shared
-			LibNice::LibNice
-			#SctpLab::UsrSCTP
-			usrsctp.a
-			sdptransform
-			#srtp
-			${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
-			stdc++fs.a
-	)
-endif()
 
 if(BUILD_TESTS)
 	set(TEST_LIBRARIES
 			DataPipes-Static
-
 			LibNice::LibNice
 			#SctpLab::UsrSCTP
 			usrsctp.a
@@ -232,6 +247,7 @@ if(BUILD_TESTS)
 	add_executable(DataPipes-Test-rtc-audio test/rtc/rtc_test_audio.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
 	target_link_libraries(DataPipes-Test-rtc-audio ${TEST_LIBRARIES})
 
+	add_executable(DataPipes-Test-buffers include/buffer.h src/buffer.cpp src/allocator.cpp test/buffer.cpp)
 	add_executable(DataPipes-Test-rtc-video test/rtc/rtc_test_video.cpp test/utils/socket.cpp test/json/jsoncpp.cpp test/rtc/video_utils.cpp)
 	target_link_libraries(DataPipes-Test-rtc-video ${TEST_LIBRARIES} vpx)
 
