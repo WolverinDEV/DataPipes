@@ -6,7 +6,6 @@
 #define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
 #include "include/ssl.h"
-#include "OpenSSLDefinitions.h"
 
 using ProcessResult = pipes::ProcessResult;
 using namespace std::chrono;
