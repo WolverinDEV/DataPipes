@@ -30,7 +30,7 @@ elseif (NOT TARGET LibNice::LibNice)
             HINTS ${PC_LIBNICE_LIBDIR} ${PC_LIBNICE_LIBRARY_DIRS})
 
     include(FindPackageHandleStandardArgs)
-    find_package_handle_standard_args(Libnice DEFAULT_MSG
+    find_package_handle_standard_args(LibNice DEFAULT_MSG
             LIBNICE_LIBRARY LIBNICE_INCLUDE_DIR)
     mark_as_advanced(LIBNICE_INCLUDE_DIR LIBNICE_LIBRARY)
 

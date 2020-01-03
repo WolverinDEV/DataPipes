@@ -10,7 +10,12 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules")
 #set(CMAKE_CXX_COMPILER "c++")
 
-include_directories(libraries/sdptransform/include)
+option(USE_BUNDELED_SPDTRANSFORM "Use the bundeled spdtransform from libraries/" ON)
+if(USE_BUNDELED_SPDTRANSFORM)
+	add_subdirectory(libraries/sdptransform)
+else()
+	find_package(spdtransform REQUIRED)
+endif()
 
 add_definitions(-DLOG_LEVEL=0) #FIXME!
 
@@ -87,10 +92,12 @@ endif()
 
 if(BUILD_WEBRTC)
 	# Find packages
-	set(THREADS_PREFER_PTHREAD_FLAG ON)
-	find_package(Threads REQUIRED)
-	find_package(LibNice REQUIRED)
-	find_package(UsrSCTP REQUIRED)
+	find_package(LibNice REQUIRED) # Includes GLIB
+	find_package(UsrSCTP)
+
+	if (NOT UsrSCTP_FOUND)
+		message("Missing UsrSCTP, disabling data channel support")
+	endif ()
 
 	if (NOT GLIBC_PREBUILD_PATH)
 		execute_process(
@@ -168,8 +175,9 @@ configure_msvc_runtime()
 
 if(BUILD_STATIC)
 	add_library(DataPipes-Static STATIC ${HEADER_FILES} ${SOURCE_FILES})
-	install(TARGETS DataPipes-Static DESTINATION lib)
 	set_target_properties(DataPipes-Static PROPERTIES OUTPUT_NAME DataPipes)
+
+	install(TARGETS DataPipes-Static DESTINATION lib)
 
 	if(BUILD_WEBRTC)
 		target_link_libraries(
