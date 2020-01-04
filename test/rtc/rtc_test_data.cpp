@@ -11,6 +11,8 @@
 #include <include/rtc/ApplicationStream.h>
 #include "test/json/json.h"
 
+#include <glib.h>
+
 using namespace std;
 
 struct Client {
@@ -176,7 +178,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 			jsonCandidate["msg"]["sdpMid"] = ice.sdpMid;
 			jsonCandidate["msg"]["sdpMLineIndex"] = ice.sdpMLineIndex;
 
-			//std::cout << "Sending Answer: " << jsonCandidate << endl;
+			//std::cout << "Sending ICE candidate: " << jsonCandidate << endl;
 
 			pipes::buffer buf;
 			buf += Json::writeString(client->json_writer, jsonCandidate);
@@ -235,15 +237,18 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 			if(client->reader.parse(message.data.string(), root)) {
 				std::cout << "Got msg of type: " << root["type"] << endl;
 				if (root["type"] == "offer") {
-					cout << "Recived offer" << endl;
+					cout << "Received offer" << endl;
 
-					client->peer->apply_offer(error, root["msg"]["sdp"].asString());
+					if(!client->peer->apply_offer(error, root["msg"]["sdp"].asString())) {
+					    std::cerr << "failed to apply SPD offer\n";
+					    return;
+					}
 					Json::Value answer;
 					answer["type"] = "answer";
-					answer["msg"]["sdp"] = client->peer->generate_answer(true);
+					answer["msg"]["sdp"] = client->peer->generate_answer(false);
 					answer["msg"]["type"] = "answer";
 
-					std::cout << "Sending Answer: " << answer << endl;
+					std::cout << "Sending Answer\n"; // << answer["msg"]["sdp"].asString() << endl;
 
 					pipes::buffer buf;
 					buf += Json::writeString(client->json_writer, answer);
@@ -252,6 +257,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					cout << "Apply candidates: " << client->peer->apply_ice_candidates(
 							deque<shared_ptr<rtc::IceCandidate>> { make_shared<rtc::IceCandidate>(root["msg"]["candidate"].asString(), root["msg"]["sdpMid"].asString(), root["msg"]["sdpMLineIndex"].asInt()) }
 					) << endl;
+				} else if(root["type"] == "candidate_finish") {
+				    client->peer->execute_negotiation();
 				}
 			} else {
 				cerr << "Failed to parse json" << endl;
@@ -285,6 +292,7 @@ int main() {
 		delete (Client*) client->data;
 	};
 	socket.start(1111);
+	std::cout << "Server started on port 1111" << std::endl;
 
 
 	while(true) this_thread::sleep_for(chrono::seconds(100));

@@ -2,10 +2,15 @@
 
 #include <cstdint>
 #include <sstream>
-#include <srtp2/srtp.h>
+#ifdef SRTP2
+    #include <srtp2/srtp.h>
+#else
+    #include <srtp/srtp.h>
+#endif
 
-#include "Stream.h"
-#include "Protocol.h"
+#include "./Stream.h"
+#include "./Protocol.h"
+#include "../misc/logger.h"
 
 namespace pipes {
 	class TLSCertificate;
@@ -103,7 +108,7 @@ namespace rtc {
 
 			bool reset(std::string &string) override;
 
-			bool send_rtp_data(const std::shared_ptr<Channel>& /* channel */, const pipes::buffer_view& /* data */, uint32_t /* timestamp */, bool /* contains extension */ = false);
+			bool send_rtp_data(const std::shared_ptr<Channel>& /* channel */, const pipes::buffer_view& /* data */, uint32_t /* timestamp */, bool /* contains extension */ = false, int /* marker bit */ = -1);
 			callback_data incoming_data_handler = nullptr;
 
 			std::deque<std::shared_ptr<codec::Codec>> find_codecs_by_name(const std::string& /* name */);

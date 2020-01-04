@@ -476,7 +476,8 @@ ssize_t NiceWrapper::apply_remote_ice_candidates(const std::shared_ptr<rtc::Nice
 
 bool NiceWrapper::execute_negotiation(const std::shared_ptr<rtc::NiceStream> &stream) {
 	std::lock_guard<std::recursive_mutex> lock(io_lock);
-	if(nice_agent_get_component_state(&*this->agent, stream->stream_id, 1) == NiceComponentState::NICE_COMPONENT_STATE_GATHERING && !stream->gathering_done) {
+	auto stream_state = nice_agent_get_component_state(&*this->agent, stream->stream_id, 1);
+	if(stream_state == NiceComponentState::NICE_COMPONENT_STATE_GATHERING && !stream->gathering_done) {
 		LOG_ERROR(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Negotiation not allowed before candidates have been gathered!");
 		return false;
 	}
@@ -505,8 +506,7 @@ bool NiceWrapper::apply_remote_sdp(std::string& error, std::string sdp) {
 }
 
 bool NiceWrapper::gather_candidates(const std::shared_ptr<rtc::NiceStream> &stream) {
-	if (!nice_agent_gather_candidates(agent.get(), stream->stream_id)) return false;
-	return true;
+    return nice_agent_gather_candidates(agent.get(), stream->stream_id) != 0;
 }
 
 std::deque<std::unique_ptr<LocalSdpEntry>> NiceWrapper::generate_local_sdp(bool candidates) {

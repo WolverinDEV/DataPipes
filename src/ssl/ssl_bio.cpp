@@ -29,7 +29,8 @@ int pipes::SSL::bio_write(BIO* self, const char* buffer, int length) {
 	auto handle = static_cast<SSL*>(BIO_get_data(self));
 	assert(handle);
 
-	LOG_DEBUG(handle->logger(), "SSL::bio_write", "Got %p with length %i", buffer, length);
+	if(handle->options->verbose_io)
+	    LOG_VERBOSE(handle->logger(), "SSL::bio_write", "Got %p with length %i", buffer, length);
 	handle->_callback_write(buffer_view{buffer, (size_t) length});
 	return length;
 };
@@ -84,6 +85,7 @@ BIO_METHOD* pipes::SSL::ssl_bio_method() {
         BIO_meth_set_read(result, &pipes::SSL::bio_read);
         BIO_meth_set_puts(result, &pipes::SSL::bio_puts);
         BIO_meth_set_gets(result, &pipes::SSL::bio_gets);
+        BIO_meth_set_ctrl(result, &pipes::SSL::bio_ctrl);
         BIO_meth_set_create(result, &pipes::SSL::bio_create);
         BIO_meth_set_destroy(result, &pipes::SSL::bio_destroy);
         BIO_meth_set_callback_ctrl(result, &pipes::SSL::bio_callback_ctrl);

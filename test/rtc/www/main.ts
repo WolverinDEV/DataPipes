@@ -26,7 +26,7 @@ button.on('click', () => {
     }
 
     let config = new PeerConnectionConfig();
-    config.open_data_channel = false;
+    config.open_data_channel = true;
     config.open_audio_channel = false;
 
     connect_peer(config).then(c => connection = c, error => {
@@ -101,16 +101,16 @@ class PeerConnection {
             console.log("NEGOT NEEDED!");
         }
         this.peer.onconnectionstatechange = event => {
-            console.log("[RTC] Connection state change %o (%o)", event.eventPhase, event);
+            console.log("[RTC] Connection state changed. New state: %s", this.peer.connectionState);
         };
         this.peer.onicecandidateerror = event => {
             console.log("[RTC][ICE] Failed to setup candidate %s (%s) (%o | %s)", event.hostCandidate, event.url, event.errorCode, event.errorText);
         };
         this.peer.oniceconnectionstatechange = event => {
-            console.log("[RTC][ICE] Connection state change %o (%o)", event.eventPhase, event);
+            console.log("[RTC][ICE] Connection state changed. New state: %s", this.peer.iceConnectionState);
         };
         this.peer.onicegatheringstatechange = event => {
-            console.log("[RTC][ICE] Gathering state change %o (%o)", event.eventPhase, event);
+            console.log("[RTC][ICE] Gathering state changed. New state: %s", this.peer.iceGatheringState);
         };
         this.peer.onicecandidate = (event) => {
             console.log("[RTC][ICE][LOCAL] Got new candidate %s (%o)", event.candidate, event);
@@ -263,7 +263,7 @@ function connect_peer(config?: PeerConnectionConfig) : Promise<PeerConnection> {
         let result = new PeerConnection();
         result.config = config;
 
-        result.socket = new WebSocket("wss://192.168.43.141:1111");
+        result.socket = new WebSocket("wss://192.168.40.130:1111");
         //result.socket = new WebSocket("wss://felix.did.science:1111");
 
         result.socket.onopen = event => {

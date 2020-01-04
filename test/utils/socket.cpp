@@ -27,7 +27,7 @@ bool Socket::start(uint16_t port) {
     addr.sin_port = htons(port);
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    this->socket = ::socket(AF_INET, SOCK_STREAM, 0);
+    this->socket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (this->socket < 0) {
         perror("Unable to create socket");
         exit(EXIT_FAILURE);
@@ -132,7 +132,7 @@ void Socket::Client::on_read(int fd) {
     auto length = ::read(fd, chunk.data_ptr(), chunk_length);
     if(length <= 0) {
         if(errno == EAGAIN) return;
-        cout << "Got error while reading (" << errno << " => " << strerror(errno) << ")" << endl;
+        cout << "Got error while reading (" << length << ", " << errno << " => " << strerror(errno) << ")" << endl;
         this->disconnect(false);
         return;
     }

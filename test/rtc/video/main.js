@@ -32,7 +32,8 @@ class PeerConnection {
     }
     initialized_peer() {
         const config = {
-        /*iceServers: [{ url: 'stun:stun.l.google.com:19302' }]*/
+            /*iceServers: [{ url: 'stun:stun.l.google.com:19302' }]*/
+            sdpSemantics: "plan-b"
         };
         this.peer = new RTCPeerConnection(config);
         for (const field in this.peer) {
@@ -53,22 +54,23 @@ class PeerConnection {
         this.peer.onicegatheringstatechange = () => {
             console.log("[RTC][ICE] Ice gathering state changed %s", this.peer.iceGatheringState);
         };
-        this.peer.ontrack = event => {
-            console.log("[RTC] Got new track %o (%o | %o) | %o (Streams: %o)", event.track.id, event.track.label, event.track, event.track.kind, event.streams);
-            video_target.srcObject = event.streams[0];
-            event.track.onended = e => {
-                console.log("[RTC] Track %o ended (%o)", event.track.id, e.error);
+        if (false)
+            this.peer.ontrack = event => {
+                console.log("[RTC] Got new track %o (%o | %o) | %o (Streams: %o)", event.track.id, event.track.label, event.track, event.track.kind, event.streams);
+                video_target.srcObject = event.streams[0];
+                event.track.onended = e => {
+                    console.log("[RTC] Track %o ended (%o)", event.track.id, e.error);
+                };
+                event.track.onmute = e => {
+                    console.log("[RTC] Track %o muted", event.track.id);
+                };
+                event.track.onunmute = e => {
+                    console.log("[RTC] Track %o unmuted", event.track.id);
+                };
+                event.track.onoverconstrained = e => {
+                    console.log("[RTC] Track %o onoverconstrained", event.track.id);
+                };
             };
-            event.track.onmute = e => {
-                console.log("[RTC] Track %o muted", event.track.id);
-            };
-            event.track.onunmute = e => {
-                console.log("[RTC] Track %o unmuted", event.track.id);
-            };
-            event.track.onoverconstrained = e => {
-                console.log("[RTC] Track %o onoverconstrained", event.track.id);
-            };
-        };
         this.peer.onicecandidateerror = event => {
             console.log("[RTC][ICE] Failed to setup candidate %s (%s) (%o | %s)", event.hostCandidate, event.url, event.errorCode, event.errorText);
         };
@@ -86,6 +88,7 @@ class PeerConnection {
         };
         this.peer.onaddstream = event => {
             console.log("[RTC] Got a new stream %o (%o)", event.stream.id, event);
+            video_target.srcObject = event.stream;
             event.stream.onactive = e => {
                 console.log("[RTC][STREAM] Stream %o got active", event.stream.id);
             };
@@ -108,7 +111,7 @@ class PeerConnection {
             this.initialize_data_channel(event.channel);
         };
         let sdpConstraints = {};
-        sdpConstraints.offerToReceiveVideo = false;
+        sdpConstraints.offerToReceiveVideo = true;
         sdpConstraints.offerToReceiveAudio = false;
         console.log("[RTC] Initializing stream");
         //this.peer.createDataChannel("test_channel");
@@ -117,7 +120,8 @@ class PeerConnection {
                 alert('Missing required function: video_source.captureStream');
             video_source_stream = video_source.captureStream(25);
             console.log("Created source stream: %o", video_source_stream);
-            video_target.srcObject = video_source_stream;
+            //video_target.srcObject = video_source_stream;
+            this.peer.addStream(video_source.captureStream(25));
         }
         this.peer.addStream(video_source_stream);
         console.log("[RTC] Generating offer");
@@ -158,7 +162,7 @@ class PeerConnection {
 function connect_peer() {
     return new Promise((resolve, reject) => {
         let result = new PeerConnection();
-        result.socket = new WebSocket("wss://192.168.43.141:1111");
+        result.socket = new WebSocket("wss://192.168.40.130:1111");
         result.socket.onopen = event => {
             console.log("[WS] WebSocket connected!");
             result.initialized_peer();

@@ -6,7 +6,7 @@ if (NOT TARGET SctpLab::UsrSCTP)
     find_library(USRSCTP_LIBRARY NAMES usrsctp libusrsctp)
 
     include(FindPackageHandleStandardArgs)
-    find_package_handle_standard_args(Usrsctp DEFAULT_MSG USRSCTP_LIBRARY USRSCTP_INCLUDE_DIR)
+    find_package_handle_standard_args(UsrSCTP DEFAULT_MSG USRSCTP_LIBRARY USRSCTP_INCLUDE_DIR)
 
     mark_as_advanced(USRSCTP_INCLUDE_DIR USRSCTP_LIBRARY)
 

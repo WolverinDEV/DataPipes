@@ -158,19 +158,8 @@ namespace pipes {
 			template <typename pointer_t = void>
 			inline const pointer_t* data_ptr_origin() const { return (pointer_t*) this->_data_ptr_origin(); }
 
-			template <typename T = char, typename N_T = T, typename std::enable_if<std::is_integral<T>::value && std::is_integral<N_T>::value, int>::type = 0>
-			inline N_T at(size_t index) const {
-				if(this->length() <= index) {
-                    char buffer[256];
-					print_formated(buffer, 256, "Index %zu is out of range. Max allowed %zu", (size_t) index, (size_t) this->length());
-                    throw std::out_of_range(buffer);
-                }
-				return (N_T) *(T*) (this->data_ptr<char>() + index);
-			}
-
-
-			template <typename T = char, typename __unused = void, typename std::enable_if<std::is_integral<T>::value && std::is_same<__unused, void>::value, int>::type = 0>
-			inline const T& at(size_t index) const {
+			template <typename T = char, typename std::enable_if<std::is_integral<T>::value && std::is_const<T>::value, int>::type = 0>
+			inline const T at(size_t index) const {
 				if(this->length() <= index) {
                     char buffer[256];
 					print_formated(buffer, 256, "Index %zu is out of range. Max allowed %zu", (size_t) index, (size_t) this->length());
@@ -179,30 +168,40 @@ namespace pipes {
 				return *(T*) (this->data_ptr<char>() + index);
 			}
 
-			template <typename T = char, typename N_T = T, typename std::enable_if<std::is_integral<T>::value && std::is_integral<N_T>::value && !std::is_same<T, N_T>::value, int>::type = 0>
-			inline N_T operator[](size_t index) const { return this->at<T, N_T>(index); }
+			template <typename T = char, typename std::enable_if<std::is_integral<T>::value && !std::is_const<T>::value, int>::type = 0>
+			inline const T& at(size_t index) const {
+				if(this->length() <= index) {
+					char buffer[256];
+					print_formated(buffer, 256, "Index %zu is out of range. Max allowed %zu", (size_t) index, (size_t) this->length());
+					throw std::out_of_range(buffer);
+				}
+				return *(T*) (this->data_ptr<char>() + index);
+			}
 
-			template <typename T = char, typename __unused = void, typename std::enable_if<std::is_integral<T>::value && std::is_same<__unused, void>::value, int>::type = 0>
-			inline const T& operator[](size_t index) const { return this->at<T, __unused>(index); }
+			template <typename T = char, typename std::enable_if<std::is_integral<T>::value && std::is_const<T>::value, int>::type = 0>
+			inline T operator[](size_t index) const { return this->at<T>(index); }
+
+			template <typename T = char, typename std::enable_if<std::is_integral<T>::value && !std::is_const<T>::value, int>::type = 0>
+			inline const T& operator[](size_t index) const { return this->at<T>(index); }
 
 			inline bool operator!() const { return this->empty(); }
 			inline operator bool() const { return !this->empty(); }
 
 			/* Converter functions */
-			inline std::string string() const { return std::string(this->data_ptr<const char>(), this->length()); }
-			inline const buffer_view view(size_t offset, ssize_t length = -1) const { return this->_view(offset, length); }
-			inline buffer_view view(size_t offset, ssize_t length = -1) { return this->_view(offset, length); }
+			[[nodiscard]] inline std::string string() const { return std::string(this->data_ptr<const char>(), this->length()); }
+			[[nodiscard]] inline const buffer_view view(size_t offset, ssize_t length = -1) const { return this->_view(offset, length); }
+			[[nodiscard]] inline buffer_view view(size_t offset, ssize_t length = -1) { return this->_view(offset, length); }
 
-			inline bool owns_buffer() const {
+			[[nodiscard]] inline bool owns_buffer() const {
 				if(this->_data_type != data_type::buffer_container)
 					return false;
 				auto buffer = this->_data.buffer_container;
 				return buffer && buffer->owns;
 			}
 			/* creates a new buffer any copy the data to it */
-			buffer own_buffer() const;
-			buffer dup() const;
-			buffer dup(pipes::buffer /* target buffer */) const;
+			[[nodiscard]] buffer own_buffer() const;
+			[[nodiscard]] buffer dup() const;
+			[[nodiscard]] buffer dup(pipes::buffer /* target buffer */) const;
 		protected:
 			data_type::value _data_type = data_type::pointer;
 			union __data {

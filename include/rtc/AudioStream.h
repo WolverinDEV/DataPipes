@@ -3,10 +3,10 @@
 #include <map>
 #include <atomic>
 #include <vector>
-#include <srtp2/srtp.h>
-#include "Stream.h"
-#include "Protocol.h"
-#include "RtpStream.h"
+#include "../buffer.h"
+#include "./Stream.h"
+#include "./Protocol.h"
+#include "./RtpStream.h"
 
 namespace rtc {
 	class AudioStream : public RTPStream {

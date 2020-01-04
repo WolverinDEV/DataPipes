@@ -11,7 +11,7 @@ ssize_t protocol::rtp_payload_offset(const pipes::buffer_view& data) {
 	if(header->csrccount > 0)
 		header_length += header->csrccount * 4;
 	if(header->extension) {
-		auto header_extension = (protocol::rtp_header_extension*) &data[header_length];
+		auto header_extension = (const protocol::rtp_header_extension*) &data[header_length];
 		auto extension_length = be16toh(header_extension->length);
 		header_length += extension_length * 4 + sizeof(protocol::rtp_header_extension);
 	}

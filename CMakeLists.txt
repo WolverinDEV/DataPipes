@@ -11,6 +11,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules"
 #set(CMAKE_CXX_COMPILER "c++")
 
 include_directories(libraries/sdptransform/include)
+add_subdirectory(libraries/sdptransform)
 
 add_definitions(-DLOG_LEVEL=0) #FIXME!
 
@@ -87,12 +88,13 @@ endif()
 
 if(BUILD_WEBRTC)
 	# Find packages
-	set(THREADS_PREFER_PTHREAD_FLAG ON)
-	find_package(Threads REQUIRED)
+	# set(THREADS_PREFER_PTHREAD_FLAG ON)
+	# find_package(Threads REQUIRED)
 	find_package(LibNice REQUIRED)
 	find_package(UsrSCTP REQUIRED)
+	add_definitions(-DLEGACY_SRTP)
 
-	if (NOT GLIBC_PREBUILD_PATH)
+	if (NOT GLIBC_PREBUILD_PATH AND FALSE)
 		execute_process(
 				COMMAND bash -c "pkg-config --cflags --libs glib-2.0"
 				OUTPUT_VARIABLE GLIB_FLAGS
@@ -119,16 +121,15 @@ if(BUILD_WEBRTC)
 
 	set(SOURCE_FILES ${SOURCE_FILES}
 			src/sctp.cpp
-
 			src/rtc/Stream.cpp
 			src/rtc/AudioStream.cpp
-			src/rtc/ApplicationChannel.cpp
 			src/rtc/NiceWrapper.cpp
 			src/rtc/PeerConnection.cpp
 			src/rtc/Protocol.cpp
 			src/rtc/MergedStream.cpp
 			src/rtc/VideoStream.cpp
 			src/rtc/RtpStream.cpp
+			src/rtc/ApplicationChannel.cpp
 	)
 endif()
 
@@ -153,7 +154,7 @@ macro(configure_msvc_runtime)
 				CMAKE_CXX_FLAGS_MINSIZEREL
 				CMAKE_CXX_FLAGS_RELEASE
 				CMAKE_CXX_FLAGS_RELWITHDEBINFO
-				)
+		)
 		if(${MSVC_RUNTIME} STREQUAL "static")
 			foreach(variable ${variables})
 				if(${variable} MATCHES "/MD")
@@ -172,7 +173,7 @@ endmacro()
 configure_msvc_runtime()
 
 if(BUILD_STATIC)
-	add_library(DataPipes-Static STATIC ${HEADER_FILES} ${SOURCE_FILES})
+	add_library(DataPipes-Static STATIC ${SOURCE_FILES})
 	install(TARGETS DataPipes-Static DESTINATION lib)
 	set_target_properties(DataPipes-Static PROPERTIES OUTPUT_NAME DataPipes)
 
@@ -183,14 +184,14 @@ if(BUILD_STATIC)
 				#SctpLab::UsrSCTP
 				usrsctp.a
 				sdptransform
-				#srtp
-				${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
+				srtp
+				# ${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
 				stdc++fs.a
 		)
 	endif()
 endif()
 if(BUILD_SHARED)
-	add_library(DataPipes-Shared SHARED ${HEADER_FILES} ${SOURCE_FILES})
+	add_library(DataPipes-Shared SHARED ${SOURCE_FILES})
 	install(TARGETS DataPipes-Shared DESTINATION lib)
 	set_target_properties(DataPipes-Shared PROPERTIES OUTPUT_NAME DataPipes)
 
@@ -212,21 +213,11 @@ install(DIRECTORY include/ DESTINATION include/pipes)
 if(BUILD_TESTS)
 	set(TEST_LIBRARIES
 			DataPipes-Static
-			LibNice::LibNice
-			#SctpLab::UsrSCTP
-			usrsctp.a
-			sdptransform
-			#srtp
-			${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
-			stdc++fs.a
 
-			DataPipes-Shared
 			event
 			event_pthreads
-			#/home/wolverindev/clib/boringssl/build/ssl/libssl.so
-			#/home/wolverindev/clib/boringssl/build/crypto/libcrypto.so
-			/home/wolverindev/TeaSpeak/libraries/boringssl/build/ssl/libssl.so
-			/home/wolverindev/TeaSpeak/libraries/boringssl/build/crypto/libcrypto.so
+
+			${Crypto_LIBRARIES}
 			pthread
 			asound
 			opus
@@ -247,11 +238,10 @@ if(BUILD_TESTS)
 	add_executable(DataPipes-Test-rtc-audio test/rtc/rtc_test_audio.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
 	target_link_libraries(DataPipes-Test-rtc-audio ${TEST_LIBRARIES})
 
-	add_executable(DataPipes-Test-buffers include/buffer.h src/buffer.cpp src/allocator.cpp test/buffer.cpp)
 	add_executable(DataPipes-Test-rtc-video test/rtc/rtc_test_video.cpp test/utils/socket.cpp test/json/jsoncpp.cpp test/rtc/video_utils.cpp)
 	target_link_libraries(DataPipes-Test-rtc-video ${TEST_LIBRARIES} vpx)
 
-	add_executable(DataPipes-Test-buffers test/buffer.cpp)
+	add_executable(DataPipes-Test-buffers include/buffer.h src/buffer.cpp src/allocator.cpp test/buffer.cpp)
 	target_link_libraries(DataPipes-Test-buffers ${TEST_LIBRARIES})
 
 	add_executable(DataPipes-Test-video test/video.cpp test/video/ivfenc.cpp test/rtc/video_utils.cpp)

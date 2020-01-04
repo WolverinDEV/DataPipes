@@ -3,7 +3,6 @@
 #include <map>
 #include <memory>
 #include <utility>
-#include "../sctp.h"
 #include "../tls.h"
 #include "../misc/logger.h"
 #include "NiceWrapper.h"

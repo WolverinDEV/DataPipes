@@ -2,8 +2,9 @@
 
 #include <map>
 #include <thread>
-#include "Stream.h"
+#include "./Stream.h"
 #include "../tls.h"
+#include "../sctp.h"
 
 namespace rtc {
 	class ApplicationStream;
@@ -23,12 +24,12 @@ namespace rtc {
 			cb_text callback_text;
 			cb_binary callback_binary;
 
-			uint16_t id() const;
-			std::string lable() const;
-			std::string protocol() const;
+			[[nodiscard]] uint16_t id() const;
+			[[nodiscard]] std::string lable() const;
+			[[nodiscard]] std::string protocol() const;
 
-			bool readable() const { return this->read; }
-			bool writeable() const { return this->write; }
+            [[nodiscard]] bool readable() const { return this->read; }
+            [[nodiscard]] bool writeable() const { return this->write; }
 
 			void send(const pipes::buffer_view& /* message */, MessageType /* type */ = BINARY);
 			void close();
@@ -59,11 +60,11 @@ namespace rtc {
 			ApplicationStream(PeerConnection* /* owner */, StreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
 			virtual ~ApplicationStream();
 
-			StreamType type() const override { return StreamType::CHANTYPE_APPLICATION; }
+            [[nodiscard]] StreamType type() const override { return StreamType::CHANTYPE_APPLICATION; }
 
 			bool initialize(std::string& /* error */) override;
 			bool apply_sdp(const nlohmann::json& /* sdp */, const nlohmann::json& /* media */) override;
-			const std::string& get_mid() const override { return this->mid; }
+            [[nodiscard]] const std::string& get_mid() const override { return this->mid; }
 			std::string generate_sdp() override;
 			bool reset(std::string& /* error */) override;
 

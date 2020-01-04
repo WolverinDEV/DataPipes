@@ -34,6 +34,8 @@ namespace pipes {
 				std::map<std::string, KeyPair> servername_keys;
 				bool enforce_sni = false; /* enforces SNI handling */
 
+				bool verbose_io{false};
+
 				inline const KeyPair default_keypair() const { return this->servername_keys.count("") > 0 ? this->servername_keys.at("") : EmptyKeyPair; }
 				inline void default_keypair(const KeyPair& value) {
 					this->servername_keys.erase("");
@@ -85,7 +87,7 @@ namespace pipes {
 			static int _sni_callback(::SSL*,int*,void*);
 
 			std::mutex lock;
-			static BIO_METHOD *SSLSocketBioMethods;
+            static BIO_METHOD * ssl_bio_method();
 
 			//Required methods
 			static int bio_read(BIO *, char *, int);

@@ -316,8 +316,10 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 		if(!nice->apply_remote_sdp(error, raw_sdp)) return false;
 	}
 
-	for(const auto& stream : nice->available_streams())
-		nice->gather_candidates(stream);
+	for(const auto& stream : nice->available_streams()) {
+	    if(!nice->gather_candidates(stream))
+	        LOG_ERROR(this->config->logger, "PeerConnection::apply_offer", "failed to start gathering for stream %u", stream->stream_id);
+	}
 
 	return true;
 }

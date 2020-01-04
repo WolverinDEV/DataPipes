@@ -184,8 +184,8 @@ ProcessResult pipes::SSL::process_data_in() {
 
         auto code = SSL_accept(this->sslLayer);
         if(code <= 0) {
-            if(SSL_get_error(this->sslLayer, code) != SSL_ERROR_SYSCALL) {
-                _callback_error(PERROR_SSL_ACCEPT, "Could not proceed accept! (" + std::to_string(code) + "|" + std::to_string(SSL_get_error(this->sslLayer, code)) + ")");
+            if(auto err = SSL_get_error(this->sslLayer, code); err != SSL_ERROR_SYSCALL) {
+                _callback_error(PERROR_SSL_ACCEPT, "Could not proceed accept! (" + std::to_string(err) + "|" + ERR_error_string(ERR_get_error(), nullptr) + ")");
                 this->sslState = SSLSocketState::SSL_STATE_UNDEFINED;
                 return ProcessResult::PROCESS_RESULT_ERROR;
             } else if(handshakeStart + milliseconds(7500) < system_clock::now()) {
@@ -227,7 +227,8 @@ ProcessResult pipes::SSL::process_data_out() {
 	    int index = 5;
 	    while(index-- > 0) {
 		    auto result = SSL_write(this->sslLayer, front.data_ptr(), front.length());
-		    LOG_DEBUG(this->logger(), "SSL::process_data_out", "Write (%i): %i (bytes: %i) (empty: %i)", index, result, front.length(), this->write_buffer.size());
+            if(this->options->verbose_io)
+		        LOG_VERBOSE(this->logger(), "SSL::process_data_out", "Write (%i): %i (bytes: %i) (empty: %i)", index, result, front.length(), this->write_buffer.size());
 		    if(result > 0) break;
 	    }
     }
@@ -282,7 +283,7 @@ std::string pipes::SSL::remote_fingerprint() {
 			X509_digest(rcert, EVP_sha256(), (unsigned char *) rfingerprint, &rsize);
 		}
 		X509_free(rcert);
-		rcert = NULL;
+		rcert = nullptr;
 		unsigned int i = 0;
 		for (i = 0; i < rsize; i++) {
 			snprintf(rfp, 4, "%.2X:", rfingerprint[i]);

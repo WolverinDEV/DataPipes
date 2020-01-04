@@ -18,13 +18,13 @@ typedef struct _NiceCandidate NiceCandidate;
 namespace rtc {
 	namespace g {
 #ifndef __G_TYPES_H__
-		#define _(t, ot) typedef ot t
+		#define _(t, gt, ot) typedef ot t
 #else
-		#define _(t, ot) typedef ::g ##t t
+		#define _(t, gt, ot) typedef ::gt t
 #endif
-		_(uint, unsigned int);
-		_(_char, char);
-		_(pointer, void*);
+		_(uint, guint, unsigned int);
+		_(_char, gchar, char);
+		_(pointer, gpointer, void*);
 #undef _
 	}
 

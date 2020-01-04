@@ -714,11 +714,12 @@ void RTPStream::process_rtp_data(const pipes::buffer_view&in) {
 		return;
 	}
 
+	channel->timestamp_last_receive = ntohl(header->timestamp);
 	if(this->incoming_data_handler)
 		this->incoming_data_handler(channel, in.view(0, buflen), payload_offset);
 }
 
-bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::buffer_view &data, uint32_t timestamp, bool flag_extension) {
+bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::buffer_view &extensions_and_payload, uint32_t timestamp, bool flag_extension, int marker_bit) {
 	static_assert(sizeof(protocol::rtp_header) == 12, "Invalid structure size");
 	static_assert(sizeof(protocol::rtp_header_extension) == 4, "Invalid structure size");
 	if(!this->srtp_out_ready) {
@@ -730,7 +731,7 @@ bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::bu
 		return false;
 	}
 
-	auto allocated = sizeof(protocol::rtp_header) + data.length() + SRTP_MAX_TRAILER_LEN;
+	auto allocated = sizeof(protocol::rtp_header) + extensions_and_payload.length() + SRTP_MAX_TRAILER_LEN;
 	allocated += allocated % 4; //Align 32 bits
 
 	pipes::buffer buffer(allocated);
@@ -742,29 +743,16 @@ bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::bu
 	header->version = 2;
 	header->padding = 0;
 	header->extension = (uint16_t) (flag_extension ? 1 : 0);
-	header->markerbit = (uint16_t) (stream->index_packet_send == 0);
-	header->timestamp = htobe32(timestamp); //FIXME!
-	header->seq_number = htobe16(stream->index_packet_send);
+	header->markerbit = (uint16_t) (marker_bit == -1 ? stream->index_packet_send == 0 : marker_bit != 0);
+	header->timestamp = htonl(timestamp);
+	header->seq_number = htons(stream->index_packet_send);
 	stream->index_packet_send += 1;
+    stream->timestamp_last_send = timestamp;
 
 	int offset_payload = sizeof(protocol::rtp_header);
+	memcpy((void*) &buffer[offset_payload], extensions_and_payload.data_ptr(), extensions_and_payload.length());
 
-	/*
-	if(header->extension) { //FIXME make this configurable?
-		offset_payload += 4 + sizeof(protocol::rtp_header_extension);
-		auto extension = (protocol::rtp_header_extension*) &buffer[sizeof(protocol::rtp_header)];
-		extension->length = htobe16(1);
-		extension->type = htobe16(0xBEDE);
-		extension->data[0] = 0x10; //upper: type lower: len
-		extension->data[1] = 0;
-		extension->data[2] = 0;
-		extension->data[3] = 0;
-	}
-	 */
-
-	memcpy((void*) &buffer[offset_payload], data.data_ptr(), data.length());
-
-	auto org_buflen = offset_payload + data.length();
+	auto org_buflen = offset_payload + extensions_and_payload.length();
 	auto buflen = org_buflen; //SRTP_MAX_TRAILER_LEN
 	srtp_err_status_t res = srtp_protect(this->srtp_out, (void*) buffer.data_ptr(), (int*) &buflen);
 	if(res != srtp_err_status_ok) {

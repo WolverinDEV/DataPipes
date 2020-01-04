@@ -5,6 +5,7 @@
 #include <test/utils/socket.h>
 #include <thread>
 #include <cstring>
+#include <bitset>
 #include <include/ws.h>
 #include <include/rtc/PeerConnection.h>
 #include <include/rtc/ApplicationStream.h>
@@ -21,14 +22,16 @@
 #include <vpx/vp8cx.h>
 #include <vpx/vp8dx.h>
 
+#include <glib.h>
+
 using namespace std;
 
 
 #define V_FPS 1
 #define V_KEYFRAME_INTERVAL 1
 
-#define V_WIDTH  (16)
-#define V_HEIGHT (16)
+#define V_WIDTH  (128)
+#define V_HEIGHT (128)
 
 struct Color {
 	uint8_t r;
@@ -55,10 +58,10 @@ static vpx_image_t* vpx_img_generate(vpx_image_t* handle) {
 		size_t buffer_index = 0;
 		for(int d_w = 0; d_w < V_WIDTH; d_w++) {
 			for(int d_h = 0; d_h < V_HEIGHT; d_h++) {
-				auto& color = c_pattern[c_index++ % 6];
+				auto& color = c_pattern[c_index % 6];
 				rgb_buffer[buffer_index++] = color.r;
+                rgb_buffer[buffer_index++] = color.g;
 				rgb_buffer[buffer_index++] = color.b;
-				rgb_buffer[buffer_index++] = color.g;
 			}
 		}
 	}
@@ -66,7 +69,7 @@ static vpx_image_t* vpx_img_generate(vpx_image_t* handle) {
 	vutils::codec::RGBtoI420(rgb_buffer, yuv420_buffer, V_WIDTH, V_HEIGHT);
 	handle = vpx_img_wrap(handle, VPX_IMG_FMT_I420, V_WIDTH, V_HEIGHT, 1, (u_char*) yuv420_buffer);
 
-	delete[] handle->user_priv;
+	delete[] (uint8_t*) handle->user_priv;
 	handle->user_priv = yuv420_buffer;
 
 	delete[] rgb_buffer;
@@ -228,7 +231,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					{
 						Json::Value answer;
 						answer["type"] = "answer";
-						answer["msg"]["sdp"] = client->peer->generate_answer(true);
+						answer["msg"]["sdp"] = client->peer->generate_answer(false);
 						answer["msg"]["type"] = "answer";
 
 						std::cout << "Sending Answer: " << answer << endl;
@@ -295,7 +298,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 						cout << "[DataChannel][" << chan->id() << "|" << chan->lable() << "] got closed" << endl;
 					};
 				};
-			} else if(stream->type() == rtc::CHANTYPE_AUDIO) {
+			}
+			else if(stream->type() == rtc::CHANTYPE_AUDIO) {
 				auto astream = dynamic_pointer_cast<rtc::AudioStream>(stream);
 				assert(astream);
 				{
@@ -331,7 +335,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 						if(ch->local)
 							as->send_rtp_data(ch, buf, ch->timestamp_last_send += 960); //960 = 20ms opus :)
 				};
-			}  else if(stream->type() == rtc::CHANTYPE_VIDEO) {
+			}
+			else if(stream->type() == rtc::CHANTYPE_VIDEO) {
 				auto vstream = dynamic_pointer_cast<rtc::VideoStream>(stream);
 				assert(vstream);
 
@@ -355,7 +360,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 									↵a=rtcp-fb:96 nack pli
 					 */
 
-					//vstream->register_local_channel("video_response", "video_response_normal", channel_codec);
+					vstream->register_local_channel("video_response", "video_response_normal", channel_codec);
 				}
 
 				if(false) {
@@ -401,7 +406,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 						vpx->codec_dec_config.h = V_HEIGHT;
 					}
 
-					vpx->codec_interface = vpx_codec_vp9_dx();
+					vpx->codec_interface = vpx_codec_vp8_dx();
 					vpx->err = vpx_codec_dec_init(&vpx->codec, vpx->codec_interface, &vpx->codec_dec_config, 0);
 					assert(vpx->err == VPX_CODEC_OK);
 
@@ -409,20 +414,16 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					int frame_index = 0, flags = 0;
 				}
 
+                auto timestamp_base{chrono::system_clock::now()};
 				weak_ptr<rtc::VideoStream> weak_astream = vstream;
-				vstream->incoming_data_handler = [weak_astream, vpx](const std::shared_ptr<rtc::Channel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
+				vstream->incoming_data_handler = [weak_astream, timestamp_base, vpx](const std::shared_ptr<rtc::Channel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
 					auto vs = weak_astream.lock();
 					if(!vs) return;
 
-					/*
-					auto raw_data = buffer.view(payload_offset);
-					cerr.write(raw_data.data_ptr<char>(), raw_data.length());
-					cerr << flush;
-					*/
+					std::cout << "Received video data on stream " << channel->stream_id << " track " << channel->track_id << "\n";
+
 					auto header = (rtc::protocol::rtp_header*) buffer.data_ptr();
 					auto buf = buffer.view(sizeof(rtc::protocol::rtp_header));
-
-					auto channels = vs->list_channels();
 
 					{
 						bool success;
@@ -445,14 +446,37 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					if(header->csrccount > 0)
 						cout << "CCount: " << header->csrccount << endl;
 
-					for(const auto& ch : channels)
+					for(const auto& ch : vs->list_channels())
 						if(ch->local) {
-							//vs->send_rtp_data(ch, buf, ch->timestamp_last_receive, header->extension > 0);
-							//vs->send_rtp_data(ch, buffer.view(payload_offset), ch->timestamp_last_receive, 0);
+							vs->send_rtp_data(ch, buffer.view(payload_offset), channel->timestamp_last_receive, false, header->markerbit);
 						}
 
-					vpx->err = vpx_codec_decode(&vpx->codec, (uint8_t*) &buffer[payload_offset], buffer.length() - payload_offset, nullptr, VPX_DL_GOOD_QUALITY);
-					cout << "Decode result: " << vpx->err << endl;
+					uint8_t vpx_header_length{1};
+                    {
+                        uint8_t header_flags{(uint8_t) buffer[payload_offset]};
+                        uint8_t extended_bits{0};
+                        int16_t picture_id{-1};
+                        if(header_flags & (0x01U << 7U)) {
+                            extended_bits = buffer[payload_offset + vpx_header_length++];
+                        }
+                        if(extended_bits & (0x01U << 7U)) {
+                            if(buffer[payload_offset + vpx_header_length] & (0x01U << 7U)) {
+                                picture_id = buffer.at<uint16_t>(payload_offset + vpx_header_length) & 0x7FFF;
+                                vpx_header_length += 2; //Long picture id
+                            } else {
+                                picture_id = buffer.at<uint8_t>(payload_offset + vpx_header_length) & 0x7F;
+                                vpx_header_length++; //Picture id
+                            }
+                        }
+                        if(extended_bits & (0x01U << 6U))
+                            vpx_header_length++; //TL0PICIDX present
+                        if(extended_bits & (0x01U << 5U) || extended_bits & (0x01U << 4U))
+                            vpx_header_length++; //TID present or KEYIDX present
+                        std::cout << std::bitset<8>(header_flags) << "|" << std::bitset<8>(extended_bits) << " Picture: " << picture_id << "\n";
+                    }
+
+					vpx->err = vpx_codec_decode(&vpx->codec, (uint8_t*) &buffer[payload_offset + vpx_header_length], buffer.length() - payload_offset - vpx_header_length, nullptr, VPX_DL_GOOD_QUALITY);
+					cout << "Decode result: " << vpx->err << "/" << vpx_codec_err_to_string(vpx->err) << endl;
 				};
 
 #if false /* Create video generator */
@@ -498,7 +522,6 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 								if(frame_index % V_KEYFRAME_INTERVAL == 0)
 									flags |= VPX_EFLAG_FORCE_KF;
 
-								assert(res == VPX_CODEC_OK);
 								{ /* encode and send */
 									int got_pkts = 0;
 									vpx_codec_iter_t iter = nullptr;
@@ -513,14 +536,15 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 										if (pkt->kind == VPX_CODEC_CX_FRAME_PKT) {
 											uint32_t timestamp = (uint32_t) chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now() - timestamp_base).count();
 
+											uint8_t snd_buffer[pkt->data.frame.sz + 3];
+											snd_buffer[0] = 0b10010000; //Extended header flags, Key frame
+                                            snd_buffer[1] = 0b10000000; //We've a picture id
+                                            snd_buffer[2] = (frame_index * 1000) & 0x7F; //Picture id
+                                            memcpy(&snd_buffer[3], pkt->data.frame.buf, pkt->data.frame.sz);
+
 											cout << "Size: " << pkt->data.frame.sz << endl;
 											for(const auto& ch : vs->list_channels(rtc::direction::outgoing)) {
-												size_t index = 0, length = pkt->data.frame.sz;
-												while(index < length) {
-													auto cl = min((size_t) 2000, length - index);
-													vs->send_rtp_data(ch, {(char*) pkt->data.frame.buf + index, cl}, timestamp, false);
-													index += length;
-												}
+                                                vs->send_rtp_data(ch, {(char*) snd_buffer, pkt->data.frame.sz + 3}, timestamp, false, 1);
 											}
 
 											const int keyframe = (pkt->data.frame.flags & VPX_FRAME_IS_KEY) != 0;

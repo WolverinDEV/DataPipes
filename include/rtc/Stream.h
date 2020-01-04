@@ -2,7 +2,8 @@
 
 #include <memory>
 #include <shared_mutex>
-#include "../sctp.h"
+#include <deque>
+#include "../buffer.h"
 
 namespace pipes {
 	class TLS;
