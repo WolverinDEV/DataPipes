@@ -46,6 +46,7 @@ if (UsrSCTP_FOUND)
 endif ()
 
 
+
 # WebRTC part
 message("WebRTC support: ${WEBRTC_SUPPORT}")
 if (WEBRTC_SUPPORT)
@@ -111,13 +112,9 @@ if(BUILD_SHARED)
     add_library(DataPipes::shared ALIAS DataPipes__shared)
     install(TARGETS DataPipes__shared
             EXPORT DataPipes
-            LIBRARY
-                DESTINATION lib
-            PUBLIC_HEADER
-                DESTINATION include
     )
 endif()
-install(DIRECTORY include DESTINATION include)
+install(DIRECTORY include/ DESTINATION include/)
 
 if(BUILD_EXAMPLES)
     function(create_example)
