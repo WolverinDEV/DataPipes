@@ -35,7 +35,7 @@ list(APPEND SOURCE_FILES
 
 list(APPEND PUBLIC_HEADER_DIRECTORIES
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:$<INSTALL_PREFIX>/${CMAKE_INSTALL_INCLUDEDIR}>
+        $<INSTALL_INTERFACE:$<INSTALL_PREFIX>/include>
 )
 
 list(APPEND LIBRARIES_PRIVATE)
@@ -99,6 +99,7 @@ if(BUILD_STATIC OR BUILD_EXAMPLES) # The examples require DataPipes__static
     add_library(DataPipes::static ALIAS DataPipes__static)
     install(TARGETS DataPipes__static
             EXPORT DataPipes
+            ARCHIVE DESTINATION lib
     )
 endif()
 
@@ -113,6 +114,7 @@ if(BUILD_SHARED)
     add_library(DataPipes::shared ALIAS DataPipes__shared)
     install(TARGETS DataPipes__shared
             EXPORT DataPipes
+            LIBRARY DESTINATION lib
     )
 endif()
 install(DIRECTORY include/ DESTINATION include/)
