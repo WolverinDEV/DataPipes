@@ -3,7 +3,7 @@ project(DataPipes CXX)
 
 # Custom CMake modules
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/modules")
 if(NOT WIN32)
     add_compile_options("-Wall")
 endif()
@@ -13,6 +13,11 @@ option(BUILD_STATIC     "Enable/disable static build." ON)
 option(BUILD_SHARED     "Enable/disable static build." ON)
 option(BUILD_EXAMPLES   "Enable/disable the example builds." ON)
 option(EXPORT_OLD_LIBRARY_NAMES "If enabled the old library exports from the old cmake file will be exported as well" OFF)
+
+set(MAJOR_VERSION 1)
+set(MINOR_VERSION 1)
+set(PATCH_VERSION 0)
+set(PROJECT_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION})
 
 list(APPEND SOURCE_FILES
         src/ws.cpp
@@ -105,10 +110,6 @@ if(BUILD_SHARED)
     target_link_libraries(DataPipes__shared PRIVATE ${LIBRARIES_PRIVATE})
 
     set_target_properties(DataPipes__shared PROPERTIES EXPORT_NAME DataPipes::shared)
-    set_target_properties(DataPipes__shared PROPERTIES
-            EXPORT_NAME DataPipes::static
-    )
-
     add_library(DataPipes::shared ALIAS DataPipes__shared)
     install(TARGETS DataPipes__shared
             EXPORT DataPipes
@@ -189,5 +190,23 @@ if (EXPORT_OLD_LIBRARY_NAMES)
     endif()
 endif ()
 
+# Setup generate variables
+string(TOUPPER ${PROJECT_NAME} PROJECT_NAME_UPPERCASE)
+string(TOLOWER ${PROJECT_NAME} PROJECT_NAME_LOWERCASE)
 
-install(EXPORT "${PROJECT_NAME}" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/CMake/${PROJECT_NAME}")
+set(INSTALL_CMAKE_DIRECTORY "${CMAKE_INSTALL_PREFIX}/lib/CMake/${PROJECT_NAME}/")
+install(EXPORT "${PROJECT_NAME}" DESTINATION "${INSTALL_CMAKE_DIRECTORY}" FILE ${PROJECT_NAME}Targets.cmake)
+
+# Create the <package>Config.cmake.in
+configure_file(${CMAKE_SOURCE_DIR}/cmake/config/Config.cmake.in
+        "${PROJECT_BINARY_DIR}/cmake-config/${PROJECT_NAME}Config.cmake" @ONLY)
+
+# Create the <package>ConfigVersion.cmake.in
+configure_file(${CMAKE_SOURCE_DIR}/cmake/config/ConfigVersion.cmake.in
+        "${PROJECT_BINARY_DIR}/cmake-config/${PROJECT_NAME}ConfigVersion.cmake" @ONLY)
+
+# Install <package>Config.cmake and <package>ConfigVersion.cmake files
+install(FILES
+        "${PROJECT_BINARY_DIR}/cmake-config/${PROJECT_NAME}Config.cmake"
+        "${PROJECT_BINARY_DIR}/cmake-config/${PROJECT_NAME}ConfigVersion.cmake"
+        DESTINATION "${INSTALL_CMAKE_DIRECTORY}" COMPONENT dev)
