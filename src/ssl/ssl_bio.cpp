@@ -1,9 +1,9 @@
+#include "pipes/ssl.h"
+#include "pipes/misc/logger.h"
+
 #include <cstring>
 #include <assert.h>
 #include <iostream>
-#define DEFINE_LOG_HELPERS
-#include "include/misc/logger.h"
-#include "include/ssl.h"
 
 #define BIO_C_SET_SSLHANDLE (1 | 0x8000)
 

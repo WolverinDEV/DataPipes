@@ -1,22 +1,19 @@
-#include <memory>
+#include "pipes/rtc/NiceWrapper.h"
+#include "pipes/misc/logger.h"
 
+#include <memory>
 #include <netdb.h>
 #include <iostream>
 #include <sstream>
 #include <cassert>
 #include <mutex>
 #include <algorithm>
-#include <include/rtc/NiceWrapper.h>
 #include <string.h>
 #include <ifaddrs.h>
 #include <net/if.h>
-#include "include/rtc/NiceWrapper.h"
-
-#define DEFINE_LOG_HELPERS
-#include "include/misc/logger.h"
 
 extern "C" {
-#include <nice/agent.h>
+    #include <nice/agent.h>
 }
 
 using namespace std;

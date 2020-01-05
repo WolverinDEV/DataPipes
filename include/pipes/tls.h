@@ -1,7 +1,7 @@
 #pragma once
 
+#include "./ssl.h"
 #include <openssl/evp.h>
-#include "ssl.h"
 
 namespace pipes {
 	class TLSCertificate {

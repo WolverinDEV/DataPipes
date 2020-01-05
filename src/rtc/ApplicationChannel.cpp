@@ -1,13 +1,12 @@
-#include <sstream>
-#include "json.hpp"
-#include "include/misc/endianness.h"
-#include "include/rtc/PeerConnection.h"
-#include "include/rtc/ApplicationStream.h"
-#include "include/tls.h"
-#include "include/sctp.h"
+#include "pipes/rtc/ApplicationStream.h"
+#include "pipes/rtc/PeerConnection.h"
+#include "pipes/tls.h"
+#include "pipes/sctp.h"
+#include "pipes/misc/logger.h"
+#include "pipes/misc/endianness.h"
+#include "./json.h"
 
-#define DEFINE_LOG_HELPERS
-#include "include/misc/logger.h"
+#include <sstream>
 
 using namespace std;
 using namespace rtc;
@@ -95,7 +94,7 @@ void ApplicationStream::on_dtls_initialized(const std::shared_ptr<DTLSPipe>&hand
 		LOG_DEBUG(this->config->logger, "ApplicationStream::sctp", "successful connected");
 }
 
-bool ApplicationStream::apply_sdp(const nlohmann::json &, const nlohmann::json &media_entry) {
+bool ApplicationStream::apply_sdp(const json &, const json &media_entry) {
 	{
 		TEST_AV_TYPE(media_entry, "mid", is_string, return false, "ApplicationStream::apply_sdp", "Entry contains invalid/missing id");
 		this->mid = media_entry["mid"];

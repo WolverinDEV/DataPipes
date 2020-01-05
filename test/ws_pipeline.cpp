@@ -1,12 +1,12 @@
-#include "include/ssl.h"
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <iostream>
-#include <test/utils/socket.h>
 #include <thread>
 #include <assert.h>
 #include <cstring>
-#include <include/ws.h>
+#include <pipes/ssl.h>
+#include <pipes/ws.h>
+#include "utils/socket.h"
 
 using namespace std;
 

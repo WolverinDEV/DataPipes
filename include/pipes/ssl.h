@@ -1,9 +1,9 @@
 #pragma once
 
+#include "./pipeline.h"
 #include <map>
 #include <memory>
 #include <openssl/ssl.h>
-#include "pipeline.h"
 
 namespace pipes {
 	enum SSLSocketState {

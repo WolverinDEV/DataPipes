@@ -1,9 +1,7 @@
-#include "include/rtc/DTLSPipe.h"
-#include "include/rtc/Protocol.h"
-#include "include/rtc/NiceWrapper.h"
-
-#define DEFINE_LOG_HELPERS
-#include "include/misc/logger.h"
+#include "pipes/rtc/DTLSPipe.h"
+#include "pipes/rtc/Protocol.h"
+#include "pipes/rtc/NiceWrapper.h"
+#include "pipes/misc/logger.h"
 
 using namespace rtc;
 

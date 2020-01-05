@@ -1,12 +1,11 @@
-#include <include/errors.h>
-#include <iostream>
-#include <openssl/sha.h>
-#include <include/misc/endianness.h>
-#include <cstring>
-#include "include/ws.h"
+#include "pipes/ws.h"
+#include "pipes/errors.h"
+#include "pipes/misc/logger.h"
+#include "pipes/misc/endianness.h"
 
-#define DEFINE_LOG_HELPERS
-#include "include/misc/logger.h"
+#include <iostream>
+#include <cstring>
+#include <openssl/sha.h>
 
 using namespace std;
 using namespace pipes;
@@ -38,29 +37,6 @@ ProcessResult WebSocket::process_data_in() {
     return PROCESS_RESULT_ERROR;
 }
 
-/*
-void WebSocket::processMessages(int limit) {
-    if(limit != -1 && limit <= 0) return;
-
-    std::string str;
-    {
-        threads::MutexLock l(this->queueLock);
-        while(!this->readQueue.empty()) {
-            if(this->state == WebSocketState::HANDSCHAKE) {
-                this->handleHandshake(this->readQueue.front());
-                this->readQueue.pop_front();
-                this->processMessages(limit > 0 ? limit - 1 : limit);
-                break;
-            } else if(this->state == WebSocketState::CONNECTED) {
-                if (!this->processMessage()) break;
-            } else {
-                logError("Invalid web socket message processing state!");
-                break;
-            }
-        }
-    }
-}
-*/
 static const std::string base64_chars =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         "abcdefghijklmnopqrstuvwxyz"

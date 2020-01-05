@@ -1,21 +1,20 @@
+#include "pipes/rtc/PeerConnection.h"
+#include "pipes/rtc/NiceWrapper.h"
+#include "pipes/rtc/ApplicationStream.h"
+#include "pipes/rtc/RtpStream.h"
+#include "pipes/rtc/AudioStream.h"
+#include "pipes/rtc/VideoStream.h"
+#include "pipes/rtc/DTLSPipe.h"
+#include "pipes/rtc/RTPPacket.h"
+#include "pipes/rtc/Protocol.h"
+#include "pipes/misc/logger.h"
+#include "./json.h"
+
 #include <iostream>
 #include <cstring>
 #include <utility>
 #include <cassert>
-
-#include "sdptransform.hpp"
-#include "include/rtc/NiceWrapper.h"
-#include "include/rtc/PeerConnection.h"
-#include "include/rtc/ApplicationStream.h"
-#include "include/rtc/RtpStream.h"
-#include "include/rtc/AudioStream.h"
-#include "include/rtc/VideoStream.h"
-#include "include/rtc/DTLSPipe.h"
-#include "include/rtc/RTPPacket.h"
-#include "include/rtc/Protocol.h"
-
-#define DEFINE_LOG_HELPERS
-#include "include/misc/logger.h"
+#include <sdptransform/sdptransform.hpp>
 
 using namespace std;
 using namespace rtc;
@@ -132,7 +131,7 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
     }
 
     //merged_nice_channels
-    json& media = sdp["media"];
+    nlohmann::json& media = sdp["media"];
     if(!media.is_array()) {
         error = "missing media entry";
         return false;
@@ -144,7 +143,7 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 
     size_t stream_index{0};
     std::string nice_streams_sdp{"v=0\n"};
-    for(json& media_entry : media) {
+    for(nlohmann::json& media_entry : media) {
         if(media_entry.count("iceUfrag") <= 0) {
             error = "media entry misses ice username";
             return false;

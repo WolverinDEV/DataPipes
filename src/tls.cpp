@@ -1,27 +1,28 @@
 //
 // Created by wolverindev on 03.08.18.
 //
+#include "pipes/tls.h"
 
 #include <cstring>
 #include <utility>
+
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/tls1.h>
 #include <openssl/dtls1.h>
-#include "include/tls.h"
 
 using namespace std;
 using namespace pipes;
 
-#define ERRORQ(message) \
-do { \
-	error = message; \
-	return false; \
+#define ERRORQ(message)     \
+do {                        \
+	error = message;        \
+	return false;           \
 } while(0)
 
-#define ERRORQ_I(message) \
-do { \
-	return false; \
+#define ERRORQ_I(message)   \
+do {                        \
+	return false;           \
 } while(0)
 
 static int verify_peer_certificate(int ok, X509_STORE_CTX *ctx) {
@@ -110,29 +111,8 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 	return true;
 }
 
-#define HAVE_STD_EXPERIMENTAL_FS
-#if defined(HAVE_STD_FS) || defined(HAVE_STD_EXPERIMENTAL_FS)
-	#ifdef HAVE_STD_FS
-		#include <filesystem>
-		namespace fs = std::filesystem;
-    #else
-        #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
-		#include <experimental/filesystem>
-		namespace fs = std::experimental::filesystem;
-	#endif
-#endif
-
-
-std::string ssl_err_as_string () {
-	return string(ERR_reason_error_string(ERR_get_error()));
-/*
-	std::unique_ptr<BIO, decltype(BIO_free)*> bio(BIO_new(BIO_s_mem()), BIO_free);
-	ERR_print_errors(bio.get());
-
-	char* buf = nullptr;
-	long len = BIO_get_mem_data(bio.get(), &buf);
-	return string(buf, len);
-*/
+inline std::string ssl_err_as_string () {
+	return string{ERR_reason_error_string(ERR_get_error())};
 }
 
 TLSCertificate::TLSCertificate(const std::string &pem_certificate, const std::string &pem_key, bool files) {
@@ -140,18 +120,10 @@ TLSCertificate::TLSCertificate(const std::string &pem_certificate, const std::st
 	std::unique_ptr<BIO, decltype(BIO_free)*> bio_key(nullptr, BIO_free);
 
 	if(files) {
-		#if defined(HAVE_STD_FS) || defined(HAVE_STD_EXPERIMENTAL_FS)
-			auto path_key = fs::path(pem_key);
-			auto path_certificate = fs::path(pem_certificate);
-
-			if(!fs::exists(path_key)) throw std::invalid_argument("Missing key file!");
-			if(!fs::exists(path_certificate)) throw std::invalid_argument("Missing certificate file!");
-
-			bio_key.reset(BIO_new_file(pem_key.c_str(), "r"));
-			bio_certificate.reset(BIO_new_file(pem_certificate.c_str(), "r"));
-		#else
-			throw std::runtime_error("file system isn't implemented!");
-		#endif
+        bio_key.reset(BIO_new_file(pem_key.c_str(), "r"));
+        if(!bio_key) throw std::invalid_argument("Could no open key file: " + ssl_err_as_string());
+        bio_certificate.reset(BIO_new_file(pem_certificate.c_str(), "r"));
+        if(!bio_certificate) throw std::invalid_argument("Could no open key file: " + ssl_err_as_string());
 	} else {
 		bio_key.reset(BIO_new(BIO_s_mem()));
 		BIO_write(bio_key.get(), pem_key.c_str(), (int)pem_key.length());

@@ -5,7 +5,7 @@
 #include <memory>
 #include <deque>
 #include <mutex>
-#include <include/buffer.h>
+#include <pipes/buffer.h>
 
 class Socket {
 public:

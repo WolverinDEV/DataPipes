@@ -1,40 +1,32 @@
+#include "pipes/rtc/RtpStream.h"
+#include "pipes/misc/endianness.h"
+#include "pipes/rtc/PeerConnection.h"
+#include "pipes/sctp.h"
+#include "pipes/rtc/DTLSPipe.h"
+#include "pipes/rtc/RTPPacket.h"
+#include "pipes/misc/logger.h"
+
 #include <sstream>
 #include <openssl/srtp.h>
 #include <cinttypes> //For printf
 #include <glib.h>
 
-#include "json.hpp"
-#include "include/misc/endianness.h"
-#include "include/rtc/PeerConnection.h"
-#include "include/rtc/RtpStream.h"
-#include "include/sctp.h"
-#include "include/rtc/DTLSPipe.h"
-#include "include/rtc/RTPPacket.h"
+#include "./json.h"
 
-#define DEFINE_LOG_HELPERS
-#include "include/misc/logger.h"
+#ifdef SRTP_VERSION_1
+    #include <srtp/srtp.h>
 
-using namespace std;
-using namespace std::chrono;
-using namespace rtc;
-using namespace rtc::codec;
+    #define srtp_err_status_t err_status_t
+    #define srtp_err_status_ok err_status_ok
+    #define srtp_err_status_replay_fail err_status_replay_fail
+    #define srtp_err_status_replay_old err_status_replay_old
 
-#ifndef LEGACY_SRTP
-	#include <srtp2/srtp.h>
+    #define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32 crypto_policy_set_aes_cm_128_hmac_sha1_32
+    #define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80 crypto_policy_set_aes_cm_128_hmac_sha1_80
+    #define srtp_crypto_policy_set_aes_gcm_256_16_auth crypto_policy_set_aes_gcm_256_16_auth
+    #define srtp_crypto_policy_set_aes_gcm_128_16_auth crypto_policy_set_aes_gcm_128_16_auth
 #else
-	#include <srtp/srtp.h>
-#include <include/rtc/RTPPacket.h>
-
-#define srtp_err_status_t err_status_t
-	#define srtp_err_status_ok err_status_ok
-	#define srtp_err_status_replay_fail err_status_replay_fail
-	#define srtp_err_status_replay_old err_status_replay_old
-
-	#define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32 crypto_policy_set_aes_cm_128_hmac_sha1_32
-	#define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80 crypto_policy_set_aes_cm_128_hmac_sha1_80
-	#define srtp_crypto_policy_set_aes_gcm_256_16_auth crypto_policy_set_aes_gcm_256_16_auth
-	#define srtp_crypto_policy_set_aes_gcm_128_16_auth crypto_policy_set_aes_gcm_128_16_auth
-
+    #include <srtp2/srtp.h>
 #endif
 /* SRTP stuff (http://tools.ietf.org/html/rfc3711) */
 #define SRTP_MASTER_KEY_LENGTH	(128 / 8) // => 16 bytes (128 bits)
@@ -63,7 +55,12 @@ if(!json[key].type()) {                             \
 	action;                                         \
 }
 
-std::shared_ptr<Codec> codec::create(const nlohmann::json& sdp) {
+using namespace std;
+using namespace std::chrono;
+using namespace rtc;
+using namespace rtc::codec;
+
+std::shared_ptr<Codec> codec::create(const json& sdp) {
 	if(sdp.count("codec") <= 0 || !sdp["codec"].is_string()) return nullptr;
 	if(sdp.count("payload") <= 0 || !sdp["payload"].is_number()) return nullptr;
 
@@ -402,7 +399,7 @@ void RTPStream::on_dtls_initialized(const std::shared_ptr<DTLSPipe> &handle) {
 	}
 }
 
-bool RTPStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& media_entry) {
+bool RTPStream::apply_sdp(const json& sdp, const json& media_entry) {
 	{
 		TEST_AV_TYPE(media_entry, "mid", is_string, return false, "RTPStream::apply_sdp", "Entry contains invalid/missing mid");
 		this->mid = media_entry["mid"];
@@ -410,10 +407,10 @@ bool RTPStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& media
 	}
 
 	if(media_entry.count("ssrcs") > 0) { //Parse remote streams
-		const nlohmann::json& ssrcs = media_entry["ssrcs"];
+		const json& ssrcs = media_entry["ssrcs"];
 		if(!ssrcs.is_array()) return false;
 
-		for (const nlohmann::json &ssrc : ssrcs) {
+		for (const json &ssrc : ssrcs) {
 			TEST_AV_TYPE(ssrc, "attribute", is_string, continue, "RTPStream::apply_sdp", "SSRC contains invalid/missing attribute");
 			TEST_AV_TYPE(ssrc, "id", is_number, continue, "RTPStream::apply_sdp", "SSRC contains invalid/missing id");
 
@@ -448,7 +445,7 @@ bool RTPStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& media
 	{
 		size_t supported = 0;
 		if(media_entry.count("rtp") > 0) { //codecs
-			const nlohmann::json& rtp = media_entry["rtp"];
+			const json& rtp = media_entry["rtp"];
 			if(!rtp.is_array()) return false;
 
 			for (const auto &index : rtp) {
@@ -462,7 +459,7 @@ bool RTPStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& media
 			}
 		}
 		if(media_entry.count("fmtp") > 0) { /* codec specific parameters */
-			const nlohmann::json& rtp = media_entry["fmtp"];
+			const json& rtp = media_entry["fmtp"];
 			if(!rtp.is_array()) return false;
 
 			for (const auto &parameter : rtp) {
@@ -482,10 +479,10 @@ bool RTPStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& media
 	if(media_entry.count("ext") > 0) { //Parse extensions
 		this->remote_extensions.reserve(media_entry.count("ext"));
 
-		const nlohmann::json& exts = media_entry["ext"];
+		const json& exts = media_entry["ext"];
 		if(!exts.is_array()) return false;
 
-		for (const nlohmann::json &ext : exts) {
+		for (const json &ext : exts) {
 			auto extension = make_shared<HeaderExtension>();
 			TEST_AV_TYPE(ext, "value", is_number, continue, "RTPStream::apply_sdp", "Extension contains invalid/missing value");
 			TEST_AV_TYPE(ext, "uri", is_string, continue, "RTPStream::apply_sdp", "Extension contains invalid/missing uri");

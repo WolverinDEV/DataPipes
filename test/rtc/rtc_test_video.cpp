@@ -1,26 +1,29 @@
-#include "include/ssl.h"
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <iostream>
-#include <test/utils/socket.h>
 #include <thread>
 #include <cstring>
 #include <bitset>
-#include <include/ws.h>
-#include <include/rtc/PeerConnection.h>
-#include <include/rtc/ApplicationStream.h>
-#include <include/rtc/AudioStream.h>
-#include <include/rtc/VideoStream.h>
-#include "test/json/json.h"
+
+#include <pipes/ssl.h>
+#include <pipes/ws.h>
+#include <pipes/rtc/PeerConnection.h>
+#include <pipes/rtc/ApplicationStream.h>
+#include <pipes/rtc/AudioStream.h>
+#include <pipes/rtc/VideoStream.h>
 
 #include "./video_utils.h"
+#include "../utils/socket.h"
+#include "../json/json.h"
 
 #include <vpx/vpx_encoder.h>
 #include <vpx/vpx_decoder.h>
 #include <vpx/vp8cx.h>
 #include <vpx/vp8dx.h>
 
-#include <glib.h>
+#ifdef HAVE_GLIB
+    #include <glib.h>
+#endif
 
 using namespace std;
 
@@ -123,8 +126,10 @@ auto config = []{
 
 	//config->nice_config->ice_pwd = "asdasdasasdasdasdasdasdasddasdasdasd";
 	//config->nice_config->ice_ufrag = "asdasd";
+#ifdef HAVE_GLIB
 	config->nice_config->main_loop = std::shared_ptr<GMainLoop>(g_main_loop_new(nullptr, false), g_main_loop_unref);
 	std::thread(g_main_loop_run, config->nice_config->main_loop.get()).detach(); //FIXME
+#endif
 
 	config->logger = make_shared<pipes::Logger>();
 	config->logger->callback_log = log;

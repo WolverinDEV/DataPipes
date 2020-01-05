@@ -1,11 +1,11 @@
-#include <include/errors.h>
+#include "pipes/ssl.h"
+#include "pipes/misc/logger.h"
+#include "pipes/errors.h"
+
 #include <cstring>
 #include <iostream>
 #include <openssl/err.h>
 
-#define DEFINE_LOG_HELPERS
-#include "include/misc/logger.h"
-#include "include/ssl.h"
 
 using ProcessResult = pipes::ProcessResult;
 using namespace std::chrono;

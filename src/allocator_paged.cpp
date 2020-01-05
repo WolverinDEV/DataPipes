@@ -1,12 +1,13 @@
+#include "pipes/allocator.h"
+
 #include <cstdlib>
 #include <atomic>
 #include <cassert>
 #include <cstring>
 #include <string>
 #include <cmath>
-#include <sys/mman.h>
 #include <iostream>
-#include "include/allocator.h"
+#include <sys/mman.h>
 
 using namespace std;
 using namespace pipes;
@@ -210,7 +211,7 @@ void PagedAllocator::free(void* ptr) {
             if(this->chunk_array[page_base->chunk_index + chunk_index] == page_base) {
                 goto page_found;
             }
-        page_base = (mapped_chunk*) ((char*) page_base - (char*) page_size);
+        page_base = (mapped_chunk*) ((char*) page_base - page_size);
     } while(++page_offset < (PAGE_SIZE / 4096));
     assert(page_base && page_valid);
 

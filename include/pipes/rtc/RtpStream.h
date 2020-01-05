@@ -1,16 +1,16 @@
 #pragma once
 
-#include <cstdint>
-#include <sstream>
-#ifdef SRTP2
-    #include <srtp2/srtp.h>
-#else
-    #include <srtp/srtp.h>
-#endif
-
 #include "./Stream.h"
 #include "./Protocol.h"
 #include "../misc/logger.h"
+
+#include <cstdint>
+#include <sstream>
+#ifdef SRTP_VERSION_1
+    #include <srtp/srtp.h>
+#else
+    #include <srtp2/srtp.h>
+#endif
 
 namespace pipes {
 	class TLSCertificate;
@@ -40,7 +40,7 @@ namespace rtc {
 		};
 
 
-		extern std::shared_ptr<Codec> create(const nlohmann::json& /* sdp */);
+		extern std::shared_ptr<Codec> create(const json& /* sdp */);
 
 		struct UnknownCodec : public Codec {
 			public:
@@ -100,7 +100,7 @@ namespace rtc {
 
 			bool initialize(std::string &string) override;
 
-			bool apply_sdp(const nlohmann::json& /* sdp */, const nlohmann::json& /* media */) override;
+			bool apply_sdp(const json& /* sdp */, const json& /* media */) override;
 			const std::string& get_mid() const override { return this->mid; }
 
 			std::string generate_sdp() override;

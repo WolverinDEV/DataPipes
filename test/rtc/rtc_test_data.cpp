@@ -1,17 +1,20 @@
-#include "include/ssl.h"
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <iostream>
-#include <test/utils/socket.h>
 #include <thread>
 #include <cstring>
-#include <include/ws.h>
-#include <include/rtc/PeerConnection.h>
-#include <include/rtc/Stream.h>
-#include <include/rtc/ApplicationStream.h>
-#include "test/json/json.h"
 
-#include <glib.h>
+#include <pipes/ssl.h>
+#include <pipes/ws.h>
+#include <pipes/rtc/PeerConnection.h>
+#include <pipes/rtc/ApplicationStream.h>
+
+#include "../utils/socket.h"
+#include "../json/json.h"
+
+#ifdef HAVE_GLIB
+    #include <glib.h>
+#endif
 
 using namespace std;
 
@@ -45,8 +48,10 @@ auto config = []{
 
 	config->nice_config->ice_servers.push_back({"stun.l.google.com", 19302});
 
+#ifdef HAVE_GLIB
 	config->nice_config->main_loop = std::shared_ptr<GMainLoop>(g_main_loop_new(nullptr, false), g_main_loop_unref);
 	std::thread(g_main_loop_run, config->nice_config->main_loop.get()).detach(); //FIXME
+#endif
 
 	config->logger = make_shared<pipes::Logger>();
 	config->logger->callback_log = log;

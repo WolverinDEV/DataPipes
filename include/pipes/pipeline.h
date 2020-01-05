@@ -1,12 +1,12 @@
 #pragma once
 
+#include "./misc/logger.h"
+#include "./buffer.h"
 #include <string>
 #include <deque>
 #include <mutex>
 #include <memory>
 #include <utility>
-#include "misc/logger.h"
-#include "buffer.h"
 
 #ifndef __attribute_deprecated__
     #ifdef WIN32

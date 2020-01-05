@@ -1,16 +1,12 @@
 #pragma once
 
+#include "./Stream.h"
+#include "./Protocol.h"
+#include "./RtpStream.h"
+
 #include <map>
 #include <atomic>
 #include <vector>
-#ifdef LEGACY_SRTP
-    #include <srtp/srtp.h>
-#else
-    #include <srtp2/srtp.h>
-#endif
-#include "Stream.h"
-#include "Protocol.h"
-#include "RtpStream.h"
 
 namespace rtc {
     namespace codec { }

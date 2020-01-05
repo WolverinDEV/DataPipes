@@ -1,10 +1,9 @@
-#include <cassert>
-#include "include/rtc/PeerConnection.h"
-#include "include/rtc/Stream.h"
-#include "include/rtc/DTLSPipe.h"
+#include "pipes/rtc/Stream.h"
+#include "pipes/rtc/PeerConnection.h"
+#include "pipes/rtc/DTLSPipe.h"
+#include "pipes/misc/logger.h"
 
-#define DEFINE_LOG_HELPERS
-#include "include/misc/logger.h"
+#include <cassert>
 
 using namespace std;
 using namespace rtc;

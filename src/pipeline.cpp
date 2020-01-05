@@ -1,6 +1,7 @@
+#include "pipes/pipeline.h"
+
 #include <cstring>
 #include <iostream>
-#include "include/pipeline.h"
 
 using namespace pipes;
 using namespace std;

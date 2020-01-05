@@ -1,11 +1,10 @@
-#include "include/ssl.h"
-#include "include/tls.h"
+#include "./utils/socket.h"
+#include <pipes/ssl.h>
+#include <pipes/tls.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <iostream>
-#include <test/utils/socket.h>
 #include <thread>
-#include <assert.h>
 #include <cstring>
 
 using namespace std;
@@ -16,9 +15,9 @@ void init_openssl()
     OpenSSL_add_ssl_algorithms();
 }
 
-const std::string currentDateTime() {
-	time_t     now = time(0);
-	struct tm  tstruct;
+std::string currentDateTime() {
+	time_t     now{time(nullptr)};
+	struct tm  tstruct{};
 	char       buf[80];
 	tstruct = *localtime(&now);
 	// Visit http://en.cppreference.com/w/cpp/chrono/c/strftime
@@ -42,7 +41,6 @@ void log(pipes::Logger::LogLevel level, const std::string& name, const std::stri
 
 auto logger = []{
 	auto logger = make_shared<pipes::Logger>();
-	logger = make_shared<pipes::Logger>();
 	logger->callback_log = log;
 	return logger;
 }();
@@ -51,7 +49,7 @@ auto logger = []{
 #define TEST_CERTIFICATE_PATH "test_certificate.pem"
 #define TEST_PRIVATE_KEY_PATH "test_private_key.pem"
 std::unique_ptr<pipes::TLSCertificate> certificates;
-auto certificates2 = pipes::TLSCertificate::generate("TeaSpeak-Test2", 356);
+auto certificates2 = pipes::TLSCertificate::generate("DataPipes", 356);
 
 void initializes_certificates() {
     try {

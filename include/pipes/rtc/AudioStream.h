@@ -3,7 +3,7 @@
 #include <map>
 #include <atomic>
 #include <vector>
-#include "../buffer.h"
+#include "pipes/buffer.h"
 #include "./Stream.h"
 #include "./Protocol.h"
 #include "./RtpStream.h"

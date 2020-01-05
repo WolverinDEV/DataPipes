@@ -1,15 +1,17 @@
-#include "include/ssl.h"
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <iostream>
-#include <test/utils/socket.h>
 #include <thread>
 #include <cstring>
-#include <include/ws.h>
-#include <include/rtc/PeerConnection.h>
-#include <include/rtc/ApplicationStream.h>
-#include "include/rtc/AudioStream.h"
-#include "test/json/json.h"
+
+#include <pipes/ssl.h>
+#include <pipes/ws.h>
+#include <pipes/rtc/PeerConnection.h>
+#include <pipes/rtc/ApplicationStream.h>
+#include <pipes/rtc/AudioStream.h>
+
+#include "../utils/socket.h"
+#include "../json/json.h"
 
 using namespace std;
 
@@ -288,7 +290,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				auto astream = dynamic_pointer_cast<rtc::AudioStream>(stream);
 				assert(astream);
 				{
-					auto opus_codec = astream->find_codec_by_name("opus");
+					auto opus_codec = astream->find_codecs_by_name("opus");
 					if(opus_codec.empty()) {
 						return; //FIXME disconnect client
 					}
@@ -298,11 +300,11 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				astream->register_local_extension("urn:ietf:params:rtp-hdrext:ssrc-audio-level");
 
 				weak_ptr<rtc::AudioStream> weak_astream = astream;
-				astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::AudioChannel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
+				astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::Channel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
 					auto as = weak_astream.lock();
 					if(!as) return;
 
-					for(const auto& ext : as->list_extensions(0x02)) {
+					for(const auto& ext : as->list_extensions(rtc::direction::incoming)) {
 						if(ext->name == "urn:ietf:params:rtp-hdrext:ssrc-audio-level") {
 							int level;
 							if(rtc::protocol::rtp_header_extension_parse_audio_level(buffer, ext->id, &level) == 0) {

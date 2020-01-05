@@ -4,7 +4,7 @@
 #include <bitset>
 #include <cstring>
 #include <chrono>
-#include "include/buffer.h"
+#include <pipes/buffer.h>
 
 using namespace std;
 using namespace std::chrono;

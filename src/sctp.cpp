@@ -1,18 +1,11 @@
-//
-// Created by wolverindev on 03.08.18.
-//
-#define INET
-#define INET6
+#include "pipes/sctp.h"
+#include "pipes/misc/logger.h"
+
 #include <usrsctp.h>
 #include <cstring>
 #include <iostream>
 #include <thread>
 #include <bitset>
-#include <csignal>
-#include "include/sctp.h"
-
-#define DEFINE_LOG_HELPERS
-#include "include/misc/logger.h"
 
 using namespace std;
 using namespace pipes;

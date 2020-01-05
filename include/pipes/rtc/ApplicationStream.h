@@ -3,8 +3,8 @@
 #include <map>
 #include <thread>
 #include "./Stream.h"
-#include "../tls.h"
-#include "../sctp.h"
+#include "pipes/tls.h"
+#include "pipes/sctp.h"
 
 namespace rtc {
 	class ApplicationStream;
@@ -63,7 +63,7 @@ namespace rtc {
             [[nodiscard]] StreamType type() const override { return StreamType::CHANTYPE_APPLICATION; }
 
 			bool initialize(std::string& /* error */) override;
-			bool apply_sdp(const nlohmann::json& /* sdp */, const nlohmann::json& /* media */) override;
+			bool apply_sdp(const json& /* sdp */, const json& /* media */) override;
             [[nodiscard]] const std::string& get_mid() const override { return this->mid; }
 			std::string generate_sdp() override;
 			bool reset(std::string& /* error */) override;

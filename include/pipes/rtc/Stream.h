@@ -1,28 +1,23 @@
 #pragma once
 
+#include "pipes/buffer.h"
 #include <cstddef>
 #include <string>
 #include <memory>
 #include <shared_mutex>
 #include <deque>
-#include "../buffer.h"
 
 namespace pipes {
 	class TLS;
 	class SCTP;
 };
 
-#ifndef NLOHMANN_JSON_HPP
-namespace nlohmann {
-	class json;
-}
-#endif
-
 namespace rtc {
 	class PeerConnection;
 	class DTLSPipe;
 	class RTPPacket;
     class RTCPPacket;
+    struct json;
 
 	enum StreamType {
 		CHANTYPE_APPLICATION,
@@ -40,7 +35,7 @@ namespace rtc {
 			explicit Stream(PeerConnection* /* owner */, NiceStreamId /* nice stream id */);
 
 			virtual bool initialize(std::string& /* error */) = 0;
-			virtual bool apply_sdp(const nlohmann::json& /* sdp */, const nlohmann::json& /* media */) = 0;
+			virtual bool apply_sdp(const json& /* sdp */, const json& /* media */) = 0;
 			virtual std::string generate_sdp() = 0;
 			virtual bool reset(std::string& /* error */) = 0;
 			virtual const std::string& get_mid() const = 0;

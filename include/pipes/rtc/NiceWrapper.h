@@ -7,7 +7,7 @@
 #include <thread>
 #include <mutex>
 
-#include "../buffer.h"
+#include "pipes/buffer.h"
 #include "../misc/logger.h"
 
 typedef struct _GSList GSList;

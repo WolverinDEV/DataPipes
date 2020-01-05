@@ -1,7 +1,7 @@
 #pragma once
 
+#include "./pipeline.h"
 #include <usrsctp.h>
-#include "pipeline.h"
 
 namespace pipes {
 	struct SCTPMessage {

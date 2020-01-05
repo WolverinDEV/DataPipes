@@ -1,9 +1,7 @@
-#include <sstream>
-#include "json.hpp"
-#include "include/rtc/VideoStream.h"
+#include "pipes/rtc/VideoStream.h"
+#include "pipes/misc/logger.h"
 
-#define DEFINE_LOG_HELPERS
-#include "include/misc/logger.h"
+#include <sstream>
 
 using namespace std;
 using namespace std::chrono;

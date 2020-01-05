@@ -2,10 +2,9 @@
 // Created by wolverindev on 27.09.18.
 //
 
+#include "pipes/buffer.h"
 #include <cstring>
 #include <cassert>
-#include <include/buffer.h>
-#include "include/buffer.h"
 
 using namespace pipes;
 using namespace pipes::impl;
