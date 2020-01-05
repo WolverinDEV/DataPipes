@@ -28,13 +28,13 @@
 
 set(_SRTP_ROOT_PATHS
         ${CMAKE_INSTALL_PREFIX}
-        )
+)
 
 find_path(SRTP2_INCLUDE_DIRS
         NAMES srtp2/srtp.h
         HINTS _SRTP_ROOT_PATHS
         PATH_SUFFIXES include
-        )
+)
 
 if(SRTP2_INCLUDE_DIRS)
     set(HAVE_SRTP_SRTP_H 1)
@@ -44,7 +44,7 @@ if(SRTP2_INCLUDE_DIRS)
             NAMES srtp2
             HINTS ${_SRTP_ROOT_PATHS}
             PATH_SUFFIXES bin lib
-            )
+    )
 else()
     find_path(SRTP_INCLUDE_DIRS
             NAMES srtp/srtp.h
@@ -70,9 +70,3 @@ find_package_handle_standard_args(SRTP
 )
 
 mark_as_advanced(SRTP_INCLUDE_DIRS SRTP_LIBRARIES HAVE_SRTP_SRTP_H SRTP_VERSION)
-
-if (SRTP_FOUND)
-    add_library(srtp INTERFACE)
-    target_link_libraries(srtp INTERFACE ${SRTP_LIBRARIES})
-    target_include_directories(srtp INTERFACE ${SRTP_INCLUDE_DIRS})
-endif ()

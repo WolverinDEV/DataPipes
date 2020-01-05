@@ -28,7 +28,11 @@ list(APPEND SOURCE_FILES
         src/http/http.cpp
 )
 
-list(APPEND PUBLIC_HEADER_DIRECTORIES include)
+list(APPEND PUBLIC_HEADER_DIRECTORIES
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:$<INSTALL_PREFIX>/${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
 list(APPEND LIBRARIES_PRIVATE)
 list(APPEND PUBLIC_COMPILER_DEFINITIONS)
 
@@ -45,7 +49,7 @@ endif ()
 # WebRTC part
 message("WebRTC support: ${WEBRTC_SUPPORT}")
 if (WEBRTC_SUPPORT)
-    find_package(Sdptransform REQUIRED)
+    find_package(sdptransform REQUIRED)
     find_package(LibNice REQUIRED)
     find_package(SRTP REQUIRED)
     find_package(UsrSCTP REQUIRED)
@@ -62,8 +66,17 @@ if (WEBRTC_SUPPORT)
             src/rtc/VideoStream.cpp
     )
 
-    list(APPEND LIBRARIES_PRIVATE srtp Sdptransform LibNice::LibNice SctpLab::UsrSCTP)
-    list(APPEND PUBLIC_COMPILER_DEFINITIONS -DSRTP_VERSION_${SRTP_VERSION})
+    list(APPEND LIBRARIES_PRIVATE sdptransform LibNice::LibNice SctpLab::UsrSCTP)
+
+    if(${SRTP_VERSION} EQUAL 1)
+        list(APPEND PUBLIC_COMPILER_DEFINITIONS -DSRTP_VERSION_1)
+        list(APPEND LIBRARIES_PRIVATE srtp)
+    elseif(${SRTP_VERSION} EQUAL 2)
+        list(APPEND PUBLIC_COMPILER_DEFINITIONS -DSRTP_VERSION_2)
+        list(APPEND LIBRARIES_PRIVATE srtp2)
+    else()
+        message(FATAL_ERROR "Invalid SRTP version (${SRTP_VERSION})")
+    endif()
 endif ()
 
 if(BUILD_STATIC OR BUILD_EXAMPLES) # The examples require DataPipes__static
@@ -71,22 +84,40 @@ if(BUILD_STATIC OR BUILD_EXAMPLES) # The examples require DataPipes__static
     target_compile_definitions(DataPipes__static PRIVATE -DDEFINE_LOG_HELPERS)
     target_compile_definitions(DataPipes__static PUBLIC ${PUBLIC_COMPILER_DEFINITIONS})
     target_include_directories(DataPipes__static PUBLIC ${PUBLIC_HEADER_DIRECTORIES})
+
     target_link_libraries(DataPipes__static PRIVATE ${LIBRARIES_PRIVATE})
-    target_link_libraries(DataPipes__static PUBLIC ${LIBRARIES_PUBLIC})
+    set_target_properties(DataPipes__static PROPERTIES
+            EXPORT_NAME DataPipes::static
+    )
 
     add_library(DataPipes::static ALIAS DataPipes__static)
+    install(TARGETS DataPipes__static
+            EXPORT DataPipes
+    )
 endif()
 
 if(BUILD_SHARED)
     add_library(DataPipes__shared SHARED ${SOURCE_FILES})
     target_compile_definitions(DataPipes__shared PRIVATE -DDEFINE_LOG_HELPERS)
     target_compile_definitions(DataPipes__shared PUBLIC ${PUBLIC_COMPILER_DEFINITIONS})
-    target_include_directories(DataPipes__shared PRIVATE ${PUBLIC_HEADER_DIRECTORIES})
+    target_include_directories(DataPipes__shared PUBLIC ${PUBLIC_HEADER_DIRECTORIES})
     target_link_libraries(DataPipes__shared PRIVATE ${LIBRARIES_PRIVATE})
-    target_link_libraries(DataPipes__shared PUBLIC ${LIBRARIES_PUBLIC})
+
+    set_target_properties(DataPipes__shared PROPERTIES EXPORT_NAME DataPipes::shared)
+    set_target_properties(DataPipes__shared PROPERTIES
+            EXPORT_NAME DataPipes::static
+    )
 
     add_library(DataPipes::shared ALIAS DataPipes__shared)
+    install(TARGETS DataPipes__shared
+            EXPORT DataPipes
+            LIBRARY
+                DESTINATION lib
+            PUBLIC_HEADER
+                DESTINATION include
+    )
 endif()
+install(DIRECTORY include DESTINATION include)
 
 if(BUILD_EXAMPLES)
     function(create_example)
@@ -160,3 +191,6 @@ if (EXPORT_OLD_LIBRARY_NAMES)
         add_library(DataPipes-Static ALIAS DataPipes__shared)
     endif()
 endif ()
+
+
+install(EXPORT "${PROJECT_NAME}" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/CMake/${PROJECT_NAME}")
