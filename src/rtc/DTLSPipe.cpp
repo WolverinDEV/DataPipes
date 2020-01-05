@@ -5,7 +5,7 @@
 
 using namespace rtc;
 
-DTLSPipe::DTLSPipe(std::shared_ptr<NiceWrapper> nice, rtc::NiceStreamId stream, std::shared_ptr<Config> config) : _nice_stream{stream}, _nice{std::move(nice)}, _config{std::move(config)} {
+DTLSPipe::DTLSPipe(std::shared_ptr<NiceWrapper> nice, rtc::NiceStreamId stream, std::shared_ptr<Config> config) : _config{std::move(config)}, _nice{std::move(nice)}, _nice_stream{stream} {
 
 }
 

@@ -77,6 +77,8 @@ void g_log_handler(const gchar   *log_domain,
                    gpointer       user_data) {
     auto wrapper = static_cast<NiceWrapper*>(user_data);
     LOG_VERBOSE(wrapper->logger(), "Nice::logger", message);
+
+    (void) wrapper;
 }
 
 bool NiceWrapper::initialize(std::string& error) {

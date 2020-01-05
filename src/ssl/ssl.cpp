@@ -169,10 +169,11 @@ bool pipes::SSL::isSSLHeader(const std::string &data) {
 }
 
 ProcessResult pipes::SSL::process_data_in() {
-    if(!this->sslLayer)
+    if(!this->sslLayer) {
         return ProcessResult::PROCESS_RESULT_INVALID_STATE;
+    }
 
-	unique_lock<mutex> lock(this->lock);
+	std::unique_lock<mutex> lock{this->lock};
     if(this->sslState == SSLSocketState::SSL_STATE_INIT) {
         if(handshakeStart.time_since_epoch().count() == 0)
             handshakeStart = system_clock::now();
@@ -223,15 +224,16 @@ ProcessResult pipes::SSL::process_data_in() {
 ProcessResult pipes::SSL::process_data_out() {
     if(!this->sslLayer) return ProcessResult::PROCESS_RESULT_INVALID_STATE;
 
-    lock_guard<mutex> lock(this->lock);
+    lock_guard<mutex> lock{this->lock};
     while(!this->write_buffer.empty()) {
     	auto front = this->write_buffer.front();
 	    this->write_buffer.pop_front();
 	    int index = 5;
 	    while(index-- > 0) {
-		    auto result = SSL_write(this->sslLayer, front.data_ptr(), front.length());
-            if(this->_options->verbose_io)
-		        LOG_VERBOSE(this->logger(), "SSL::process_data_out", "Write (%i): %i (bytes: %i) (empty: %i)", index, result, front.length(), this->write_buffer.size());
+		    auto result{SSL_write(this->sslLayer, front.data_ptr(), front.length())};
+            if(this->_options->verbose_io) {
+                LOG_VERBOSE(this->logger(), "SSL::process_data_out", "Write (%i): %i (bytes: %i) (empty: %i)", index, result, front.length(), this->write_buffer.size());
+            }
 		    if(result > 0) break;
 	    }
     }

@@ -108,7 +108,7 @@ int WebSocket::process_handshake() {
     }
 
     auto header_end = handshake_buffer.find("\r\n\r\n");
-    if(header_end == std::string::npos) return PERROR_NO_DATA; //Not full header!
+    if(header_end < 0) return PERROR_NO_DATA; //Not full header!
 
     {
         auto overhead = this->handshake_buffer.range(header_end + 4); //TODO drop header here!

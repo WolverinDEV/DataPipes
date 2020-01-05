@@ -4,6 +4,9 @@ project(DataPipes CXX)
 # Custom CMake modules
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules")
+if(NOT WIN32)
+    add_compile_options("-Wall")
+endif()
 
 option(WEBRTC_SUPPORT   "Enable/disable support for all WebRTC components (required usrsctp, nice and glib)." ON)
 option(BUILD_STATIC     "Enable/disable static build." ON)

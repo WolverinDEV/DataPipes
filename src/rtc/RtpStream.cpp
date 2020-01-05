@@ -45,6 +45,8 @@
 #define SRTP_AESGCM256_MASTER_SALT_LENGTH	12
 #define SRTP_AESGCM256_MASTER_LENGTH (SRTP_AESGCM256_MASTER_KEY_LENGTH + SRTP_AESGCM256_MASTER_SALT_LENGTH)
 
+#define SRTP_MAX_MASTER_LENGTH (SRTP_AESGCM256_MASTER_LENGTH)
+
 #define TEST_AV_TYPE(json, key, type, action, ...)  \
 if(json.count(key) <= 0) {                          \
 	LOG_ERROR(this->config->logger, __VA_ARGS__);   \
@@ -266,15 +268,15 @@ void RTPStream::on_dtls_initialized(const std::shared_ptr<DTLSPipe> &handle) {
 			break;
 #ifdef HAVE_SRTP_AESGCM
 		case SRTP_AEAD_AES_256_GCM:
-						key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
-						salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
-						master_length = SRTP_AESGCM256_MASTER_LENGTH;
-						break;
-					case SRTP_AEAD_AES_128_GCM:
-						key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
-						salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
-						master_length = SRTP_AESGCM128_MASTER_LENGTH;
-						break;
+            key_length = SRTP_AESGCM256_MASTER_KEY_LENGTH;
+            salt_length = SRTP_AESGCM256_MASTER_SALT_LENGTH;
+            master_length = SRTP_AESGCM256_MASTER_LENGTH;
+            break;
+        case SRTP_AEAD_AES_128_GCM:
+            key_length = SRTP_AESGCM128_MASTER_KEY_LENGTH;
+            salt_length = SRTP_AESGCM128_MASTER_SALT_LENGTH;
+            master_length = SRTP_AESGCM128_MASTER_LENGTH;
+            break;
 #endif
 		default:
 			/* Will never happen? */
@@ -285,7 +287,8 @@ void RTPStream::on_dtls_initialized(const std::shared_ptr<DTLSPipe> &handle) {
 
 
 	/* Complete with SRTP setup */
-	unsigned char material[master_length * 2];
+	unsigned char material[SRTP_MAX_MASTER_LENGTH * 2];
+    assert(master_length <= SRTP_MAX_MASTER_LENGTH); /* requirement for the array above and all following arrays */
 
 	memset(material, 0x00, master_length * 2);
 	unsigned char *local_key, *local_salt, *remote_key, *remote_salt;
@@ -307,8 +310,8 @@ void RTPStream::on_dtls_initialized(const std::shared_ptr<DTLSPipe> &handle) {
 		local_salt = remote_salt + salt_length;
 	}
 
-	u_char remote_policy_key[master_length];
-	u_char local_policy_key[master_length];
+	u_char remote_policy_key[SRTP_MAX_MASTER_LENGTH];
+	u_char local_policy_key[SRTP_MAX_MASTER_LENGTH];
 	{
 		/* Remote (inbound) */
 		switch(profile->id) {
@@ -644,7 +647,7 @@ void RTPStream::process_rtp_data(const shared_ptr<Channel>& channel, const pipes
 #endif
 
 	auto payload_offset = protocol::rtp_payload_offset(in);
-	if(payload_offset < 0 || payload_offset >= in.length()) {
+	if(payload_offset < 0 || (size_t) payload_offset >= in.length()) {
 	    //TODo: Evalulate if it might not only contain header extensions and if this would be valid according to the RFC XXXX
 	    LOG_ERROR(this->config->logger, "RTPStream::process_rtp_data", "Received packet which contains no payload data. Dropping packet.");
 	    return;
@@ -676,8 +679,8 @@ void RTPStream::process_rtp_data(const shared_ptr<Channel>& channel, const pipes
 }
 
 bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::buffer_view &extensions_and_payload, uint32_t timestamp, bool flag_extension, int marker_bit) {
-	static_assert(sizeof(protocol::rtp_header) == 12, "Invalid structure size");
-	static_assert(sizeof(protocol::rtp_header_extension) == 4, "Invalid structure size");
+	static_assert(protocol::rtp_header_base_size == 12, "Invalid structure size");
+	static_assert(protocol::rtp_header_extension_size == 4, "Invalid structure size");
 	if(!this->srtp_out_ready) {
 		LOG_ERROR(this->config->logger, "RTPStream::send_rtp_data", "Srtp not ready yet!");
 		return false;
@@ -687,7 +690,7 @@ bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::bu
 		return false;
 	}
 
-	auto allocated = sizeof(protocol::rtp_header) + extensions_and_payload.length() + SRTP_MAX_TRAILER_LEN;
+	auto allocated = protocol::rtp_header_base_size + extensions_and_payload.length() + SRTP_MAX_TRAILER_LEN;
 	allocated += allocated % 4; //Align 32 bits
 
 	pipes::buffer buffer(allocated);
@@ -705,7 +708,7 @@ bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::bu
 	stream->index_packet_send += 1;
     stream->timestamp_last_send = timestamp;
 
-	int offset_payload = sizeof(protocol::rtp_header);
+	int offset_payload = protocol::rtp_header_base_size;
 	memcpy((void*) &buffer[offset_payload], extensions_and_payload.data_ptr(), extensions_and_payload.length());
 
 	auto org_buflen = offset_payload + extensions_and_payload.length();
@@ -762,6 +765,7 @@ void RTPStream::process_rtcp_data(const shared_ptr<Channel>& channel, const pipe
 			          block.delay_last_sender_report(),
 			          block.delay_last_sender_report()
 			);
+			(void) block;
 		}
 		return;
 	} else if(header->type == 201) { /* receiver report */
@@ -780,6 +784,7 @@ void RTPStream::process_rtcp_data(const shared_ptr<Channel>& channel, const pipe
 					block.delay_last_sender_report(),
 					block.delay_last_sender_report()
 			);
+			(void) block;
 		}
 	} else {
 		LOG_DEBUG(this->config->logger, "RTPStream::process_rtcp_data", "Got RTCP packet of type %i and length %i (buffer: %i)", (int) header->type, (int) ntohs(header->length), in.length() - sizeof(protocol::rtcp_header));

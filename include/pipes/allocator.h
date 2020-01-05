@@ -1,7 +1,7 @@
 #pragma once
 
 #include <atomic>
-#include <stdint.h>
+#include <cstdint>
 #include <cstdio>
 
 namespace pipes {
@@ -44,8 +44,7 @@ namespace pipes {
 		uint8_t flag_free: 1;
 		uint8_t flag_deleted: 1;
 		uint8_t __unused: 6;
-	    uint8_t block_free_flags[0];
-	    uint8_t block_free_end;
+	    uint8_t block_free_flags[1]; /* will contain one more bit than the chunk info specifies because it will be filled with 0xFF at any time representing "block_free_end" */
 	};
 
 	struct chunk_type_info {

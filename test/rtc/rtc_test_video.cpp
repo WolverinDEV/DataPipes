@@ -417,7 +417,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					vpx->err = vpx_codec_dec_init(&vpx->codec, vpx->codec_interface, &vpx->codec_dec_config, 0);
 					assert(vpx->err == VPX_CODEC_OK);
 
-					chrono::system_clock::time_point timestamp_base = chrono::system_clock::now();
+					chrono::system_clock::time_point timestamp_base{chrono::system_clock::now()};
 					int frame_index = 0, flags = 0;
 				}
 

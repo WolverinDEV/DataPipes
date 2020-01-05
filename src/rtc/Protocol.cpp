@@ -14,7 +14,7 @@ ssize_t protocol::rtp_payload_offset(const pipes::buffer_view& data) {
 	if(header->extension) {
 		auto header_extension = (const protocol::rtp_header_extension*) &data[header_length];
 		auto extension_length = be16toh(header_extension->length);
-		header_length += extension_length * 4 + sizeof(protocol::rtp_header_extension);
+		header_length += extension_length * 4 + rtp_header_extension_size;
 	}
 
 	return header_length;
@@ -25,7 +25,7 @@ int protocol::rtp_header_extension_parse_audio_level(const pipes::buffer_view& b
 	if(protocol::rtp_header_extension_find(buffer, id, &byte, NULL, NULL) < 0)
 	return -1;
 	/* a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level */
-	int v = (byte & 0x80) >> 7;
+	//int v = (byte & 0x80) >> 7;
 	int value = byte & 0x7F;
 	if(level)
 		*level = value;
@@ -62,7 +62,7 @@ const std::vector<int> protocol::rtp_header_extension_ids(const pipes::buffer_vi
 	auto extensions_length = ntohs(extensions->length) * 4;
 	index += 4; /* rtp_header_extension => 4 bytes */
 
-	if(buffer.length() < (index + extensions_length)) {
+	if(buffer.length() < (size_t) (index + extensions_length)) {
 		success = false;
 		return fail_result;
 	}
@@ -111,7 +111,7 @@ int protocol::rtp_header_extension_find(const pipes::buffer_view& buffer, int id
 		auto ext = (protocol::rtp_header_extension *)(buffer.data_ptr<char>() + hlen);
 		int extlen = ntohs(ext->length) * 4;
 		hlen += 4;
-		if(buffer.length() > (hlen + extlen)) {
+		if(buffer.length() > (size_t) (hlen + extlen)) {
 			/* 1-Byte extension */
 			if(ntohs(ext->type) == 0xBEDE) {
 				const uint8_t padding = 0x00, reserved = 0xF;

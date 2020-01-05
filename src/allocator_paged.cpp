@@ -1,12 +1,10 @@
 #include "pipes/allocator.h"
 
-#include <cstdlib>
 #include <atomic>
 #include <cassert>
 #include <cstring>
 #include <string>
 #include <cmath>
-#include <iostream>
 #include <sys/mman.h>
 
 using namespace std;
@@ -25,10 +23,10 @@ size_t type_header_size(int type) {
     return (size_t) (ceil(flag_bit_size / 8) + header_size);
 }
 
-#define H(type)                     \
-if(left >= pow(2, type  + 4)) {     \
-	result |= 1 << (type);          \
-	left -= pow(2, type  + 4);      \
+#define H(type)                        \
+if(left >= pow(2, type  + 4)) {        \
+	result |= 1U << (unsigned) (type); \
+	left -= pow(2, type  + 4);         \
 }
 
 uint8_t header_fill_mask(uint16_t left) {
@@ -47,9 +45,9 @@ uint8_t header_fill_mask(uint16_t left) {
 }
 
 #undef H
-#define H(type)                         \
-if((mask & (1 << type)) > 0) {          \
-	result += (int) pow(2, type  + 4);  \
+#define H(type)                             \
+if((mask & (1U << (unsigned) type)) > 0) {  \
+	result += (int) pow(2, type  + 4);      \
 }
 
 uint16_t header_fill_mask_sum(uint8_t mask) {
@@ -102,8 +100,8 @@ void generate_type_info(chunk_type_info& target, int type) {
 
     target.fill_mask = header_fill_mask(acquired_header_size - required_header_size);
     size_t fill_block_offset = target.block_offset;
-    for(int index = 0; index < 8; index++) {
-        if((target.fill_mask & (1 << index)) > 0) {
+    for(uint8_t index = 0; index < 8; index++) {
+        if((target.fill_mask & (1U << index)) > 0) {
             auto fill_size = pow(2, index + 4);
             assert(fill_block_offset > fill_size);
             fill_block_offset -= fill_size;
@@ -146,7 +144,7 @@ void* PagedAllocator::allocate_type(uint8_t type) {
     assert(type >= 0 && type <= 8);
 
     SPIN_LOCK(this->chunk_lock);
-    uint8_t type_mask = 1 << type;
+    uint8_t type_mask = 1U << type;
     mapped_chunk* chunk;
     size_t index;
     for(index = 0; index < this->chunk_count; index++) {
@@ -167,7 +165,7 @@ void* PagedAllocator::allocate_type(uint8_t type) {
 
             uint8_t mask = 1;
             while((*flag_ptr & mask) == 0 && blk_index < type_info->block_count) {
-                mask <<= 1;
+                mask <<= 1U;
                 blk_index++;
             }
 
@@ -256,8 +254,7 @@ mapped_chunk* PagedAllocator::allocate_chunk(uint8_t type) {
     chunk->flag_deleted = false;
     chunk->flag_free = 1;
     chunk->padding_free_flags = pipes::type_info[type]->fill_mask;
-    chunk->block_free_end = 0xFF;
-    memset(chunk->block_free_flags, 0xFF, (int) ceil(pipes::type_info[type]->block_count / (double) 8));
+    memset(chunk->block_free_flags, 0xFF, (int) ceil(pipes::type_info[type]->block_count / (double) 8) + 1);
 
     register_chunk:
     SPIN_LOCK(this->chunk_lock);

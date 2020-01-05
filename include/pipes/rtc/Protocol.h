@@ -28,14 +28,16 @@ namespace rtc {
 			uint16_t seq_number;
 			uint32_t timestamp;
 			uint32_t ssrc;
-			uint32_t csrc[0];
+			uint32_t csrc[1];
 		};
+        static constexpr size_t rtp_header_base_size = sizeof(rtp_header) - 4; /* because of the csrc[1] */
 
 		struct rtp_header_extension {
 			uint16_t type;
 			uint16_t length;
-			uint8_t data[0];
+			uint8_t data[4];
 		};
+        static constexpr size_t rtp_header_extension_size = sizeof(rtp_header_extension) - 4; /* because of the data[4] (4 because of padding) */
 
 		/*! \brief RTCP Packet Types (http://www.networksorcery.com/enp/protocol/rtcp.htm) */
 		enum rtcp_type : uint8_t {
@@ -307,13 +309,13 @@ namespace rtc {
 		}
 
 		inline bool is_rtcp(const void *buf, int64_t length = -1) {
-		    if(length >= 0 && length < sizeof(protocol::rtp_header)) return false;
+		    if(length >= 0 && (size_t) length < sizeof(protocol::rtp_header)) return false;
 			auto header = (protocol::rtp_header *) buf;
 			return ((header->type >= 64) && (header->type < 96));
 		}
 
 		inline bool is_rtp(const void *buf, int64_t length = -1) {
-            if(length >= 0 && length < sizeof(protocol::rtp_header)) return false;
+            if(length >= 0 && (size_t) length < sizeof(protocol::rtp_header)) return false;
 
 			auto header = (protocol::rtp_header *) buf;
 			return ((header->type < 64) || (header->type >= 96));

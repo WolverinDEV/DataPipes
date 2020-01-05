@@ -10,7 +10,7 @@
 namespace pipes {
 	class TLS;
 	class SCTP;
-};
+}
 
 namespace rtc {
 	class PeerConnection;

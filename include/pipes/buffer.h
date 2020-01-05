@@ -299,7 +299,7 @@ namespace pipes {
 			}
 
 			template <typename T = char, typename N_T, typename std::enable_if<std::is_integral<T>::value && std::is_integral<N_T>::value, int>::type = 0>
-			inline N_T at(size_t index) { return this->buffer_view::at<T, N_T>(index); };
+			inline N_T at(size_t index) { return this->buffer_view::at<T, N_T>(index); }
 
 			template <typename T = char, typename __unused = void, typename std::enable_if<std::is_integral<T>::value && std::is_same<__unused, void>::value, int>::type = 0>
 			inline T& operator[](size_t index) { return this->at<T>(index); }

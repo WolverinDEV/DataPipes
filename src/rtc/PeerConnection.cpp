@@ -222,7 +222,7 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
                     }
 
                     if(iter == stream_index + 1) {
-                        nice_streams_sdp += raw_sdp.substr(index, (findex == -1 ? raw_sdp.length() : findex) - index) + "\n";
+                        nice_streams_sdp += raw_sdp.substr(index, (findex == std::string::npos ? raw_sdp.length() : findex) - index) + "\n";
                         break;
                     } else {
                         index = findex;

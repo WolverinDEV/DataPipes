@@ -282,7 +282,7 @@ ssize_t buffer::write(const pipes::buffer_view &buffer, ssize_t length, ssize_t 
 	if(offset_source < 0) offset_source = 0;
 	if(offset_target < 0) offset_target = 0;
 
-	if(length + offset_source > buffer.length())
+	if((size_t) (length + offset_source) > buffer.length())
 	    throw std::out_of_range("Source is out of buffer range!");
 
 	return this->write((void *)buffer.data_ptr(), length, offset_target, offset_source);
