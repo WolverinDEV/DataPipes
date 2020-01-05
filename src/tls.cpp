@@ -9,7 +9,6 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/tls1.h>
-#include <openssl/dtls1.h>
 
 using namespace std;
 using namespace pipes;
@@ -43,6 +42,14 @@ static int verify_peer_certificate(int ok, X509_STORE_CTX *ctx) {
 	SSL_set_tmp_ecdh(dtls->ssl, ecdh);
 	EC_KEY_free(ecdh);
  */
+//Get rid of the OpenSSL warnings
+#if defined(__clang__)
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__) || defined(__GNUG__)
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &certificate, TLSMode mode, Type handshake_mode, const initialize_function& fn) {
 	this->certificate = certificate;
 
@@ -110,6 +117,11 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 	if(!SSL::initialize(options)) ERRORQ("SSL initialize failed!");
 	return true;
 }
+#if defined(__clang__)
+    #pragma clang diagnostic pop
+#elif defined(__GNUC__) || defined(__GNUG__)
+    #pragma GCC diagnostic pop
+#endif
 
 inline std::string ssl_err_as_string () {
 	return string{ERR_reason_error_string(ERR_get_error())};
