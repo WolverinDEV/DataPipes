@@ -87,16 +87,15 @@ namespace rtc {
 	class MergedStream;
 	class RTPStream : public Stream {
 			friend class PeerConnection;
-			friend class MergedStream;
 		public:
 			struct Configuration {
 				std::shared_ptr<pipes::Logger> logger;
 			};
 
 			/** buffer contains the full rtp packet inc. header and extensions **/
-			typedef std::function<void(const std::shared_ptr<Channel>& /* channel */, const pipes::buffer_view& /* buffer */, size_t /* payload offset */)> callback_data;
+			typedef std::function<void(const std::shared_ptr<Channel>& /* codec */, const pipes::buffer_view& /* buffer */, size_t /* payload offset */)> callback_data;
 
-			RTPStream(PeerConnection* /* owner */, StreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
+			RTPStream(PeerConnection* /* owner */, NiceStreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
 			virtual ~RTPStream();
 
 			bool initialize(std::string &string) override;
@@ -105,7 +104,6 @@ namespace rtc {
 			const std::string& get_mid() const override { return this->mid; }
 
 			std::string generate_sdp() override;
-
 			bool reset(std::string &string) override;
 
 			bool send_rtp_data(const std::shared_ptr<Channel>& /* channel */, const pipes::buffer_view& /* data */, uint32_t /* timestamp */, bool /* contains extension */ = false, int /* marker bit */ = -1);
@@ -124,23 +122,23 @@ namespace rtc {
 			void register_local_channel(const std::string& /* stream id */, const std::string& /* track id */, const std::shared_ptr<codec::Codec>& /* type */);
 			std::shared_ptr<HeaderExtension> register_local_extension(const std::string& /* name/uri */, const std::string& /* direction */ = "", const std::string& /* config */ = "", uint8_t /* supposed id */ = 0);
 
-		protected: /* some events */
-			void on_nice_ready() override;
-			void on_dtls_initialized(const std::unique_ptr<pipes::TLS> &ptr) override;
+		protected:
+			/* some events */
+            void on_dtls_initialized(const std::shared_ptr<DTLSPipe>&ptr) override;
 
-		protected: /* some processors */
-			void process_incoming_data(const pipes::buffer_view&string) override;
-			void process_rtp_data(const pipes::buffer_view & /* data */);
-			void process_rtcp_data(const pipes::buffer_view & /* data */);
+			/* some data processors */
+            bool process_incoming_dtls_data(const pipes::buffer_view& /* data */) override;
+            bool process_incoming_rtp_data(RTPPacket& /* data */) override;
+            bool process_incoming_rtcp_data(RTCPPacket& /* data */) override;
+
+            void process_rtp_data(const std::shared_ptr<Channel>& channel, const pipes::buffer_view & /* data */);
+            void process_rtcp_data(const std::shared_ptr<Channel>& channel, const pipes::buffer_view & /* data */);
 
 		protected: /* methods to implement */
 			virtual std::string sdp_media_type() const = 0;
 
 		private:
 			std::shared_ptr<Configuration> config;
-
-			bool dtls_initialized = false;
-			std::unique_ptr<pipes::TLS> dtls;
 
 			srtp_t srtp_in = nullptr;
 			bool srtp_in_ready = false;
@@ -149,7 +147,6 @@ namespace rtc {
 			srtp_policy_t remote_policy;
 			srtp_policy_t local_policy;
 
-			std::shared_ptr<pipes::TLSCertificate> dtls_certificate; /* here 'till dtls has been initialized */
 			std::deque<std::shared_ptr<codec::Codec>> offered_codecs;
 			std::vector<std::shared_ptr<HeaderExtension>> remote_extensions;
 			std::vector<std::shared_ptr<HeaderExtension>> local_extensions;

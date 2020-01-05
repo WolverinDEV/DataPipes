@@ -53,11 +53,11 @@ namespace rtc {
 				std::shared_ptr<pipes::Logger> logger;
 
 				size_t max_data_channels = 255;
-				uint16_t local_port = 50000; //FIXME: Default is 5000!
+				uint16_t local_port = 5000;
 			};
 			typedef std::function<void(const std::shared_ptr<DataChannel>&)> cb_datachannel_new;
 
-			ApplicationStream(PeerConnection* /* owner */, StreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
+			ApplicationStream(PeerConnection* /* owner */, NiceStreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
 			virtual ~ApplicationStream();
 
             [[nodiscard]] StreamType type() const override { return StreamType::CHANTYPE_APPLICATION; }
@@ -75,12 +75,13 @@ namespace rtc {
 			cb_datachannel_new callback_datachannel_new = nullptr;
 		private:
 		protected:
-			void on_nice_ready() override;
-			void on_dtls_initialized(const std::unique_ptr<pipes::TLS> &ptr) override;
+			void on_dtls_initialized(const std::shared_ptr<DTLSPipe>&certificate) override;
 
 		private:
 			void send_sctp(const pipes::SCTPMessage & /* message */);
-			void process_incoming_data(const pipes::buffer_view& /* data */) override;
+            bool process_incoming_dtls_data(const pipes::buffer_view& /* data */) override;
+            bool process_incoming_rtp_data(RTPPacket& /* data */) override;
+            bool process_incoming_rtcp_data(RTCPPacket& /* data */) override;
 
 			virtual void handle_sctp_message(const pipes::SCTPMessage& /* message */);
 			virtual void handle_sctp_event(union sctp_notification * /* event */);
@@ -99,8 +100,6 @@ namespace rtc {
 			std::map<uint16_t, std::shared_ptr<DataChannel>> active_channels;
 
 			bool external_sctp_port;
-			std::shared_ptr<pipes::TLSCertificate> dtls_certificate; /* here 'till dtls has been initialized */
-			std::unique_ptr<pipes::TLS> dtls;
 			std::unique_ptr<pipes::SCTP> sctp;
 	};
 }

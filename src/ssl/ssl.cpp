@@ -33,8 +33,8 @@ int pipes::SSL::_sni_callback(::SSL* handle, int* ad, void* _ptr_ssl) {
 	auto servername = SSL_get_servername(handle, TLSEXT_NAMETYPE_host_name);
 	if(servername != nullptr) {
 		LOG_DEBUG(ssl->logger(), "SSL::sni_callback", "Received SNI extension with value \"%s\"", servername);
-		if(ssl->options->servername_keys.count(servername) > 0) {
-			auto key = ssl->options->servername_keys.at(servername);
+		if(ssl->_options->servername_keys.count(servername) > 0) {
+			auto key = ssl->_options->servername_keys.at(servername);
 			if(key.first && key.second) {
 				LOG_DEBUG(ssl->logger(), "SSL::sni_callback", "Using special defined certificate.");
 
@@ -44,8 +44,8 @@ int pipes::SSL::_sni_callback(::SSL* handle, int* ad, void* _ptr_ssl) {
 				if(!SSL_use_certificate(handle, &*key.second))
 					return SSL_TLSEXT_ERR_ALERT_FATAL;
 
-				if(ssl->options->free_unused_keypairs)
-					ssl->options->servername_keys.clear();
+				if(ssl->_options->free_unused_keypairs)
+					ssl->_options->servername_keys.clear();
 				return SSL_TLSEXT_ERR_OK;
 			}
 		}
@@ -54,7 +54,7 @@ int pipes::SSL::_sni_callback(::SSL* handle, int* ad, void* _ptr_ssl) {
 	}
 
 	{
-		auto key = ssl->options->default_keypair();
+		auto key = ssl->_options->default_keypair();
 		if(key.first && key.second) {
 			LOG_DEBUG(ssl->logger(), "SSL::sni_callback", "Using default certificate");
 
@@ -67,8 +67,8 @@ int pipes::SSL::_sni_callback(::SSL* handle, int* ad, void* _ptr_ssl) {
 			LOG_DEBUG(ssl->logger(), "SSL::sni_callback", "Haven't yet setupped any certificate. Trying without.");
 		}
 
-		if(ssl->options->free_unused_keypairs)
-			ssl->options->servername_keys.clear();
+		if(ssl->_options->free_unused_keypairs)
+			ssl->_options->servername_keys.clear();
 	}
 	return SSL_TLSEXT_ERR_OK;
 }
@@ -77,7 +77,7 @@ bool pipes::SSL::initialize(const std::shared_ptr<pipes::SSL::Options> &options)
 	if(!options->context_method)
 		return false;
 
-	this->options = options;
+	this->_options = options;
 
 
 	this->sslContext = shared_ptr<SSL_CTX>(SSL_CTX_new(options->context_method), SSL_CTX_free);
@@ -132,7 +132,7 @@ bool pipes::SSL::initialize(const std::shared_ptr<pipes::SSL::Options> &options)
 }
 
 bool pipes::SSL::do_handshake() {
-	if(this->options->type != CLIENT) {
+	if(this->_options->type != CLIENT) {
 		LOG_ERROR(this->logger(), "SSL::do_handshake", "Tried to do a handshake, but we're not in client mode!");
 		return false;
 	}
@@ -142,8 +142,11 @@ bool pipes::SSL::do_handshake() {
 		return true;
 	}
 	auto error_code = SSL_get_error(this->sslLayer, code);
-	auto error_message = ERR_reason_error_string(error_code);
-	LOG_ERROR(this->logger(), "SSL::do_handshake", "Failed to process SSL handshake. Result: %u => Error code %u (%s)!", code, error_code, error_message);
+	if(error_code == SSL_ERROR_SYSCALL) {
+        LOG_ERROR(this->logger(), "SSL::do_handshake", "Failed to process SSL handshake. Result: %i (syscall error): %u (%s)!", code, errno, strerror(errno));
+	} else {
+        LOG_ERROR(this->logger(), "SSL::do_handshake", "Failed to process SSL handshake. Result: %i => Error code %!", code, error_code);
+	}
 	return false;
 }
 
@@ -227,7 +230,7 @@ ProcessResult pipes::SSL::process_data_out() {
 	    int index = 5;
 	    while(index-- > 0) {
 		    auto result = SSL_write(this->sslLayer, front.data_ptr(), front.length());
-            if(this->options->verbose_io)
+            if(this->_options->verbose_io)
 		        LOG_VERBOSE(this->logger(), "SSL::process_data_out", "Write (%i): %i (bytes: %i) (empty: %i)", index, result, front.length(), this->write_buffer.size());
 		    if(result > 0) break;
 	    }

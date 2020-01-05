@@ -45,7 +45,8 @@ namespace pipes {
 
 			typedef std::function<void()> InitializedHandler;
 
-			static bool is_ssl(const uint8_t* buf) {
+			static bool is_ssl(const uint8_t* buf, int64_t length = -1) {
+			    if(length >= 0 && length < 1) return false;
 				return ((*buf >= 20) && (*buf <= 64));
 			}
 
@@ -60,6 +61,8 @@ namespace pipes {
 			bool do_handshake();
 			void finalize();
 
+            std::shared_ptr<const Options> options() const { return this->_options; }
+
 			//Callbacks
 			InitializedHandler callback_initialized = []() {};
 			size_t readBufferSize = 1024;
@@ -68,7 +71,7 @@ namespace pipes {
 
 			std::string remote_fingerprint();
 
-			inline ::SSL *ssl_handle() { return this->sslLayer; }
+			inline ::SSL *ssl_handle() const { return this->sslLayer; }
 		private:
 			bool initializeBio();
 
@@ -77,7 +80,7 @@ namespace pipes {
 
 			ProcessResult process_data_out() override;
 
-			std::shared_ptr<Options> options;
+			std::shared_ptr<Options> _options;
 			std::shared_ptr<SSL_CTX> sslContext = nullptr;
 			::SSL *sslLayer = nullptr;
 			SSLSocketState sslState = SSLSocketState::SSL_STATE_INIT;

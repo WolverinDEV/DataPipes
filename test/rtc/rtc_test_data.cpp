@@ -186,7 +186,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 		};
 
 		client->peer->callback_new_stream = [](const std::shared_ptr<rtc::Stream>& stream) {
-			cout << "[Stream] Got new stream of type " << stream->type() << " | " << stream->stream_id() << endl;
+			cout << "[Stream] Got new stream of type " << stream->type() << " | " << stream->nice_stream_id() << endl;
 			if(stream->type() == rtc::CHANTYPE_APPLICATION) {
 				auto data_channel = dynamic_pointer_cast<rtc::ApplicationStream>(stream);
 				data_channel->callback_datachannel_new = [](const std::shared_ptr<rtc::DataChannel>& channel) {

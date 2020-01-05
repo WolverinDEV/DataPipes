@@ -113,8 +113,7 @@ if(BUILD_WEBRTC)
 			include/rtc/PeerConnection.h
 			include/rtc/ApplicationStream.h
 			include/rtc/AudioStream.h
-			include/rtc/MergedStream.h
-			include/rtc/Protocol.h
+            include/rtc/Protocol.h
 			include/rtc/RtpStream.h
 	)
 
@@ -126,10 +125,10 @@ if(BUILD_WEBRTC)
 			src/rtc/NiceWrapper.cpp
 			src/rtc/PeerConnection.cpp
 			src/rtc/Protocol.cpp
-			src/rtc/MergedStream.cpp
 			src/rtc/VideoStream.cpp
 			src/rtc/RtpStream.cpp
 			src/rtc/ApplicationChannel.cpp
+			src/rtc/DTLSPipe.cpp
 	)
 endif()
 
@@ -191,7 +190,7 @@ if(BUILD_STATIC)
 	endif()
 endif()
 if(BUILD_SHARED)
-	add_library(DataPipes-Shared SHARED ${SOURCE_FILES})
+	add_library(DataPipes-Shared SHARED ${SOURCE_FILES} include/rtc/DTLSPipe.h include/rtc/RTPPacket.h)
 	install(TARGETS DataPipes-Shared DESTINATION lib)
 	set_target_properties(DataPipes-Shared PROPERTIES OUTPUT_NAME DataPipes)
 

@@ -17,8 +17,6 @@
 
 #include <vpx/vpx_encoder.h>
 #include <vpx/vpx_decoder.h>
-#include <vpx/vpx_image.h>
-#include <vpx/vpx_codec.h>
 #include <vpx/vp8cx.h>
 #include <vpx/vp8dx.h>
 
@@ -30,8 +28,8 @@ using namespace std;
 #define V_FPS 1
 #define V_KEYFRAME_INTERVAL 1
 
-#define V_WIDTH  (128)
-#define V_HEIGHT (128)
+#define V_WIDTH  (128 * 16)
+#define V_HEIGHT (128 * 16)
 
 struct Color {
 	uint8_t r;
@@ -226,7 +224,10 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				if (root["type"] == "offer") {
 					cout << "Recived offer" << endl;
 
-					client->peer->apply_offer(error, root["msg"]["sdp"].asString());
+					if(!client->peer->apply_offer(error, root["msg"]["sdp"].asString())) {
+					    std::cerr << "failed to apply offer: " << error << "\n";
+					    return;
+					}
 
 					{
 						Json::Value answer;
@@ -360,7 +361,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 									↵a=rtcp-fb:96 nack pli
 					 */
 
-					vstream->register_local_channel("video_response", "video_response_normal", channel_codec);
+                    vstream->register_local_channel("video_response_" + vstream->get_mid(), "video_response_normal", channel_codec);
+                    //vstream->register_local_channel("video_response_2" + vstream->get_mid(), "video_response_normal2", channel_codec);
 				}
 
 				if(false) {
@@ -448,7 +450,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 
 					for(const auto& ch : vs->list_channels())
 						if(ch->local) {
-							vs->send_rtp_data(ch, buffer.view(payload_offset), channel->timestamp_last_receive, false, header->markerbit);
+							//vs->send_rtp_data(ch, buffer.view(payload_offset), channel->timestamp_last_receive, false, header->markerbit);
 						}
 
 					uint8_t vpx_header_length{1};
@@ -479,7 +481,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					cout << "Decode result: " << vpx->err << "/" << vpx_codec_err_to_string(vpx->err) << endl;
 				};
 
-#if false /* Create video generator */
+#if true /* Create video generator */
 				{
 					std::thread([weak_astream]{
 						vpx_codec_err_t err;
@@ -508,7 +510,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 						err = vpx_codec_enc_init_ver(&vpx_encoder, codec_interface, &codec_config, 0, VPX_ENCODER_ABI_VERSION);
 						assert(err == VPX_CODEC_OK);
 
-						chrono::system_clock::time_point timestamp_base = chrono::system_clock::now();
+						chrono::system_clock::time_point timestamp_base = chrono::system_clock::now(), sleep_base = chrono::system_clock::now();
 						int frame_index = 0, flags = 0;
 
 						vpx_codec_err_t res;
@@ -534,30 +536,40 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 										got_pkts = 1;
 
 										if (pkt->kind == VPX_CODEC_CX_FRAME_PKT) {
+                                            const int keyframe = (pkt->data.frame.flags & VPX_FRAME_IS_KEY) != 0;
 											uint32_t timestamp = (uint32_t) chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now() - timestamp_base).count();
 
 											uint8_t snd_buffer[pkt->data.frame.sz + 3];
-											snd_buffer[0] = 0b10010000; //Extended header flags, Key frame
+											snd_buffer[0] = 0b10000000; //Extended header flags, Key frame
+											if(keyframe) snd_buffer[0] |= 0b00010000; //Key frame (Non-reference frame)
                                             snd_buffer[1] = 0b10000000; //We've a picture id
                                             snd_buffer[2] = (frame_index * 1000) & 0x7F; //Picture id
-                                            memcpy(&snd_buffer[3], pkt->data.frame.buf, pkt->data.frame.sz);
+
+
+                                            const static size_t max{1024};
+                                            for(size_t index = 0; index < pkt->data.frame.sz; index += max) {
+                                                memcpy(&snd_buffer[3], (char*) pkt->data.frame.buf + index, std::min(pkt->data.frame.sz - index, max));
+                                                for(const auto& ch : vs->list_channels(rtc::direction::outgoing)) {
+                                                    vs->send_rtp_data(ch, {(char*) snd_buffer, std::min(pkt->data.frame.sz - index, max) + 3}, timestamp, false, index + max >= pkt->data.frame.sz); //Set marker bit only for last entry
+                                                }
+                                                snd_buffer[0]++;
+                                                snd_buffer[0] &= ~0b00010000;
+                                            }
 
 											cout << "Size: " << pkt->data.frame.sz << endl;
 											for(const auto& ch : vs->list_channels(rtc::direction::outgoing)) {
                                                 vs->send_rtp_data(ch, {(char*) snd_buffer, pkt->data.frame.sz + 3}, timestamp, false, 1);
 											}
 
-											const int keyframe = (pkt->data.frame.flags & VPX_FRAME_IS_KEY) != 0;
 											//printf(keyframe ? "K" : ".");
 											//fflush(stdout);
 										}
 									}
 								}
 
+                                std::this_thread::sleep_until(sleep_base += chrono::milliseconds(1000 / V_FPS));
 								frame_index++;
 							}
-
-							this_thread::sleep_for(chrono::milliseconds(1000 / V_FPS));
 						}
 
 						//TODO: Cleanup

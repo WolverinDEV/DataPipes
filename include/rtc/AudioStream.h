@@ -11,7 +11,7 @@
 namespace rtc {
 	class AudioStream : public RTPStream {
 		public:
-			AudioStream(PeerConnection* /* owner */, StreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
+			AudioStream(PeerConnection* /* owner */, NiceStreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
 			virtual ~AudioStream();
 
 			StreamType type() const override;

@@ -10,7 +10,7 @@ using namespace std::chrono;
 using namespace rtc;
 using namespace rtc::codec;
 
-VideoStream::VideoStream(rtc::PeerConnection *owner, rtc::StreamId id, const std::shared_ptr<rtc::VideoStream::Configuration> &config) : RTPStream(owner, id, config) { }
+VideoStream::VideoStream(rtc::PeerConnection *owner, rtc::NiceStreamId id, const std::shared_ptr<rtc::VideoStream::Configuration> &config) : RTPStream(owner, id, config) { }
 
 VideoStream::~VideoStream() { }
 

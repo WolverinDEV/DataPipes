@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <memory>
 #include <deque>
 #include <thread>
@@ -33,10 +34,12 @@ namespace rtc {
 		uint16_t port;
 	};
 
-	typedef uint32_t StreamId;
+	typedef uint32_t NiceStreamId;
 	struct NiceStream {
 		typedef std::function<void(const pipes::buffer_view&)> cb_receive;
 		typedef std::function<void()> cb_ready;
+
+		std::string name{};
 
 		uint32_t stream_id = 0xFFFF;
 		bool ready = false;
@@ -53,7 +56,7 @@ namespace rtc {
 	};
 
 	struct LocalSdpEntry {
-		int index;
+		NiceStreamId stream_id;
 		std::string media;
 		std::string connection;
 		std::string ice_ufrag;
@@ -112,8 +115,9 @@ namespace rtc {
 			void set_callback_local_candidate(const cb_candidate& /* callback */);
 			void set_callback_failed(const cb_failed& /* callback */);
 
-			std::shared_ptr<NiceStream> find_stream(StreamId /* id */);
-			std::shared_ptr<NiceStream> add_stream(const std::string& /* name */);
+			std::shared_ptr<NiceStream> find_stream(NiceStreamId /* id */);
+            std::shared_ptr<NiceStream> find_stream(const std::string_view& /* name */);
+			std::shared_ptr<NiceStream> add_stream(const std::string& /* name */, const std::string_view& /* media stream name */ = "");
 			std::deque<std::shared_ptr<NiceStream>> available_streams();
 
 			std::shared_ptr<pipes::Logger> logger() { return this->_logger; }

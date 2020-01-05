@@ -17,7 +17,7 @@ namespace rtc {
 
     class VideoStream : public RTPStream {
         public:
-            VideoStream(PeerConnection* /* owner */, StreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
+            VideoStream(PeerConnection* /* owner */, NiceStreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
             virtual ~VideoStream();
 
             StreamType type() const override;

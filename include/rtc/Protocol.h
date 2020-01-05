@@ -1,7 +1,7 @@
 #pragma once
 
 #include <unistd.h>
-#include <cstdint>
+#include <cstddef>
 #include <vector>
 #include "../buffer.h"
 
@@ -73,10 +73,10 @@ namespace rtc {
 		//https://android.googlesource.com/platform/external/webrtc/+/bdc0b0d869e9a14bbfafcbb84e294a13383e6fa6/webrtc/modules/rtp_rtcp/source/rtcp_packet.cc
 		namespace rtcp {
 			inline uint32_t swap_endianness(uint32_t input) {
-				return  ((input >> 24) & 0xFF) <<  0 |
-						((input >> 16) & 0xFF) <<  8 |
-						((input >>  8) & 0xFF) << 16 |
-						((input >>  0) & 0xFF) << 24;
+				return  ((input >> 24U) & 0xFFU) <<  0U |
+						((input >> 16U) & 0xFFU) <<  8U |
+						((input >>  8U) & 0xFFU) << 16U |
+						((input >>  0U) & 0xFFU) << 24U;
 			}
 
 
@@ -306,12 +306,15 @@ namespace rtc {
 			};
 		}
 
-		inline bool is_rtcp(void *buf) {
+		inline bool is_rtcp(const void *buf, int64_t length = -1) {
+		    if(length >= 0 && length < sizeof(protocol::rtp_header)) return false;
 			auto header = (protocol::rtp_header *) buf;
 			return ((header->type >= 64) && (header->type < 96));
 		}
 
-		inline bool is_rtp(void *buf) {
+		inline bool is_rtp(const void *buf, int64_t length = -1) {
+            if(length >= 0 && length < sizeof(protocol::rtp_header)) return false;
+
 			auto header = (protocol::rtp_header *) buf;
 			return ((header->type < 64) || (header->type >= 96));
 		}

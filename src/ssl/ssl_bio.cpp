@@ -29,7 +29,7 @@ int pipes::SSL::bio_write(BIO* self, const char* buffer, int length) {
 	auto handle = static_cast<SSL*>(BIO_get_data(self));
 	assert(handle);
 
-	if(handle->options->verbose_io)
+	if(handle->_options->verbose_io)
 	    LOG_VERBOSE(handle->logger(), "SSL::bio_write", "Got %p with length %i", buffer, length);
 	handle->_callback_write(buffer_view{buffer, (size_t) length});
 	return length;

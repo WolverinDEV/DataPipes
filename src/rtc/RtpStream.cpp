@@ -1,6 +1,6 @@
 #include <sstream>
 #include <openssl/srtp.h>
-#include <inttypes.h> //For printf
+#include <cinttypes> //For printf
 #include <glib.h>
 
 #include "json.hpp"
@@ -8,6 +8,8 @@
 #include "include/rtc/PeerConnection.h"
 #include "include/rtc/RtpStream.h"
 #include "include/sctp.h"
+#include "include/rtc/DTLSPipe.h"
+#include "include/rtc/RTPPacket.h"
 
 #define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
@@ -21,8 +23,9 @@ using namespace rtc::codec;
 	#include <srtp2/srtp.h>
 #else
 	#include <srtp/srtp.h>
+#include <include/rtc/RTPPacket.h>
 
-	#define srtp_err_status_t err_status_t
+#define srtp_err_status_t err_status_t
 	#define srtp_err_status_ok err_status_ok
 	#define srtp_err_status_replay_fail err_status_replay_fail
 	#define srtp_err_status_replay_old err_status_replay_old
@@ -226,7 +229,7 @@ std::deque<std::shared_ptr<HeaderExtension>> RTPStream::list_extensions(directio
 }
 
 static bool srtp_initialized = false;
-RTPStream::RTPStream(rtc::PeerConnection *owner, rtc::StreamId id, const std::shared_ptr<rtc::RTPStream::Configuration> &config) : Stream(owner, id), config(config) {
+RTPStream::RTPStream(rtc::PeerConnection *owner, rtc::NiceStreamId id, const std::shared_ptr<rtc::RTPStream::Configuration> &config) : Stream(owner, id), config(config) {
 	memset(&this->remote_policy, 0, sizeof(remote_policy));
 	memset(&this->local_policy, 0, sizeof(local_policy));
 	if(!srtp_initialized) {
@@ -241,48 +244,15 @@ RTPStream::~RTPStream() {
 	this->reset(error);
 }
 
-//TODO Allow AES
 bool RTPStream::initialize(std::string &error) {
-	if(this->_stream_id > 0) {
-		this->dtls = make_unique<pipes::TLS>();
-		this->dtls->direct_process(pipes::PROCESS_DIRECTION_IN, true);
-		this->dtls->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
-		this->dtls->logger(this->config->logger);
-
-		this->dtls->callback_data([&](const pipes::buffer_view& data) {
-			LOG_VERBOSE(this->config->logger, "RTPStream::dtls", "Got incoming bytes (%i). This should never happen!", data.length());
-		});
-		this->dtls->callback_write([&](const pipes::buffer_view& data) {
-			LOG_VERBOSE(this->config->logger, "RTPStream::dtls", "outgoing %i bytes", data.length());
-			this->send_data(data);
-		});
-		this->dtls->callback_error([&](int code, const std::string& error) {
-			LOG_ERROR(this->config->logger, "RTPStream::dtls", "Got error (%i): %s", code, error.c_str());
-		});
-		this->dtls->callback_initialized = [&](){
-			this->dtls_initialized = true;
-
-			LOG_DEBUG(this->config->logger, "RTPStream::dtls", "Initialized!");
-
-			{
-				/* Check the remote fingerprint */
-				//FIXME Test fingerprint
-				auto fingerprint = this->dtls->remote_fingerprint();
-				fingerprint.clear(); //Remove the unused warning
-			}
-			this->on_dtls_initialized(this->dtls);
-		};
-
-		this->dtls_certificate = pipes::TLSCertificate::generate("DataPipes", 365);
-	}
-
 	return true;
 }
 
-void RTPStream::on_dtls_initialized(const std::unique_ptr<pipes::TLS> &handle) {
+void RTPStream::on_dtls_initialized(const std::shared_ptr<DTLSPipe> &handle) {
 	LOG_DEBUG(this->config->logger, "RTPStream::dtls", "Initialized!");
 
-	auto profile = SSL_get_selected_srtp_profile(handle->ssl_handle());
+	const auto pipe = handle->dtls_pipe();
+	auto profile = SSL_get_selected_srtp_profile(pipe->ssl_handle());
 	if(!profile) {
 		LOG_ERROR(this->config->logger, "RTPStream::dtls", "Missing remote's srtp profile!");
 		return;
@@ -323,12 +293,12 @@ void RTPStream::on_dtls_initialized(const std::unique_ptr<pipes::TLS> &handle) {
 	memset(material, 0x00, master_length * 2);
 	unsigned char *local_key, *local_salt, *remote_key, *remote_salt;
 	/* Export keying material for SRTP */
-	if(!SSL_export_keying_material(handle->ssl_handle(), material, master_length * 2, "EXTRACTOR-dtls_srtp", 19, nullptr, 0, 0)) {
+	if(!SSL_export_keying_material(pipe->ssl_handle(), material, master_length * 2, "EXTRACTOR-dtls_srtp", 19, nullptr, 0, 0)) {
 		LOG_ERROR(this->config->logger, "RTPStream::srtp", "Failed to setup SRTP key materinal!");
 		return; //FIXME error handling
 	}
 	/* Key derivation (http://tools.ietf.org/html/rfc5764#section-4.2) */
-	if(this->role == Client) {
+	if(pipe->options()->type == pipes::TLS::CLIENT) {
 		local_key = material;
 		remote_key = local_key + key_length;
 		local_salt = remote_key + key_length;
@@ -355,13 +325,13 @@ void RTPStream::on_dtls_initialized(const std::unique_ptr<pipes::TLS> &handle) {
 				break;
 #ifdef HAVE_SRTP_AESGCM
 			case SRTP_AEAD_AES_256_GCM:
-						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->remote_policy.rtp));
-						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->remote_policy.rtcp));
-						break;
-					case SRTP_AEAD_AES_128_GCM:
-						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->remote_policy.rtp));
-						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->remote_policy.rtcp));
-						break;
+                srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->remote_policy.rtp));
+                srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->remote_policy.rtcp));
+                break;
+            case SRTP_AEAD_AES_128_GCM:
+                srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->remote_policy.rtp));
+                srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->remote_policy.rtcp));
+                break;
 #endif
 			default:
 				break;
@@ -373,7 +343,7 @@ void RTPStream::on_dtls_initialized(const std::unique_ptr<pipes::TLS> &handle) {
 		memcpy(this->remote_policy.key + key_length, remote_salt, salt_length);
 #if HAS_DTLS_WINDOW_SIZE
 		this->remote_policy.window_size = 128;
-				this->remote_policy.allow_repeat_tx = 0;
+        this->remote_policy.allow_repeat_tx = 0;
 #endif
 		this->remote_policy.next = nullptr;
 	}
@@ -391,13 +361,13 @@ void RTPStream::on_dtls_initialized(const std::unique_ptr<pipes::TLS> &handle) {
 				break;
 #ifdef HAVE_SRTP_AESGCM
 			case SRTP_AEAD_AES_256_GCM:
-						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->local_policy.rtp));
-						srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->local_policy.rtcp));
-						break;
-					case SRTP_AEAD_AES_128_GCM:
-						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->local_policy.rtp));
-						srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->local_policy.rtcp));
-						break;
+                srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->local_policy.rtp));
+                srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->local_policy.rtcp));
+                break;
+            case SRTP_AEAD_AES_128_GCM:
+                srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->local_policy.rtp));
+                srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->local_policy.rtcp));
+                break;
 #endif
 			default:
 				break;
@@ -433,16 +403,6 @@ void RTPStream::on_dtls_initialized(const std::unique_ptr<pipes::TLS> &handle) {
 }
 
 bool RTPStream::apply_sdp(const nlohmann::json& sdp, const nlohmann::json& media_entry) {
-	{
-		TEST_AV_TYPE(media_entry, "setup", is_string, return false, "RTPStream::apply_sdp", "Entry contains invalid/missing setup type");
-		string setup_type = media_entry["setup"];
-		LOG_VERBOSE(this->config->logger, "RTPStream::apply_sdp", "Stream setup type: %s", setup_type.c_str());
-		if(setup_type == "active")
-			this->role = Server;
-		else if(setup_type == "passive")
-			this->role = Client;
-	}
-
 	{
 		TEST_AV_TYPE(media_entry, "mid", is_string, return false, "RTPStream::apply_sdp", "Entry contains invalid/missing mid");
 		this->mid = media_entry["mid"];
@@ -586,15 +546,6 @@ string RTPStream::generate_sdp() {
 		codec->write_sdp(sdp);
 	}
 
-	if(this->dtls) {
-		if(this->dtls_certificate)
-			sdp << "a=fingerprint:sha-256 " << this->dtls_certificate->getFingerprint() << "\r\n";
-		else
-			sdp << "a=fingerprint:sha-256 " << dtls->getCertificate()->getFingerprint() << "\r\n";
-	}
-
-	sdp << "a=setup:" << (this->role == Client ? "active" : "passive") << "\r\n";
-
 	for(const auto& channel : this->local_channels) {
 		sdp << "a=ssrc:" << channel->ssrc << " cname:" << channel->stream_id << "\r\n";
 		sdp << "a=ssrc:" << channel->ssrc << " msid:" << channel->stream_id << " " << channel->track_id << "\r\n";
@@ -605,10 +556,6 @@ string RTPStream::generate_sdp() {
 }
 
 bool RTPStream::reset(std::string &string) {
-	if(this->dtls) this->dtls->finalize();
-	this->dtls = nullptr;
-	dtls_initialized = false;
-
 	this->srtp_out_ready = false;
 	if(this->srtp_out) {
 		if(srtp_dealloc(this->srtp_out) != srtp_err_status_ok); //TODO error handling?
@@ -623,49 +570,73 @@ bool RTPStream::reset(std::string &string) {
 	return true;
 }
 
-void RTPStream::process_incoming_data(const pipes::buffer_view&in) {
-	if (pipes::SSL::is_ssl((u_char*) in.data_ptr()) || (!protocol::is_rtp((void*) in.data_ptr()) && !protocol::is_rtcp((void*) in.data_ptr()))) {
-		if(!this->dtls) {
-			LOG_VERBOSE(this->config->logger, "RTPStream::process_incoming_data", "Got %i incoming bytes of dtls, which isn't supported!", in.length());
-		} else {
-			this->dtls->process_incoming_data(in);
-		}
-		return;
-	}
-	if(!this->dtls_initialized && this->dtls) {
-		LOG_VERBOSE(this->config->logger, "RTPStream::process_incoming_data", "incoming %i bytes", in.length());
-		this->dtls->process_incoming_data(in);
-	} else {
-		if(in.length() >= sizeof(protocol::rtp_header) && protocol::is_rtp((void*) in.data_ptr())) {
-			this->process_rtp_data(in);
-		} else if(in.length() >= sizeof(protocol::rtcp_header) && protocol::is_rtcp((void*) in.data_ptr()))
-			this->process_rtcp_data(in);
-		else {
-			LOG_ERROR(this->config->logger, "RTPStream::process_incoming_data", "Got invalid packet (Unknown type)!");
-			return;
-		}
-	}
+bool RTPStream::process_incoming_rtp_data(RTPPacket &packet) {
+    auto channel = this->find_channel_by_id(htonl(packet.buffer.data_ptr<protocol::rtp_header>()->ssrc), direction::incoming);
+    if(!channel)
+        return false;
+
+    if(packet.crypt_state == CryptState::ENCRYPTED) {
+        if(!this->srtp_in_ready) {
+            LOG_ERROR(this->config->logger, "RTPStream::process_incoming_rtp_data", "Got too early packet!");
+            return true;
+        }
+
+        auto buflen = packet.buffer.length();
+        srtp_err_status_t res = srtp_unprotect(this->srtp_in, (void*) packet.buffer.data_ptr(), (int*) &buflen);
+        if(res != srtp_err_status_ok) {
+            if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
+                /* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */
+                packet.crypt_state = CryptState::DECRYPT_FAILED;
+                LOG_ERROR(this->config->logger, "RTPStream::process_incoming_rtp_data", "Failed to unprotect  RTP packet. Error %i (len=%i)", buflen, packet.buffer.length());
+                return true;
+            }
+        }
+        packet.buffer = packet.buffer.view(0, buflen);
+        packet.crypt_state = CryptState::DECRYPTED_VERIFIED;
+    } else if(packet.crypt_state != CryptState::DECRYPTED_VERIFIED) {
+        return true;
+    }
+    this->process_rtp_data(channel, packet.buffer);
+    return true;
+}
+
+bool RTPStream::process_incoming_rtcp_data(RTCPPacket &packet) {
+    auto channel = this->find_channel_by_id(htonl(packet.buffer.data_ptr<protocol::rtcp_header>()->ssrc), direction::incoming);
+    if(!channel)
+        return false;
+
+    if(packet.crypt_state == CryptState::ENCRYPTED) {
+        if(!this->srtp_in_ready) {
+            LOG_ERROR(this->config->logger, "RTPStream::process_incoming_rtcp_data", "Got too early packet!");
+            return true;
+        }
+
+        auto buflen = packet.buffer.length();
+        srtp_err_status_t res = srtp_unprotect_rtcp(this->srtp_in, (void*) packet.buffer.data_ptr(), (int*) &buflen);
+        if(res != srtp_err_status_ok) {
+            if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
+                /* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */
+                packet.crypt_state = CryptState::DECRYPT_FAILED;
+                LOG_ERROR(this->config->logger, "RTPStream::process_incoming_rtcp_data", "Failed to unprotect  RTCP packet. Error %i (len=%i --> %i)", buflen, packet.buffer.length(), buflen);
+                return true;
+            }
+        }
+        packet.buffer = packet.buffer.view(0, buflen);
+        packet.crypt_state = CryptState::DECRYPTED_VERIFIED;
+    } else if(packet.crypt_state != CryptState::DECRYPTED_VERIFIED) {
+        return true;
+    }
+    this->process_rtcp_data(channel, packet.buffer);
+    return true;
+}
+
+bool RTPStream::process_incoming_dtls_data(const pipes::buffer_view &) {
+    return false;
 }
 
 //#define ENABLE_PROTOCOL_LOGGING
-void RTPStream::process_rtp_data(const pipes::buffer_view&in) {
-	if(!this->srtp_in_ready) {
-		LOG_ERROR(this->config->logger, "RTPStream::process_rtp_data", "Got too early packet!");
-		return;
-	}
-
-	auto header = (protocol::rtp_header*) in.data_ptr();
-	int buflen = in.length();
-	srtp_err_status_t res = srtp_unprotect(this->srtp_in, (void*) in.data_ptr(), &buflen);
-	if(res != srtp_err_status_ok) {
-		if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
-			/* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */
-			guint32 timestamp = ntohl(header->timestamp);
-			guint16 seq = ntohs(header->seq_number);
-			LOG_ERROR(this->config->logger, "RTPStream::process_rtp_data", "Failed to unprotect rtp packet. Error: %i (len=%i --> %i ts=%u, seq=%i)", res, in.length(), buflen, timestamp, seq);
-			return;
-		}
-	}
+void RTPStream::process_rtp_data(const shared_ptr<Channel>& channel, const pipes::buffer_view&in) {
+    auto header = (protocol::rtp_header*) in.data_ptr();
 
 #ifdef ENABLE_PROTOCOL_LOGGING
 	LOG_VERBOSE(this->config->logger, "RTPStream::process_rtp_data", "incoming %i --> %i decrypted bytes. Type %i Version %i SSRC: %u => %i Seq: %u Pad: %u Ext: %u Ver: %u Mark: %u Count: %u", in.length(), buflen, (unsigned int) header->type, (unsigned int) header->version, be32toh(header->ssrc), (unsigned int) header->csrccount, ntohs(header->seq_number), (int) header->padding, (int) header->extension, (int) header->version, (int) header->markerbit, (int) header->csrccount);
@@ -676,22 +647,10 @@ void RTPStream::process_rtp_data(const pipes::buffer_view&in) {
 #endif
 
 	auto payload_offset = protocol::rtp_payload_offset(in);
-	if(payload_offset > buflen); //FIXME break here
-
-	shared_ptr<Channel> channel;
-	{
-		auto org_ssrc = be32toh(header->ssrc);
-		lock_guard<mutex> channel_lock(this->channel_lock);
-		for(const auto& ch : this->remote_channels) {
-			if(ch->ssrc == org_ssrc) {
-				channel = ch;
-				break;
-			}
-		}
-	}
-	if(!channel) {
-		LOG_VERBOSE(this->config->logger, "RTPStream::process_rtp_data", "Got ssrc for an unknown channel (%u:%u)", be32toh(header->ssrc), (int) header->type);
-		return;
+	if(payload_offset < 0 || payload_offset >= in.length()) {
+	    //TODo: Evalulate if it might not only contain header extensions and if this would be valid according to the RFC XXXX
+	    LOG_ERROR(this->config->logger, "RTPStream::process_rtp_data", "Received packet which contains no payload data. Dropping packet.");
+	    return;
 	}
 
 	if(!channel->codec) {
@@ -716,7 +675,7 @@ void RTPStream::process_rtp_data(const pipes::buffer_view&in) {
 
 	channel->timestamp_last_receive = ntohl(header->timestamp);
 	if(this->incoming_data_handler)
-		this->incoming_data_handler(channel, in.view(0, buflen), payload_offset);
+		this->incoming_data_handler(channel, in, payload_offset);
 }
 
 bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::buffer_view &extensions_and_payload, uint32_t timestamp, bool flag_extension, int marker_bit) {
@@ -766,25 +725,13 @@ bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::bu
 	LOG_ERROR(this->config->logger, "RTPStream::process_srtp_data", "Protect succeeed %i (len=%i --> %i | len_org=%i)", res, buffer.length(), buflen, org_buflen);
 #endif
 
-	if(this->_stream_id > 0)
-		this->send_data(buffer.view(0, buflen));
-	else
-		this->send_data_merged(buffer.view(0, buflen), false);
+	this->send_data(buffer.view(0, buflen), false);
+	//FIXME: send to nice
 	return true;
 }
 
-void RTPStream::process_rtcp_data(const pipes::buffer_view& in) {
+void RTPStream::process_rtcp_data(const shared_ptr<Channel>& channel, const pipes::buffer_view& in) {
 	auto header = (protocol::rtcp_header*) in.data_ptr();
-
-	auto buflen = in.length();
-	srtp_err_status_t res = srtp_unprotect_rtcp(this->srtp_in, (void*) in.data_ptr(), (int*) &buflen);
-	if(res != srtp_err_status_ok) {
-		if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
-			/* Only print the error if it's not a 'replay fail' or 'replay old' (which is probably just the result of us NACKing a packet) */
-			LOG_ERROR(this->config->logger, "RTPStream::process_rtcp_data", "Failed to unprotect  RTCP packet. Error %i (len=%i --> %i)", buflen, in.length(), buflen);
-			return;
-		}
-	}
 
 	if(header->type == 200) { /* sender report */
 		//https://www4.cs.fau.de/Projects/JRTP/pmt/node83.html
@@ -838,29 +785,6 @@ void RTPStream::process_rtcp_data(const pipes::buffer_view& in) {
 			);
 		}
 	} else {
-		LOG_DEBUG(this->config->logger, "RTPStream::process_rtcp_data", "Got RTCP packet of type %i and length %i (buffer: %i)", (int) header->type, (int) ntohs(header->length), buflen - sizeof(protocol::rtcp_header));
-	}
-}
-
-void RTPStream::on_nice_ready() {
-	this->resend_buffer(true);
-
-	if(this->dtls) {
-		LOG_DEBUG(this->config->logger, "RTPStream::on_nice_ready", "Nice stream has been initialized successfully. Initializing DTLS as %s", this->role == Role::Client ? "client" : "server");
-
-		string error;
-		if(!this->dtls->initialize(error, this->dtls_certificate, pipes::DTLS_v1_2, this->role == Role::Client ? pipes::SSL::CLIENT : pipes::SSL::SERVER, [](SSL_CTX* ctx) {
-			SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32"); //Required for rt(c)p
-			return true;
-		})) {
-			LOG_ERROR(this->config->logger, "RTPStream::on_nice_ready", "Failed to initialize DTLS (%s)", error.c_str());
-			return;
-		}
-
-		if(this->role == Role::Client) {
-			if(!this->dtls->do_handshake()) {
-				LOG_ERROR(this->config->logger, "RTPStream::on_nice_ready", "Failed to process dtls handshake!");
-			}
-		}
+		LOG_DEBUG(this->config->logger, "RTPStream::process_rtcp_data", "Got RTCP packet of type %i and length %i (buffer: %i)", (int) header->type, (int) ntohs(header->length), in.length() - sizeof(protocol::rtcp_header));
 	}
 }

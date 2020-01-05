@@ -9,10 +9,10 @@
 #include "Stream.h"
 
 namespace rtc {
-	class MergedStream;
 	class ApplicationStream;
 	class AudioStream;
 	class VideoStream;
+	class DTLSPipe;
 
 	struct IceCandidate {
 		IceCandidate(std::string candidate, std::string sdpMid, int sdpMLineIndex)
@@ -23,7 +23,7 @@ namespace rtc {
 	};
 	class PeerConnection {
 			friend class Stream;
-			friend class MergedStream;
+			friend class DTLSPipe;
 		public:
 			struct Config {
 				std::shared_ptr<pipes::Logger> logger;
@@ -46,10 +46,9 @@ namespace rtc {
 
 			typedef std::function<void(const IceCandidate& /* candidate */, bool /* last candidate */)> cb_ice_candidate;
 			typedef std::function<void(ConnectionComponent /* component */, const std::string& /* reason */)> cb_setup_fail;
-
 			typedef std::function<void(const std::shared_ptr<Stream>& /* stream */)> cb_new_stream;
 
-			explicit PeerConnection(const std::shared_ptr<Config>& /* config */);
+			explicit PeerConnection(std::shared_ptr<Config>  /* config */);
 			virtual ~PeerConnection();
 
 			std::shared_ptr<Config> configuration() { return this->config; }
@@ -58,40 +57,40 @@ namespace rtc {
 
 			//TODO vice versa (we create a offer and parse the answer?)
 			bool apply_offer(std::string& /* error */, const std::string& /* offer */);
-			int apply_ice_candidates(const std::deque<std::shared_ptr<IceCandidate>>& /* candidates */);
-			bool execute_negotiation();
-
-			cb_ice_candidate callback_ice_candidate;
-
 			std::string generate_answer(bool /* candidates */);
 
+            int apply_ice_candidates(const std::deque<std::shared_ptr<IceCandidate>>& /* candidates */);
+            bool execute_negotiation();
+
+            cb_ice_candidate callback_ice_candidate;
 			cb_setup_fail callback_setup_fail;
 			cb_new_stream callback_new_stream;
 
-			std::deque<std::shared_ptr<Stream>> available_streams(); /* only valid result after apply_offer(...) */
+            [[nodiscard]] inline std::vector<std::shared_ptr<Stream>> available_streams() {
+			    std::lock_guard lock{this->stream_lock};
+			    return this->streams;
+			}
 
 		private:
 			std::shared_ptr<Config> config;
 
-			std::unique_ptr<NiceWrapper> nice;
+			std::shared_ptr<NiceWrapper> nice;
 
-			std::deque<std::shared_ptr<Stream>> sdp_media_lines;
-			inline int sdp_mline_index(const std::shared_ptr<Stream>& stream) {
-				int index = 0;
-				for(const auto& entry : sdp_media_lines)
-					if(entry == stream) return index;
-					else index++;
-				return -1;
-			}
+			std::shared_mutex stream_lock{};
+			std::vector<std::shared_ptr<Stream>> streams{}; /* streams in order with the media line indexes */
+			std::vector<std::shared_ptr<DTLSPipe>> dtls_streams{};
 
-			bool create_application_stream(std::string& error);
-			bool create_audio_stream(std::string& error);
-			bool create_video_stream(std::string& error);
+            inline int sdp_mline_index(const std::shared_ptr<Stream>& stream) {
+                int index = 0;
+                for(const auto& entry : this->streams)
+                    if(entry == stream) return index;
+                    else index++;
+                return -1;
+            }
 
-			std::shared_mutex stream_lock; /* first lock stream -> than this general thing */
-			std::unique_ptr<MergedStream> merged_stream;
-			std::shared_ptr<ApplicationStream> stream_application;
-			std::shared_ptr<AudioStream> stream_audio;
-			std::shared_ptr<VideoStream> stream_video;
+            std::shared_ptr<DTLSPipe> find_dts_pipe(NiceStreamId /* stream */);
+            std::vector<std::shared_ptr<Stream>> find_streams_from_nice_stream(NiceStreamId /* stream */);
+			void handle_nice_data(NiceStreamId /* stream */, const pipes::buffer_view& /* data */);
+            void handle_dtls_data(NiceStreamId /* stream */, const pipes::buffer_view& /* data */);
 	};
 }

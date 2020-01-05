@@ -54,68 +54,38 @@ void DataChannel::close() {
 	this->owner->close_datachannel(this);
 }
 
-ApplicationStream::ApplicationStream(PeerConnection* owner, rtc::StreamId id, const shared_ptr<rtc::ApplicationStream::Configuration> &config) : Stream(owner, id), config(config) { }
+ApplicationStream::ApplicationStream(PeerConnection* owner, rtc::NiceStreamId id, const shared_ptr<rtc::ApplicationStream::Configuration> &config) : Stream(owner, id), config(config) { }
 ApplicationStream::~ApplicationStream() {
 	string error;
 	this->reset(error);
 }
 
 bool ApplicationStream::initialize(std::string &error) {
-	if(this->_stream_id > 0) {
-		this->dtls = make_unique<pipes::TLS>();
-		this->dtls->direct_process(pipes::PROCESS_DIRECTION_IN, true);
-		this->dtls->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
-		this->dtls->logger(this->config->logger);
+    this->sctp = make_unique<pipes::SCTP>(this->config->local_port);
+    this->sctp->direct_process(pipes::PROCESS_DIRECTION_IN, true);
+    this->sctp->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
+    this->sctp->logger(this->config->logger);
 
-		this->dtls->callback_data([&](const pipes::buffer_view& data) {
-			LOG_VERBOSE(this->config->logger, "ApplicationStream::sctp", "incoming %i bytes", data.length());
-			this->sctp->process_incoming_data(data);
-		});
-		this->dtls->callback_write([&](const pipes::buffer_view& data) {
-			LOG_VERBOSE(this->config->logger, "ApplicationStream::dtls", "outgoing %i bytes", data.length());
-			this->send_data(data);
-		});
-		this->dtls->callback_error([&](int code, const std::string& error) {
-			LOG_ERROR(this->config->logger, "ApplicationStream::dtls", "Got error (%i): %s", code, error.c_str());
-		});
-		this->dtls->callback_initialized = [&](){
-			this->on_dtls_initialized(this->dtls);
-		};
+    this->sctp->callback_notification = [&](union sctp_notification* event) { this->handle_sctp_event(event); };
+    this->sctp->callback_data([&](const pipes::SCTPMessage& message) { this->handle_sctp_message(message); });
 
-		this->dtls_certificate = pipes::TLSCertificate::generate("DataPipes", 365);
-	}
+    this->sctp->callback_error([&](int code, const std::string& error) {
+        LOG_ERROR(this->config->logger, "ApplicationStream::sctp", "Got error (%i): %s", code, error.c_str());
+    });
+    this->sctp->callback_write([&](const pipes::buffer_view& data) {
+        LOG_VERBOSE(this->config->logger, "ApplicationStream::sctp", "outgoing %i bytes", data.length());
+        this->send_data(data, true);
+    });
 
-	{
-		this->sctp = make_unique<pipes::SCTP>(this->config->local_port);
-		this->sctp->direct_process(pipes::PROCESS_DIRECTION_IN, true);
-		this->sctp->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
-		this->sctp->logger(this->config->logger);
-
-		this->sctp->callback_notification = [&](union sctp_notification* event) { this->handle_sctp_event(event); };
-		this->sctp->callback_data([&](const pipes::SCTPMessage& message) { this->handle_sctp_message(message); });
-
-		this->sctp->callback_error([&](int code, const std::string& error) {
-			LOG_ERROR(this->config->logger, "ApplicationStream::sctp", "Got error (%i): %s", code, error.c_str());
-		});
-		this->sctp->callback_write([&](const pipes::buffer_view& data) {
-			LOG_VERBOSE(this->config->logger, "ApplicationStream::sctp", "outgoing %i bytes", data.length());
-			if(this->dtls)
-				this->dtls->send(data);
-			else {
-				this->send_data_merged(data, true);
-			}
-		});
-
-		if(!this->sctp->initialize(error)) {
-			error = "Failed to initialize sctp (" + error + ")";
-			return false;
-		}
-	}
+    if(!this->sctp->initialize(error)) {
+        error = "Failed to initialize sctp (" + error + ")";
+        return false;
+    }
 
 	return true;
 }
 
-void ApplicationStream::on_dtls_initialized(const std::unique_ptr<pipes::TLS> &handle) {
+void ApplicationStream::on_dtls_initialized(const std::shared_ptr<DTLSPipe>&handle) {
 	LOG_DEBUG(this->config->logger, "ApplicationStream::dtls", "Initialized! Starting SCTP connect");
 	if(!this->sctp->connect()) {
 		LOG_ERROR(this->config->logger, "ApplicationStream::sctp", "Failed to connect");
@@ -126,16 +96,6 @@ void ApplicationStream::on_dtls_initialized(const std::unique_ptr<pipes::TLS> &h
 }
 
 bool ApplicationStream::apply_sdp(const nlohmann::json &, const nlohmann::json &media_entry) {
-	{
-		TEST_AV_TYPE(media_entry, "setup", is_string, return false, "ApplicationStream::apply_sdp", "Entry contains invalid/missing setup type");
-		string setup_type = media_entry["setup"];
-		LOG_VERBOSE(this->config->logger, "ApplicationStream::apply_offer", "Stream setup type: %s", setup_type.c_str());
-		if(setup_type == "active")
-			this->role = Server;
-		else if(setup_type == "passive")
-			this->role = Client;
-	}
-
 	{
 		TEST_AV_TYPE(media_entry, "mid", is_string, return false, "ApplicationStream::apply_sdp", "Entry contains invalid/missing id");
 		this->mid = media_entry["mid"];
@@ -152,7 +112,8 @@ bool ApplicationStream::apply_sdp(const nlohmann::json &, const nlohmann::json &
 			} else
 				LOG_DEBUG(this->config->logger, "ApplicationStream::apply_sdp", "Ignoring payload %s", payload.c_str());
 			this->external_sctp_port = false;
-		} else if(media_entry.count("sctp-port") > 0) {
+		}
+		if(media_entry.count("sctp-port") > 0) {
 			this->external_sctp_port = true;
 			TEST_AV_TYPE(media_entry, "sctp-port", is_number, return false, "ApplicationStream::apply_sdp", "Invalid port!");
 			sctp_port = media_entry["sctp-port"];
@@ -164,254 +125,32 @@ bool ApplicationStream::apply_sdp(const nlohmann::json &, const nlohmann::json &
 	return true;
 }
 
-/*
- {
-    "groups": [
-        {
-            "mids": "audio data",
-            "type": "BUNDLE"
-        }
-    ],
-    "media": [
-        {
-            "connection": {
-                "ip": "0.0.0.0",
-                "version": 4
-            },
-            "direction": "recvonly",
-            "ext": [
-                {
-                    "uri": "urn:ietf:params:rtp-hdrext:ssrc-audio-level",
-                    "value": 1
-                }
-            ],
-            "fingerprint": {
-                "hash": "30:22:19:90:D1:68:3B:61:3C:8B:43:05:A9:6A:5C:EB:FF:91:09:A8:0C:12:A4:2E:60:8C:20:D9:19:D2:EC:B6",
-                "type": "sha-256"
-            },
-            "fmtp": [
-                {
-                    "config": "minptime=10;useinbandfec=1",
-                    "payload": 111
-                }
-            ],
-            "iceOptions": "trickle",
-            "icePwd": "rttC8j09TxW7O/KtpUp+oV18",
-            "iceUfrag": "LAcb",
-            "mid": "audio",
-            "payloads": "111 103 104 9 0 8 106 105 13 110 112 113 126",
-            "port": 9,
-            "protocol": "UDP/TLS/RTP/SAVPF",
-            "rtcp": {
-                "address": "0.0.0.0",
-                "ipVer": 4,
-                "netType": "IN",
-                "port": 9
-            },
-            "rtcpFb": [
-                {
-                    "payload": "111",
-                    "type": "transport-cc"
-                }
-            ],
-            "rtcpMux": "rtcp-mux",
-            "rtp": [
-                {
-                    "codec": "opus",
-                    "encoding": "2",
-                    "payload": 111,
-                    "rate": 48000
-                },
-                {
-                    "codec": "ISAC",
-                    "payload": 103,
-                    "rate": 16000
-                },
-                {
-                    "codec": "ISAC",
-                    "payload": 104,
-                    "rate": 32000
-                },
-                {
-                    "codec": "G722",
-                    "payload": 9,
-                    "rate": 8000
-                },
-                {
-                    "codec": "PCMU",
-                    "payload": 0,
-                    "rate": 8000
-                },
-                {
-                    "codec": "PCMA",
-                    "payload": 8,
-                    "rate": 8000
-                },
-                {
-                    "codec": "CN",
-                    "payload": 106,
-                    "rate": 32000
-                },
-                {
-                    "codec": "CN",
-                    "payload": 105,
-                    "rate": 16000
-                },
-                {
-                    "codec": "CN",
-                    "payload": 13,
-                    "rate": 8000
-                },
-                {
-                    "codec": "telephone-event",
-                    "payload": 110,
-                    "rate": 48000
-                },
-                {
-                    "codec": "telephone-event",
-                    "payload": 112,
-                    "rate": 32000
-                },
-                {
-                    "codec": "telephone-event",
-                    "payload": 113,
-                    "rate": 16000
-                },
-                {
-                    "codec": "telephone-event",
-                    "payload": 126,
-                    "rate": 8000
-                }
-            ],
-            "setup": "actpass",
-            "type": "audio"
-        },
-        {
-            "connection": {
-                "ip": "0.0.0.0",
-                "version": 4
-            },
-            "fingerprint": {
-                "hash": "30:22:19:90:D1:68:3B:61:3C:8B:43:05:A9:6A:5C:EB:FF:91:09:A8:0C:12:A4:2E:60:8C:20:D9:19:D2:EC:B6",
-                "type": "sha-256"
-            },
-            "fmtp": [],
-            "iceOptions": "trickle",
-            "icePwd": "rttC8j09TxW7O/KtpUp+oV18",
-            "iceUfrag": "LAcb",
-            "mid": "data",
-            "payloads": "5000", //This is may send as sctp-port
-            "sctp-port": 5000
-
-            "port": 9,
-            "protocol": "DTLS/SCTP",
-            "rtp": [],
-            "sctpmap": {
-                "app": "webrtc-datachannel",
-                "maxMessageSize": 1024,
-                "sctpmapNumber": 5000
-            },
-            "setup": "actpass",
-            "type": "application"
-        }
-    ],
-    "msidSemantic": {
-        "token": "WMS"
-    },
-    "name": "-",
-    "origin": {
-        "address": "127.0.0.1",
-        "ipVer": 4,
-        "netType": "IN",
-        "sessionId": 8133322930326912268,
-        "sessionVersion": 2,
-        "username": "-"
-    },
-    "timing": {
-        "start": 0,
-        "stop": 0
-    },
-    "version": 0
-}
-
-v=0\r\no=- 8133322930326912268 2 IN IP4 127.0.0.1
-s=-
-t=0 0
-a=group:BUNDLE audio data
-a=msid-semantic: WMS
-m=audio 9 UDP/TLS/RTP/SAVPF 111 103 104 9 0 8 106 105 13 110 112 113 126
-c=IN IP4 0.0.0.0
-a=rtcp:9 IN IP4 0.0.0.0
-a=ice-ufrag:LAcb
-a=ice-pwd:rttC8j09TxW7O/KtpUp+oV18
-a=ice-options:trickle
-a=fingerprint:sha-256 30:22:19:90:D1:68:3B:61:3C:8B:43:05:A9:6A:5C:EB:FF:91:09:A8:0C:12:A4:2E:60:8C:20:D9:19:D2:EC:B6
-a=setup:actpass
-a=mid:audio
-a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level
-a=recvonly
-a=rtcp-mux
-a=rtpmap:111 opus/48000/2
-a=rtcp-fb:111 transport-cc
-a=fmtp:111 minptime=10;useinbandfec=1
-a=rtpmap:103 ISAC/16000
-a=rtpmap:104 ISAC/32000
-a=rtpmap:9 G722/8000
-a=rtpmap:0 PCMU/8000
-a=rtpmap:8 PCMA/8000
-a=rtpmap:106 CN/32000
-a=rtpmap:105 CN/16000
-a=rtpmap:13 CN/8000
-a=rtpmap:110 telephone-event/48000
-a=rtpmap:112 telephone-event/32000
-a=rtpmap:113 telephone-event/16000
-a=rtpmap:126 telephone-event/8000
-m=application 9 DTLS/SCTP 5000
-c=IN IP4 0.0.0.0
-a=ice-ufrag:LAcb
-a=ice-pwd:rttC8j09TxW7O/KtpUp+oV18
-a=ice-options:trickle
-a=fingerprint:sha-256 30:22:19:90:D1:68:3B:61:3C:8B:43:05:A9:6A:5C:EB:FF:91:09:A8:0C:12:A4:2E:60:8C:20:D9:19:D2:EC:B6
-a=setup:actpass
-a=mid:data
-a=sctpmap:5000 webrtc-datachannel 1024
-
- */
-
 std::string ApplicationStream::generate_sdp() {
-	ostringstream sdp;
+	std::ostringstream sdp;
 	sdp << "m=application 9 DTLS/SCTP " + to_string(this->sctp->local_port()) + "\r\n"; //The 9 is the port? https://tools.ietf.org/html/rfc4566#page-22
 	sdp << "c=IN IP4 0.0.0.0\r\n";
 
-	if(this->dtls) {
-		if(this->dtls_certificate)
-			sdp << "a=fingerprint:sha-256 " << this->dtls_certificate->getFingerprint() << "\r\n";
-		else
-			sdp << "a=fingerprint:sha-256 " << dtls->getCertificate()->getFingerprint() << "\r\n";
-	}
-	sdp << "a=setup:" << (this->role == Client ? "active" : "passive") << "\r\n";
 	sdp << "a=mid:" << this->mid << "\r\n";
-	sdp << "a=sctpmap:" << to_string(this->sctp->local_port()) << " webrtc-datachannel 1024\r\n";
 
-	if(this->external_sctp_port)
-		sdp << "a=sctp-port:" << this->sctp->local_port() << "\r\n";
+    sdp << "a=sctpmap:" << to_string(this->sctp->local_port()) << " webrtc-datachannel 1024\r\n";
+    //sdp << "a=sctp-port:" << this->sctp->local_port() << "\r\n";
 
 	return sdp.str();
 }
 
 bool ApplicationStream::reset(std::string &) {
 	if(this->sctp) this->sctp->finalize();
-	if(this->dtls) this->dtls->finalize();
 
 	return true;
 }
 
-void ApplicationStream::process_incoming_data(const pipes::buffer_view &data) {
-	if(this->dtls)
-		this->dtls->process_incoming_data(data);
-	else
-		this->sctp->process_incoming_data(data);
+bool ApplicationStream::process_incoming_dtls_data(const pipes::buffer_view &data) {
+    this->sctp->process_incoming_data(data);
+    return true;
 }
+
+bool ApplicationStream::process_incoming_rtp_data(RTPPacket &) { return false; }
+bool ApplicationStream::process_incoming_rtcp_data(RTCPPacket &) { return false; }
 
 void ApplicationStream::send_sctp(const pipes::SCTPMessage &message) {
 	this->sctp->send(message);
@@ -626,29 +365,4 @@ void ApplicationStream::close_datachannel(rtc::DataChannel *channel) {
 		channel->callback_close();
 
 	this->active_channels.erase(channel->id()); //Pointer could getting invalid after this
-
-}
-
-void ApplicationStream::on_nice_ready() {
-	if(this->dtls) {
-		LOG_DEBUG(this->config->logger, "ApplicationStream::on_nice_ready", "Nice stream has been initialized successfully. Initializing DTLS as %s", this->role == Role::Client ? "client" : "server");
-
-		string error;
-		if(!this->dtls->initialize(error, this->dtls_certificate, pipes::DTLS_v1_2,this->role == Role::Client ? pipes::SSL::CLIENT : pipes::SSL::SERVER, [](SSL_CTX* ctx) {
-			SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AES128_CM_SHA1_80:SRTP_AES128_CM_SHA1_32"); //Required for rt(c)p
-			return true;
-		})) {
-			LOG_ERROR(this->config->logger, "ApplicationStream::on_nice_ready", "Failed to initialize DTLS (%s)", error.c_str());
-			return;
-		}
-
-
-
-		if(this->role == Role::Client) {
-			if(!this->dtls->do_handshake()) {
-				LOG_ERROR(this->config->logger, "ApplicationStream::on_nice_ready", "Failed to process dtls handshake!");
-			}
-		}
-	}
-	this->resend_buffer(true);
 }

@@ -3,7 +3,9 @@ let button_connect = $("#connect");
 const video_source: HTMLCanvasElement = document.getElementById("video_input") as HTMLCanvasElement;
 let video_source_stream: MediaStream;
 
+let should_video_2 = false;
 const video_target: HTMLVideoElement = document.getElementById("video_output") as HTMLVideoElement;
+const video_target2: HTMLVideoElement = document.getElementById("video_output2") as HTMLVideoElement;
 
 interface HTMLCanvasElement {
     captureStream(framed?: number) : MediaStream;
@@ -70,28 +72,6 @@ class PeerConnection {
             console.log("[RTC][ICE] Ice gathering state changed %s", this.peer.iceGatheringState);
         };
 
-        if(false)
-            this.peer.ontrack = event => {
-                console.log("[RTC] Got new track %o (%o | %o) | %o (Streams: %o)", event.track.id, event.track.label, event.track, event.track.kind, event.streams);
-                video_target.srcObject = event.streams[0];
-
-                event.track.onended = e => {
-                    console.log("[RTC] Track %o ended (%o)", event.track.id, e.error);
-                };
-
-                event.track.onmute = e => {
-                    console.log("[RTC] Track %o muted", event.track.id);
-                };
-
-                event.track.onunmute = e => {
-                    console.log("[RTC] Track %o unmuted", event.track.id);
-                };
-
-                event.track.onoverconstrained = e => {
-                    console.log("[RTC] Track %o onoverconstrained", event.track.id);
-                }
-            };
-
         this.peer.onicecandidateerror = event => {
             console.log("[RTC][ICE] Failed to setup candidate %s (%s) (%o | %s)", event.hostCandidate, event.url, event.errorCode, event.errorText);
         };
@@ -109,31 +89,63 @@ class PeerConnection {
                 }));
         };
 
-        this.peer.onaddstream = event => {
-            console.log("[RTC] Got a new stream %o (%o)", event.stream.id, event);
-            video_target.srcObject = event.stream;
+        if(true) {
+            this.peer.ontrack = event => {
+                console.log("[RTC] Got new track %s (%s). Track: %o", event.track.label, event.track.kind, event.track);
 
-            event.stream.onactive = e => {
-                console.log("[RTC][STREAM] Stream %o got active", event.stream.id);
+                const stream = new MediaStream();
+                stream.addTrack(event.track);
+                video_target.srcObject = stream;
+
+                event.track.onended = e => {
+                    console.log("[RTC] Track %o ended", event.track.label);
+                };
+
+                event.track.onmute = e => {
+                    console.log("[RTC] Track %o muted", event.track.id);
+                };
+
+                event.track.onunmute = e => {
+                    console.log("[RTC] Track %o unmuted", event.track.id);
+                };
+
+                event.track.onisolationchange = e => {
+                    console.log("[RTC] Track %o onisolationchange", event.track.id);
+                }
             };
+        }
 
-            event.stream.oninactive = e => {
-                console.log("[RTC][STREAM] Stream %o got inactive", event.stream.id);
+        if(false) {
+            this.peer.onaddstream = event => {
+                console.log("[RTC] Got a new stream %o (%o)", event.stream.id, event);
+                if(!should_video_2) {
+                    video_target.srcObject = event.stream;
+                    should_video_2 = !!video_target2;
+                } else
+                    video_target2.srcObject = event.stream;
+
+                event.stream.onactive = e => {
+                    console.log("[RTC][STREAM] Stream %o got active", event.stream.id);
+                };
+
+                event.stream.oninactive = e => {
+                    console.log("[RTC][STREAM] Stream %o got inactive", event.stream.id);
+                };
+
+                event.stream.onaddtrack = e => {
+                    console.log("[RTC][STREAM] Stream %o got a new track %o", event.stream.id, e.track.id);
+                };
+
+                event.stream.onremovetrack = e => {
+                    console.log("[RTC][STREAM] Stream %o removed the track %o", event.stream.id, e.track.id);
+                }
+
+                /* TODO pipe here something */
             };
-
-            event.stream.onaddtrack = e => {
-                console.log("[RTC][STREAM] Stream %o got a new track %o", event.stream.id, e.track.id);
+            this.peer.onremovestream = event => {
+                console.log("[RTC] Removed a stream %o (%o)", event.stream.id, event);
             };
-
-            event.stream.onremovetrack = e => {
-                console.log("[RTC][STREAM] Stream %o removed the track %o", event.stream.id, e.track.id);
-            }
-
-            /* TODO pipe here something */
-        };
-        this.peer.onremovestream = event => {
-            console.log("[RTC] Removed a stream %o (%o)", event.stream.id, event);
-        };
+        }
 
         this.peer.ondatachannel = event => {
             console.log("[RTC] Got new channel (Label: %s Id: %o)", event.channel.label, event.channel.id);
@@ -154,9 +166,13 @@ class PeerConnection {
             video_source_stream = video_source.captureStream(25);
             console.log("Created source stream: %o", video_source_stream);
             //video_target.srcObject = video_source_stream;
-            this.peer.addStream(video_source.captureStream(25));
+
+            const media_stream = new MediaStream();
+            //this.peer.addStream(video_source_stream);
+            this.peer.addTrack(video_source.captureStream(0).getVideoTracks()[0], media_stream);
+            //this.peer.addStream(video_source.captureStream(25));
         }
-        this.peer.addStream(video_source_stream);
+        //this.peer.addStream(video_source_stream);
 
         console.log("[RTC] Generating offer");
         this.peer.createOffer(sdpConstraints).then(sdp => {
@@ -201,6 +217,7 @@ function connect_peer() : Promise<PeerConnection> {
         let result = new PeerConnection();
         result.socket = new WebSocket("wss://192.168.40.130:1111");
 
+        should_video_2 = false;
         result.socket.onopen = event => {
             console.log("[WS] WebSocket connected!");
             result.initialized_peer();
