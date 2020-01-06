@@ -107,6 +107,7 @@ namespace rtc {
 			bool reset(std::string &string) override;
 
 			bool send_rtp_data(const std::shared_ptr<Channel>& /* channel */, const pipes::buffer_view& /* data */, uint32_t /* timestamp */, bool /* contains extension */ = false, int /* marker bit */ = -1);
+            bool send_rtcp_data(const std::shared_ptr<Channel>& /* channel */, const pipes::buffer_view& /* data */, protocol::rtcp_type /* packet type */, int /* format type (rc) */);
 			callback_data incoming_data_handler = nullptr;
 
 			std::deque<std::shared_ptr<codec::Codec>> find_codecs_by_name(const std::string& /* name */);

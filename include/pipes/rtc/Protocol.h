@@ -70,7 +70,8 @@ namespace rtc {
 
 			uint32_t ssrc;
 		};
-		static_assert(sizeof(rtcp_header) == 8, "invalid rtcp header size");
+        constexpr static auto rtcp_header_size = 8;
+		static_assert(sizeof(rtcp_header) == rtcp_header_size, "invalid rtcp header size");
 
 		//https://android.googlesource.com/platform/external/webrtc/+/bdc0b0d869e9a14bbfafcbb84e294a13383e6fa6/webrtc/modules/rtp_rtcp/source/rtcp_packet.cc
 		namespace rtcp {

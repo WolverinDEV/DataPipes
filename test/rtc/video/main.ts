@@ -168,11 +168,11 @@ class PeerConnection {
             //video_target.srcObject = video_source_stream;
 
             const media_stream = new MediaStream();
-            //this.peer.addStream(video_source_stream);
-            this.peer.addTrack(video_source.captureStream(0).getVideoTracks()[0], media_stream);
+            ////this.peer.addStream(video_source_stream);
+            //this.peer.addTrack(video_source.captureStream(0).getVideoTracks()[0], media_stream);
             //this.peer.addStream(video_source.captureStream(25));
         }
-        //this.peer.addStream(video_source_stream);
+        this.peer.addStream(video_source_stream);
 
         console.log("[RTC] Generating offer");
         this.peer.createOffer(sdpConstraints).then(sdp => {

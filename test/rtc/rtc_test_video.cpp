@@ -408,7 +408,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					}
 					 */
 					{
-						vpx->codec_dec_config.threads = 2;
+						vpx->codec_dec_config.threads = 1;
 						vpx->codec_dec_config.w = V_WIDTH;
 						vpx->codec_dec_config.h = V_HEIGHT;
 					}
@@ -416,9 +416,6 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					vpx->codec_interface = vpx_codec_vp8_dx();
 					vpx->err = vpx_codec_dec_init(&vpx->codec, vpx->codec_interface, &vpx->codec_dec_config, 0);
 					assert(vpx->err == VPX_CODEC_OK);
-
-					chrono::system_clock::time_point timestamp_base{chrono::system_clock::now()};
-					int frame_index = 0, flags = 0;
 				}
 
                 auto timestamp_base{chrono::system_clock::now()};
@@ -459,10 +456,10 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 						}
 
 					uint8_t vpx_header_length{1};
+                    int16_t picture_id{-1};
                     {
                         uint8_t header_flags{(uint8_t) buffer[payload_offset]};
                         uint8_t extended_bits{0};
-                        int16_t picture_id{-1};
                         if(header_flags & (0x01U << 7U)) {
                             extended_bits = buffer[payload_offset + vpx_header_length++];
                         }
@@ -484,9 +481,16 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 
 					vpx->err = vpx_codec_decode(&vpx->codec, (uint8_t*) &buffer[payload_offset + vpx_header_length], buffer.length() - payload_offset - vpx_header_length, nullptr, VPX_DL_GOOD_QUALITY);
 					cout << "Decode result: " << vpx->err << "/" << vpx_codec_err_to_string(vpx->err) << endl;
+					if(vpx->err) {
+					    uint32_t sli_payload[2];
+                        sli_payload[0] = htonl(channel->ssrc); //IDK what fits in here
+                        sli_payload[1] = (picture_id & 0b111111U) << 26U;
+
+					    vs->send_rtcp_data(channel, pipes::buffer_view{(char*) sli_payload, 8}, rtc::protocol::RTCP_PSFB, 2);
+					}
 				};
 
-#if true /* Create video generator */
+#if false /* Create video generator */
 				{
 					std::thread([weak_astream]{
 						vpx_codec_err_t err;

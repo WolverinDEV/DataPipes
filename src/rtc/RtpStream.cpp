@@ -726,8 +726,39 @@ bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::bu
 #endif
 
 	this->send_data(buffer.view(0, buflen), false);
-	//FIXME: send to nice
 	return true;
+}
+
+bool RTPStream::send_rtcp_data(const std::shared_ptr <Channel> &channel, const pipes::buffer_view &payload, protocol::rtcp_type pt, int rc) {
+    if(!this->srtp_out_ready) {
+        LOG_ERROR(this->config->logger, "RTPStream::send_rtp_data", "Srtp not ready yet!");
+        return false;
+    }
+
+    auto buffer_size = protocol::rtcp::rtcp_header::size + payload.length();
+    buffer_size += buffer_size % 4; //Align 32 bits
+
+    pipes::buffer buffer(buffer_size + SRTP_MAX_TRAILER_LEN + 4);
+    auto header = (protocol::rtcp_header*) buffer.data_ptr();
+    header->ssrc = htonl(channel->ssrc);
+    header->type = pt;
+    header->rc = rc;
+    header->padding = 0;
+    header->version = 2;
+    header->length = htonl(payload.length() + protocol::rtcp::rtcp_header::size);
+
+    auto buflen = buffer_size; //SRTP_MAX_TRAILER_LEN
+    srtp_err_status_t res = srtp_protect_rtcp(this->srtp_out, (void*) buffer.data_ptr(), (int*) &buflen);
+    if(res != srtp_err_status_ok) {
+        if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {
+            LOG_ERROR(this->config->logger, "RTPStream::process_rtp_data", "Failed to protect srtcp packet. Error: %i (len=%i --> %i)", res, buffer.length(), buflen);
+            return false;
+        }
+    }
+    assert(buffer.length() >= buflen);
+
+    this->send_data(buffer.view(0, buflen), false);
+    return true;
 }
 
 void RTPStream::process_rtcp_data(const shared_ptr<Channel>& channel, const pipes::buffer_view& in) {
