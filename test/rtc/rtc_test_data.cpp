@@ -275,7 +275,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 }
 
 int main() {
-	srand(chrono::system_clock::now().time_since_epoch().count());
+	srand(std::chrono::system_clock::now().time_since_epoch().count());
 	SSL_library_init();
 	OpenSSL_add_all_algorithms();
 

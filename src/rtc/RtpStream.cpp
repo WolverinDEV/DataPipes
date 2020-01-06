@@ -729,25 +729,87 @@ bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::bu
 	return true;
 }
 
-bool RTPStream::send_rtcp_data(const std::shared_ptr <Channel> &channel, const pipes::buffer_view &payload, protocol::rtcp_type pt, int rc) {
-    if(!this->srtp_out_ready) {
-        LOG_ERROR(this->config->logger, "RTPStream::send_rtp_data", "Srtp not ready yet!");
-        return false;
+#define DEFINE_GETTER_SETTER(name, type) \
+[[nodiscard]] inline type name() const { return this->_ ##name; } \
+inline void name(type value) { this->_ ##name = value; }
+
+#define DEFINE_GETTER_SETTER_VAR(name, type, var) \
+[[nodiscard]] inline type name() const { return this->var; } \
+inline void name(type value) { this->var = value; }
+
+#define PARSE_ERROR(message) \
+do {\
+    error = (message); \
+    return false; \
+} while(0)
+
+#define WRITE_ERROR(message) \
+do {\
+    error = (message); \
+    return -1; \
+} while(0)
+
+struct RTCPHeader {
+public:
+    static constexpr size_t header_byte_size = 4;
+
+    bool parse(const uint8_t* buffer, size_t max_bytes, std::string& error) {
+        if(max_bytes < header_byte_size) PARSE_ERROR("too little data");
+        if((buffer[0] >> 6U) != 2) PARSE_ERROR("invalid version");
+
+        this->_padding = (buffer[0] & 0x20) != 0;
+        this->_count_or_format = buffer[0] & 0x1FU;
+        this->_packet_type = (protocol::rtcp_type) buffer[1];
+        this->_payload_byte_size = ntohs(*(uint16_t*) &buffer[2]) * 4;
     }
 
-    auto buffer_size = protocol::rtcp::rtcp_header::size + payload.length();
-    buffer_size += buffer_size % 4; //Align 32 bits
+    ssize_t write(uint8_t* buffer, size_t max_bytes, std::string& error) {
+        if(max_bytes < header_byte_size) WRITE_ERROR("too little data");
+        buffer[0] = (2U << 6U) | ((this->_padding ? 1U : 0U) << 5U) | (this->_count_or_format & 0x1FU);
+        buffer[1] = this->_packet_type;
+        *(uint16_t*) &buffer[2] = htons((this->_payload_byte_size + 3) / 4);
+        return header_byte_size;
+    }
 
-    pipes::buffer buffer(buffer_size + SRTP_MAX_TRAILER_LEN + 4);
-    auto header = (protocol::rtcp_header*) buffer.data_ptr();
-    header->ssrc = htonl(channel->ssrc);
-    header->type = pt;
-    header->rc = rc;
-    header->padding = 0;
-    header->version = 2;
-    header->length = htonl(payload.length() + protocol::rtcp::rtcp_header::size);
+    DEFINE_GETTER_SETTER(packet_type, protocol::rtcp_type);
+    DEFINE_GETTER_SETTER(padding, bool);
+    DEFINE_GETTER_SETTER(payload_byte_size, uint32_t);
 
-    auto buflen = buffer_size; //SRTP_MAX_TRAILER_LEN
+    DEFINE_GETTER_SETTER_VAR(count, uint8_t, _count_or_format);
+    DEFINE_GETTER_SETTER_VAR(format, uint8_t, _count_or_format);
+private:
+    bool _padding{false};
+    protocol::rtcp_type _packet_type{0};
+    uint8_t _count_or_format{0};
+    uint32_t _payload_byte_size{0};
+};
+
+bool RTPStream::send_rtcp_data(const std::shared_ptr <Channel> &channel, const pipes::buffer_view &payload, protocol::rtcp_type pt, int rc) {
+    if(!this->srtp_out_ready) {
+        LOG_ERROR(this->config->logger, "RTPStream::send_rtcp_data", "Srtp not ready yet!");
+        return false;
+    }
+    std::string error{};
+
+    pipes::buffer buffer(protocol::rtcp::rtcp_header::size + payload.length() + SRTP_MAX_TRAILER_LEN + 4);
+
+    size_t buffer_offset{0};
+    {
+        RTCPHeader header{};
+        header.format(rc);
+        header.packet_type(pt);
+        header.payload_byte_size(payload.length());
+        if(auto written = header.write(buffer.data_ptr<uint8_t>() + buffer_offset, buffer.length() - buffer_offset, error); written < 0) {
+            LOG_ERROR(this->config->logger, "RTPStream::send_rtcp_data", "Failed to write header: %s", error.c_str());
+            return false;
+        } else {
+            buffer_offset += written;
+        }
+    }
+    memcpy(buffer.data_ptr<uint8_t>() + buffer_offset, payload.data_ptr(), payload.length());
+    buffer_offset += payload.length();
+
+    auto buflen = buffer_offset;
     srtp_err_status_t res = srtp_protect_rtcp(this->srtp_out, (void*) buffer.data_ptr(), (int*) &buflen);
     if(res != srtp_err_status_ok) {
         if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {

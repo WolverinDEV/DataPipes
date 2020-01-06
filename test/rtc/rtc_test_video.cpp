@@ -481,12 +481,13 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 
 					vpx->err = vpx_codec_decode(&vpx->codec, (uint8_t*) &buffer[payload_offset + vpx_header_length], buffer.length() - payload_offset - vpx_header_length, nullptr, VPX_DL_GOOD_QUALITY);
 					cout << "Decode result: " << vpx->err << "/" << vpx_codec_err_to_string(vpx->err) << endl;
-					if(vpx->err) {
-					    uint32_t sli_payload[2];
-                        sli_payload[0] = htonl(channel->ssrc); //IDK what fits in here
-                        sli_payload[1] = (picture_id & 0b111111U) << 26U;
+					if(vpx->err || true) {
+					    uint32_t sli_payload[3];
+                        sli_payload[0] = htonl(channel->ssrc); //SSRC of packet sender
+                        sli_payload[1] = htonl(channel->ssrc); //SSRC of media source
+                        sli_payload[2] = (picture_id & 0b111111U) << 26U;
 
-					    vs->send_rtcp_data(channel, pipes::buffer_view{(char*) sli_payload, 8}, rtc::protocol::RTCP_PSFB, 2);
+					    vs->send_rtcp_data(channel, pipes::buffer_view{(char*) sli_payload, 12}, rtc::protocol::RTCP_PSFB, 2);
 					}
 				};
 
