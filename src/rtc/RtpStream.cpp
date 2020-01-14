@@ -101,7 +101,9 @@ bool Codec::local_accepted() {
 bool UnknownCodec::write_sdp(std::ostringstream &os) {
 	if(!this->write_sdp_fmtp(os))
 		return false;
-	return this->write_sdp_rtpmap(os);
+    if(!this->write_sdp_rtpmap(os))
+        return false;
+	return this->write_local_parameters(os);
 }
 
 bool UnknownCodec::write_sdp_rtpmap(std::ostringstream &os) {
@@ -117,12 +119,19 @@ bool UnknownCodec::write_sdp_rtpmap(std::ostringstream &os) {
 
 bool UnknownCodec::write_sdp_fmtp(std::ostringstream &os) {
 	for(const auto& parameter : this->parameters)
-		os << "a=fmtp:" << (uint32_t) this->id << " " << parameter << endl;
+		os << "a=fmtp:" << (uint32_t) this->id << " " << parameter << "\n";
 	return true;
 }
 
+bool UnknownCodec::write_local_parameters(std::ostringstream &os) {
+    for(const auto& [key, values] : this->local_parameters)
+        for(const auto& value : values)
+            os << "a=" << key << ":" << (uint32_t) this->id << " " << value << "\n";
+    return true;
+}
+
 bool OpusCodec::write_sdp(std::ostringstream &os) {
-	os << "a=rtpmap:" << (uint32_t) this->id << " " << this->codec << "/" << this->rate << "/" << (uint32_t) this->encoding << endl;
+	os << "a=rtpmap:" << (uint32_t) this->id << " " << this->codec << "/" << this->rate << "/" << (uint32_t) this->encoding << "\n";
 	return this->write_sdp_fmtp(os);
 }
 
@@ -798,7 +807,7 @@ bool RTPStream::send_rtcp_data(const std::shared_ptr <Channel> &channel, const p
         RTCPHeader header{};
         header.format(rc);
         header.packet_type(pt);
-        header.payload_byte_size(payload.length());
+        header.payload_byte_size(payload.length()); //Plus 8 for the header
         if(auto written = header.write(buffer.data_ptr<uint8_t>() + buffer_offset, buffer.length() - buffer_offset, error); written < 0) {
             LOG_ERROR(this->config->logger, "RTPStream::send_rtcp_data", "Failed to write header: %s", error.c_str());
             return false;
@@ -810,6 +819,7 @@ bool RTPStream::send_rtcp_data(const std::shared_ptr <Channel> &channel, const p
     buffer_offset += payload.length();
 
     auto buflen = buffer_offset;
+    const auto data = buffer.data_ptr();
     srtp_err_status_t res = srtp_protect_rtcp(this->srtp_out, (void*) buffer.data_ptr(), (int*) &buflen);
     if(res != srtp_err_status_ok) {
         if(res != srtp_err_status_replay_fail && res != srtp_err_status_replay_old) {

@@ -270,7 +270,9 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 			jsonCandidate["msg"]["sdpMLineIndex"] = ice.sdpMLineIndex;
 
 			cout << "Sending ice candidate " << ice.candidate << " (" << ice.sdpMid << " | " << ice.sdpMLineIndex << "). Last: " << finished << endl;
-			//client->websocket->send({pipes::OpCode::TEXT, Json::writeString(client->json_writer, jsonCandidate)});
+            pipes::buffer buffer;
+            buffer += Json::writeString(client->json_writer, jsonCandidate);
+            client->websocket->send({pipes::OpCode::TEXT, buffer});
 		};
 
 		client->peer->callback_new_stream = [client](const shared_ptr<rtc::Stream>& stream) {
@@ -366,7 +368,9 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 									↵a=rtcp-fb:96 nack pli
 					 */
 
-                    vstream->register_local_channel("video_response_" + vstream->get_mid(), "video_response_normal", channel_codec);
+					assert(channel_codec);
+                    channel_codec->local_parameters["rtcp-fb"].push_back("ccm fir");
+                    //vstream->register_local_channel("video_response_" + vstream->get_mid(), "video_response_normal", channel_codec);
                     //vstream->register_local_channel("video_response_2" + vstream->get_mid(), "video_response_normal2", channel_codec);
 				}
 
@@ -457,6 +461,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 
 					uint8_t vpx_header_length{1};
                     int16_t picture_id{-1};
+
+                    static bool require_kf{false};
                     {
                         uint8_t header_flags{(uint8_t) buffer[payload_offset]};
                         uint8_t extended_bits{0};
@@ -477,18 +483,51 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
                         if(extended_bits & (0x01U << 5U) || extended_bits & (0x01U << 4U))
                             vpx_header_length++; //TID present or KEYIDX present
                         std::cout << std::bitset<8>(header_flags) << "|" << std::bitset<8>(extended_bits) << " Picture: " << picture_id << "\n";
+
+
+                        if(require_kf && (extended_bits & (1 << 5U)) == 0) {
+                            std::cout << "Require KF!\n";
+                            //goto send_fir;
+                        }
                     }
 
+                    static uint16_t last_decoded_picture_id{};
 					vpx->err = vpx_codec_decode(&vpx->codec, (uint8_t*) &buffer[payload_offset + vpx_header_length], buffer.length() - payload_offset - vpx_header_length, nullptr, VPX_DL_GOOD_QUALITY);
 					cout << "Decode result: " << vpx->err << "/" << vpx_codec_err_to_string(vpx->err) << endl;
-					if(vpx->err || true) {
-					    uint32_t sli_payload[3];
+					if(!vpx->err && picture_id >= 0)
+                        last_decoded_picture_id = picture_id;
+
+					if(vpx->err) {
+                        require_kf = true;
+					    send_fir:
+					    /*
+                        static constexpr uint32_t kUniqueIdentifier = 0x4C4E5446;  // 'L' 'N' 'T' 'F'.
+
+                        const auto decodability_flag{true};
+                        const auto last_received_delta = ((uint16_t) picture_id - last_decoded_picture_id) & 0x7FFF;
+					    //https://chromium.googlesource.com/external/webrtc/+/HEAD/modules/rtp_rtcp/source/rtcp_packet/loss_notification.cc#21
+					    uint32_t sli_payload[4];
                         sli_payload[0] = htonl(channel->ssrc); //SSRC of packet sender
                         sli_payload[1] = htonl(channel->ssrc); //SSRC of media source
-                        sli_payload[2] = (picture_id & 0b111111U) << 26U;
+                        sli_payload[2] = htonl(kUniqueIdentifier);
+                        sli_payload[3] = htons(1) << 16; //last decoded
+                        sli_payload[3] |= htons((last_received_delta << 1) | (decodability_flag ? 0x0001 : 0x0000));
 
-					    vs->send_rtcp_data(channel, pipes::buffer_view{(char*) sli_payload, 12}, rtc::protocol::RTCP_PSFB, 2);
-					}
+					    vs->send_rtcp_data(channel, pipes::buffer_view{(char*) sli_payload, 16}, rtc::protocol::RTCP_PSFB, 15); //LNTF
+					     */
+
+                        uint32_t fir_payload[4];
+
+                        static uint8_t sequence{1};
+                        sequence++;
+                        fir_payload[0] = htonl(channel->ssrc); //SSRC of packet sender
+                        fir_payload[1] = 0; //SSRC of media source
+                        fir_payload[2] = htonl(channel->ssrc); //The SSRC value of the media sender that is
+                        fir_payload[3] = sequence;
+                        vs->send_rtcp_data(channel, pipes::buffer_view{(char*) fir_payload, 16}, rtc::protocol::RTCP_PSFB, 4); //Full Intra Request (FIR)
+                        std::cout << "Send FIR\n";
+                        //10 0 00100 11001110	00000000	00000110
+ 					}
 				};
 
 #if false /* Create video generator */

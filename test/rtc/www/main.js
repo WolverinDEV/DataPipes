@@ -1,143 +1,136 @@
 if (window.require) {
     window.$ = require("jquery");
 }
-var connection;
-var button = $("#connect");
-var current_track;
-var _auto_stream = undefined;
-var audio_stream = function () {
+let connection;
+let button = $("#connect");
+let current_track;
+let _auto_stream = undefined;
+let audio_stream = () => {
     if (_auto_stream)
         return _auto_stream;
     _auto_stream = new AudioContext();
     return _auto_stream;
 };
-var disable_console = 1; //Useable when you've enabled verbose output within the browser
-button.on('click', function () {
+let disable_console = 1; //Useable when you've enabled verbose output within the browser
+button.on('click', () => {
     audio_stream();
     if (connection) {
         connection.peer.close();
         connection.socket.close();
         connection = undefined;
     }
-    var config = new PeerConnectionConfig();
+    let config = new PeerConnectionConfig();
     config.open_data_channel = true;
     config.open_audio_channel = false;
-    connect_peer(config).then(function (c) { return connection = c; }, function (error) {
+    connect_peer(config).then(c => connection = c, error => {
         console.log("Got connect error %o", error);
     });
 });
-$("#disconnect").on('click', function (event) {
+$("#disconnect").on('click', event => {
     if (connection) {
         connection.peer.close();
         connection.socket.close();
         connection = undefined;
     }
 });
-$("#send").on('click', function () {
-    var message = $("#message").val().toString();
+$("#send").on('click', () => {
+    let message = $("#message").val().toString();
     console.log("Send message: %s", message);
     if (connection && connection.data_channels.length)
         connection.data_channels[0].send(message);
     else
         console.log("Missing channel!");
 });
-var PeerConnectionConfig = /** @class */ (function () {
-    function PeerConnectionConfig() {
+class PeerConnectionConfig {
+    constructor() {
         this.open_data_channel = false;
         this.open_audio_channel = false;
     }
-    return PeerConnectionConfig;
-}());
-var track;
-var RemoteSource = /** @class */ (function () {
-    function RemoteSource() {
-    }
-    return RemoteSource;
-}());
-var remote_sources = [];
-var PeerConnection = /** @class */ (function () {
-    function PeerConnection() {
+}
+let track;
+class RemoteSource {
+}
+let remote_sources = [];
+class PeerConnection {
+    constructor() {
         this.data_channels = [];
     }
-    PeerConnection.prototype.initialized_peer = function () {
-        var _this = this;
-        var config = { /*iceServers: [{ url: 'stun:stun.l.google.com:19302' }]*/};
+    initialized_peer() {
+        const config = { /*iceServers: [{ url: 'stun:stun.l.google.com:19302' }]*/};
         this.peer = new RTCPeerConnection(config);
-        this.peer.ontrack = function (event) {
+        this.peer.ontrack = event => {
             console.log("[RTC] Got new track %o (%o | %o) | %o", event.track.id, event.track.label, event.track, event.track.kind);
-            event.track.onended = function (e) {
+            event.track.onended = e => {
                 console.log("[RTC] Track %o ended (%o)", event.track.id, e.error);
             };
-            event.track.onmute = function (e) {
+            event.track.onmute = e => {
                 console.log("[RTC] Track %o muted", event.track.id);
             };
-            event.track.onunmute = function (e) {
+            event.track.onunmute = e => {
                 console.log("[RTC] Track %o unmuted", event.track.id);
             };
-            event.track.onoverconstrained = function (e) {
+            event.track.onoverconstrained = e => {
                 console.log("[RTC] Track %o onoverconstrained", event.track.id);
             };
         };
-        this.peer.onnegotiationneeded = function (event) {
+        this.peer.onnegotiationneeded = event => {
             console.log("NEGOT NEEDED!");
         };
-        this.peer.onconnectionstatechange = function (event) {
-            console.log("[RTC] Connection state changed. New state: %s", _this.peer.connectionState);
+        this.peer.onconnectionstatechange = event => {
+            console.log("[RTC] Connection state changed. New state: %s", this.peer.connectionState);
         };
-        this.peer.onicecandidateerror = function (event) {
+        this.peer.onicecandidateerror = event => {
             console.log("[RTC][ICE] Failed to setup candidate %s (%s) (%o | %s)", event.hostCandidate, event.url, event.errorCode, event.errorText);
         };
-        this.peer.oniceconnectionstatechange = function (event) {
-            console.log("[RTC][ICE] Connection state changed. New state: %s", _this.peer.iceConnectionState);
+        this.peer.oniceconnectionstatechange = event => {
+            console.log("[RTC][ICE] Connection state changed. New state: %s", this.peer.iceConnectionState);
         };
-        this.peer.onicegatheringstatechange = function (event) {
-            console.log("[RTC][ICE] Gathering state changed. New state: %s", _this.peer.iceGatheringState);
+        this.peer.onicegatheringstatechange = event => {
+            console.log("[RTC][ICE] Gathering state changed. New state: %s", this.peer.iceGatheringState);
         };
-        this.peer.onicecandidate = function (event) {
+        this.peer.onicecandidate = (event) => {
             console.log("[RTC][ICE][LOCAL] Got new candidate %s (%o)", event.candidate, event);
             if (event) {
                 if (event.candidate)
-                    _this.socket.send(JSON.stringify({
+                    this.socket.send(JSON.stringify({
                         type: 'candidate',
                         msg: event.candidate
                     }));
                 else
-                    _this.socket.send(JSON.stringify({
+                    this.socket.send(JSON.stringify({
                         type: 'candidate_finish'
                     }));
             }
         };
-        this.peer.onaddstream = function (event) {
+        this.peer.onaddstream = event => {
             console.log("[RTC] Got a new stream %o (%o)", event.stream.id, event);
-            event.stream.onactive = function (e) {
+            event.stream.onactive = e => {
                 console.log("[RTC][STREAM] Stream %o got active", event.stream.id);
             };
-            event.stream.oninactive = function (e) {
+            event.stream.oninactive = e => {
                 console.log("[RTC][STREAM] Stream %o got inactive", event.stream.id);
             };
-            event.stream.onaddtrack = function (e) {
+            event.stream.onaddtrack = e => {
                 console.log("[RTC][STREAM] Stream %o got a new track %o", event.stream.id, e.track.id);
             };
-            event.stream.onremovetrack = function (e) {
+            event.stream.onremovetrack = e => {
                 console.log("[RTC][STREAM] Stream %o removed the track %o", event.stream.id, e.track.id);
             };
-            var handle = new RemoteSource();
+            let handle = new RemoteSource();
             handle.stream = event.stream;
-            var context = audio_stream();
+            let context = audio_stream();
             handle.media_stream = context.createMediaStreamSource(event.stream);
             handle.script_prcessor = context.createScriptProcessor(1024, 2, 2);
             //handle.media_stream.connect(handle.script_prcessor);
-            handle.script_prcessor.addEventListener('audioprocess', function (ev) {
+            handle.script_prcessor.addEventListener('audioprocess', ev => {
                 if (!disable_console) {
-                    var buffer = ev.inputBuffer.getChannelData(0);
-                    var sum = 0;
-                    for (var _i = 0, buffer_1 = buffer; _i < buffer_1.length; _i++) {
-                        var c = buffer_1[_i];
+                    let buffer = ev.inputBuffer.getChannelData(0);
+                    let sum = 0;
+                    for (let c of buffer)
                         sum += c;
-                    }
                     console.log("Got buffer sum of %o with length %o", sum, buffer.length);
                 }
-                for (var channel = 0; channel < ev.outputBuffer.numberOfChannels; channel++) {
+                for (let channel = 0; channel < ev.outputBuffer.numberOfChannels; channel++) {
                     ev.outputBuffer.copyToChannel(ev.inputBuffer.getChannelData(channel), channel);
                 }
             });
@@ -151,25 +144,25 @@ var PeerConnection = /** @class */ (function () {
             }
             remote_sources.push(handle);
         };
-        this.peer.onremovestream = function (event) {
+        this.peer.onremovestream = event => {
             console.log("[RTC] Removed a stream %o (%o)", event.stream.id, event);
         };
-        this.peer.ondatachannel = function (event) {
+        this.peer.ondatachannel = event => {
             console.log("[RTC] Got new channel (Label: %s Id: %o)", event.channel.label, event.channel.id);
-            _this.initialize_data_channel(event.channel);
+            this.initialize_data_channel(event.channel);
         };
         if (this.config.open_data_channel) {
-            var dataChannel = this.peer.createDataChannel('main', { ordered: false, maxRetransmits: 0 });
+            let dataChannel = this.peer.createDataChannel('main', { ordered: false, maxRetransmits: 0 });
             this.initialize_data_channel(dataChannel);
         }
-        var sdpConstraints = {};
+        let sdpConstraints = {};
         sdpConstraints.offerToReceiveAudio = this.config.open_audio_channel;
         sdpConstraints.offerToReceiveVideo = false;
         navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-            .then(function (stream) {
+            .then(stream => {
             console.log("[GOT MIC!] %o", stream.getAudioTracks());
-            if (_this.config.open_audio_channel) {
-                _this.peer.addStream(stream);
+            if (this.config.open_audio_channel) {
+                this.peer.addStream(stream);
             }
             /*
             current_track = this.peer.addTrack(stream.getAudioTracks()[0]);
@@ -184,72 +177,72 @@ var PeerConnection = /** @class */ (function () {
             //let s = context.createMediaStreamSource(stream);
             //s.connect(context.destination);
             //document.getElementById("local_video").srcObject = stream;
-            _this.peer.createOffer(function (sdp) {
+            this.peer.createOffer(sdp => {
                 console.log("[RTC][SDP] Local SDP: %s\n", sdp.sdp);
-                _this.peer.setLocalDescription(sdp).then(function () {
+                this.peer.setLocalDescription(sdp).then(() => {
                     console.log("[RTC] Got local sdp. Sending to partner");
-                    _this.socket.send(JSON.stringify({
+                    this.socket.send(JSON.stringify({
                         type: "offer",
                         msg: sdp
                     }));
                 });
-            }, function () {
+            }, () => {
                 console.log("[RTC] Failed to setup peer!");
             }, sdpConstraints);
-        })["catch"](function (err) {
+        })
+            .catch(function (err) {
             /* handle the error */
         });
         return true;
-    };
-    PeerConnection.prototype.initialize_data_channel = function (channel) {
-        channel.onmessage = function (event) {
+    }
+    initialize_data_channel(channel) {
+        channel.onmessage = event => {
             console.log("[DC] Got new message on %s channel: %o", channel.label, event.data);
         };
-        channel.onopen = function (event) {
+        channel.onopen = event => {
             console.log("[DC] Channel %s opened!", channel.label);
         };
-        channel.onclose = function (event) {
+        channel.onclose = event => {
             console.log("[DC] Channel %s closed!", channel.label);
         };
-        channel.onerror = function (event) {
+        channel.onerror = event => {
             console.log("[DC] On channel %s occured an error: %o", channel.label, event);
         };
         this.data_channels.push(channel);
-    };
-    return PeerConnection;
-}());
+    }
+}
 /*
 
  */
 function connect_peer(config) {
     if (!config)
         config = new PeerConnectionConfig();
-    return new Promise(function (resolve, reject) {
-        var result = new PeerConnection();
+    return new Promise((resolve, reject) => {
+        let result = new PeerConnection();
         result.config = config;
         result.socket = new WebSocket("wss://192.168.40.130:1111");
         //result.socket = new WebSocket("wss://felix.did.science:1111");
-        result.socket.onopen = function (event) {
+        result.socket.onopen = event => {
             console.log("[WS] WebSocket connected!");
             result.initialized_peer();
             resolve(result);
         };
-        result.socket.onclose = function (event) {
+        result.socket.onclose = event => {
             console.log("[WS] WebSocket disconnected (%o)!", event.reason);
         };
-        result.socket.onerror = function (event) {
+        result.socket.onerror = event => {
             console.log("[WS] Got error %s!", event.type);
         };
-        var candidate_buffer = [];
-        var candidate_apply = function (candidate) {
-            result.peer.addIceCandidate(candidate).then(function (any) {
+        let candidate_buffer = [];
+        let candidate_apply = candidate => {
+            result.peer.addIceCandidate(candidate).then(any => {
                 console.log("[RTC][ICE][REMOTE] Sucessfully setupped candidate %o", candidate);
-            })["catch"](function (error) {
+            }).catch(error => {
                 console.log("[RTC][ICE][REMOTE] Failed to add candidate %o", error);
             });
         };
-        result.socket.onmessage = function (event) {
-            var data = JSON.parse(event.data);
+        result.socket.onmessage = event => {
+            let data = JSON.parse(event.data);
             if (data["type"] == "candidate") {
                 if (candidate_buffer) {
                     candidate_buffer.push(new RTCIceCandidate(data["msg"]));
@@ -259,14 +252,12 @@ function connect_peer(config) {
             }
             else if (data["type"] == "answer") {
                 console.log("[RTC][SDP] Remote SDP: %s\n", data["msg"]["sdp"]);
-                result.peer.setRemoteDescription(new RTCSessionDescription(data["msg"])).then(function () {
+                result.peer.setRemoteDescription(new RTCSessionDescription(data["msg"])).then(() => {
                     console.log("[RTC][SDP] Remote answer set!");
-                    for (var _i = 0, candidate_buffer_1 = candidate_buffer; _i < candidate_buffer_1.length; _i++) {
-                        var can = candidate_buffer_1[_i];
+                    for (let can of candidate_buffer)
                         candidate_apply(can);
-                    }
                     candidate_buffer = undefined;
-                })["catch"](function (error) {
+                }).catch(error => {
                     console.log("Failed to set remote exception %o", error);
                 });
             }
@@ -276,3 +267,4 @@ function connect_peer(config) {
         };
     });
 }
+//# sourceMappingURL=main.js.map

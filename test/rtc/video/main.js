@@ -1,110 +1,98 @@
-var __spreadArrays = (this && this.__spreadArrays) || function () {
-    for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
-    for (var r = Array(s), k = 0, i = 0; i < il; i++)
-        for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
-            r[k] = a[j];
-    return r;
-};
-var connection;
-var button_connect = $("#connect");
-var video_source = document.getElementById("video_input");
-var video_source_stream;
-var should_video_2 = false;
-var video_target = document.getElementById("video_output");
-var video_target2 = document.getElementById("video_output2");
+let connection;
+let button_connect = $("#connect");
+const video_source = document.getElementById("video_input");
+let video_source_stream;
+let should_video_2 = false;
+const video_target = document.getElementById("video_output");
+const video_target2 = document.getElementById("video_output2");
 /* setting up video target listener */
 {
-    for (var event_1 in video_target) {
-        if (event_1.indexOf('on') != 0)
+    for (const event in video_target) {
+        if (event.indexOf('on') != 0)
             continue;
         //video_target[event] = e => console.log("[VIDEO][OUT] Received event %s: %o", event, e);
     }
-    video_target.oncanplaythrough = function () { return video_target.play(); };
+    video_target.oncanplaythrough = () => video_target.play();
 }
 if (false) {
-    console.log = function () { };
-    console.debug = function () { };
+    console.log = () => { };
+    console.debug = () => { };
 }
-button_connect.on('click', function () {
+button_connect.on('click', () => {
     if (connection) {
         connection.peer.close();
         connection.socket.close();
         connection = undefined;
     }
-    connect_peer().then(function (c) { return connection = c; }, function (error) {
+    connect_peer().then(c => connection = c, error => {
         console.log("Got connect error %o", error);
     });
 });
-var PeerConnection = /** @class */ (function () {
-    function PeerConnection() {
+class PeerConnection {
+    constructor() {
         this.data_channels = [];
     }
-    PeerConnection.prototype.initialized_peer = function () {
-        var _this = this;
-        var config = {
+    initialized_peer() {
+        const config = {
             /*iceServers: [{ url: 'stun:stun.l.google.com:19302' }]*/
             sdpSemantics: "plan-b"
         };
         this.peer = new RTCPeerConnection(config);
-        var _loop_1 = function (field) {
+        for (const field in this.peer) {
             if (field.indexOf('on') != 0)
-                return "continue";
+                continue;
             //console.log('[RTC] Register event %s', field);
-            this_1.peer[field] = function (event) { return console.log("[RTC] Event %s triggered: %o", field, event); };
-        };
-        var this_1 = this;
-        for (var field in this.peer) {
-            _loop_1(field);
+            this.peer[field] = event => console.log("[RTC] Event %s triggered: %o", field, event);
         }
-        this.peer.onsignalingstatechange = function () {
-            console.log("[RTC] Signalling state changed to %s", _this.peer.signalingState);
+        this.peer.onsignalingstatechange = () => {
+            console.log("[RTC] Signalling state changed to %s", this.peer.signalingState);
         };
-        this.peer.onconnectionstatechange = function () {
-            console.log("[RTC] Connection state changed %s", _this.peer.connectionState);
+        this.peer.onconnectionstatechange = () => {
+            console.log("[RTC] Connection state changed %s", this.peer.connectionState);
         };
-        this.peer.oniceconnectionstatechange = function () {
-            console.log("[RTC][ICE] Connection state changed %s", _this.peer.iceConnectionState);
+        this.peer.oniceconnectionstatechange = () => {
+            console.log("[RTC][ICE] Connection state changed %s", this.peer.iceConnectionState);
         };
-        this.peer.onicegatheringstatechange = function () {
-            console.log("[RTC][ICE] Ice gathering state changed %s", _this.peer.iceGatheringState);
+        this.peer.onicegatheringstatechange = () => {
+            console.log("[RTC][ICE] Ice gathering state changed %s", this.peer.iceGatheringState);
         };
-        this.peer.onicecandidateerror = function (event) {
+        this.peer.onicecandidateerror = event => {
             console.log("[RTC][ICE] Failed to setup candidate %s (%s) (%o | %s)", event.hostCandidate, event.url, event.errorCode, event.errorText);
         };
-        this.peer.onicecandidate = function (event) {
+        this.peer.onicecandidate = (event) => {
             console.log("[RTC][ICE][LOCAL] Got new candidate %o", event.candidate);
             if (event.candidate)
-                _this.socket.send(JSON.stringify({
+                this.socket.send(JSON.stringify({
                     type: 'candidate',
                     msg: event.candidate
-                }));
+                }).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}.local/i, "192.168.40.129"));
             else
-                _this.socket.send(JSON.stringify({
+                this.socket.send(JSON.stringify({
                     type: 'candidate_finish'
                 }));
         };
         if (true) {
-            this.peer.ontrack = function (event) {
+            this.peer.ontrack = event => {
                 console.log("[RTC] Got new track %s (%s). Track: %o", event.track.label, event.track.kind, event.track);
-                var stream = new MediaStream();
+                const stream = new MediaStream();
                 stream.addTrack(event.track);
                 video_target.srcObject = stream;
-                event.track.onended = function (e) {
+                event.track.onended = e => {
                     console.log("[RTC] Track %o ended", event.track.label);
                 };
-                event.track.onmute = function (e) {
+                event.track.onmute = e => {
                     console.log("[RTC] Track %o muted", event.track.id);
                 };
-                event.track.onunmute = function (e) {
+                event.track.onunmute = e => {
                     console.log("[RTC] Track %o unmuted", event.track.id);
                 };
-                event.track.onisolationchange = function (e) {
+                event.track.onisolationchange = e => {
                     console.log("[RTC] Track %o onisolationchange", event.track.id);
                 };
             };
         }
         if (false) {
-            this.peer.onaddstream = function (event) {
+            this.peer.onaddstream = event => {
                 console.log("[RTC] Got a new stream %o (%o)", event.stream.id, event);
                 if (!should_video_2) {
                     video_target.srcObject = event.stream;
@@ -112,29 +100,29 @@ var PeerConnection = /** @class */ (function () {
                 }
                 else
                     video_target2.srcObject = event.stream;
-                event.stream.onactive = function (e) {
+                event.stream.onactive = e => {
                     console.log("[RTC][STREAM] Stream %o got active", event.stream.id);
                 };
-                event.stream.oninactive = function (e) {
+                event.stream.oninactive = e => {
                     console.log("[RTC][STREAM] Stream %o got inactive", event.stream.id);
                 };
-                event.stream.onaddtrack = function (e) {
+                event.stream.onaddtrack = e => {
                     console.log("[RTC][STREAM] Stream %o got a new track %o", event.stream.id, e.track.id);
                 };
-                event.stream.onremovetrack = function (e) {
+                event.stream.onremovetrack = e => {
                     console.log("[RTC][STREAM] Stream %o removed the track %o", event.stream.id, e.track.id);
                 };
                 /* TODO pipe here something */
             };
-            this.peer.onremovestream = function (event) {
+            this.peer.onremovestream = event => {
                 console.log("[RTC] Removed a stream %o (%o)", event.stream.id, event);
             };
         }
-        this.peer.ondatachannel = function (event) {
+        this.peer.ondatachannel = event => {
             console.log("[RTC] Got new channel (Label: %s Id: %o)", event.channel.label, event.channel.id);
-            _this.initialize_data_channel(event.channel);
+            this.initialize_data_channel(event.channel);
         };
-        var sdpConstraints = {};
+        let sdpConstraints = {};
         sdpConstraints.offerToReceiveVideo = true;
         sdpConstraints.offerToReceiveAudio = false;
         console.log("[RTC] Initializing stream");
@@ -145,74 +133,73 @@ var PeerConnection = /** @class */ (function () {
             video_source_stream = video_source.captureStream(25);
             console.log("Created source stream: %o", video_source_stream);
             //video_target.srcObject = video_source_stream;
-            var media_stream = new MediaStream();
+            const media_stream = new MediaStream();
             ////this.peer.addStream(video_source_stream);
             //this.peer.addTrack(video_source.captureStream(0).getVideoTracks()[0], media_stream);
             //this.peer.addStream(video_source.captureStream(25));
         }
         this.peer.addStream(video_source_stream);
         console.log("[RTC] Generating offer");
-        this.peer.createOffer(sdpConstraints).then(function (sdp) {
+        this.peer.createOffer(sdpConstraints).then(sdp => {
             {
                 console.groupCollapsed("[RTC][SDP] Got local offer, applying offer and sending it to partner");
                 console.log(sdp.sdp);
                 console.groupEnd();
             }
-            _this.peer.setLocalDescription(sdp).then(function () {
+            this.peer.setLocalDescription(sdp).then(() => {
                 console.log("[RTC][SDP] Offer applied, sending to partner");
-                _this.socket.send(JSON.stringify({
+                this.socket.send(JSON.stringify({
                     type: "offer",
                     msg: sdp
                 }));
             });
-        })["catch"](function () {
+        }).catch(() => {
             console.log("[RTC] Failed to setup peer!");
         });
         return true;
-    };
-    PeerConnection.prototype.initialize_data_channel = function (channel) {
-        channel.onmessage = function (event) {
+    }
+    initialize_data_channel(channel) {
+        channel.onmessage = event => {
             console.log("[DC] Got new message on %s channel: %o", channel.label, event.data);
         };
-        channel.onopen = function (event) {
+        channel.onopen = event => {
             console.log("[DC] Channel %s opened!", channel.label);
         };
-        channel.onclose = function (event) {
+        channel.onclose = event => {
             console.log("[DC] Channel %s closed!", channel.label);
         };
-        channel.onerror = function (event) {
+        channel.onerror = event => {
             console.log("[DC] On channel %s occured an error: %o", channel.label, event);
         };
         this.data_channels.push(channel);
-    };
-    return PeerConnection;
-}());
+    }
+}
 function connect_peer() {
-    return new Promise(function (resolve, reject) {
-        var result = new PeerConnection();
-        result.socket = new WebSocket("wss://192.168.40.130:1111");
+    return new Promise((resolve, reject) => {
+        let result = new PeerConnection();
+        result.socket = new WebSocket("wss://192.168.40.129:1111");
         should_video_2 = false;
-        result.socket.onopen = function (event) {
+        result.socket.onopen = event => {
             console.log("[WS] WebSocket connected!");
             result.initialized_peer();
             resolve(result);
         };
-        result.socket.onclose = function (event) {
+        result.socket.onclose = event => {
             console.log("[WS] WebSocket disconnected (%o)!", event.reason);
         };
-        result.socket.onerror = function (event) {
+        result.socket.onerror = event => {
             console.log("[WS] Got error %s!", event.type);
         };
-        var candidate_buffer = [];
-        var candidate_apply = function (candidate) {
-            result.peer.addIceCandidate(candidate).then(function (any) {
+        let candidate_buffer = [];
+        let candidate_apply = candidate => {
+            result.peer.addIceCandidate(candidate).then(any => {
                 console.log("[RTC][ICE][REMOTE] Sucessfully setupped candidate %o", candidate);
-            })["catch"](function (error) {
+            }).catch(error => {
                 console.log("[RTC][ICE][REMOTE] Failed to add candidate %o", error);
             });
         };
-        result.socket.onmessage = function (event) {
-            var data = JSON.parse(event.data);
+        result.socket.onmessage = event => {
+            let data = JSON.parse(event.data);
             if (data["type"] == "candidate") {
                 if (candidate_buffer) {
                     candidate_buffer.push(new RTCIceCandidate(data["msg"]));
@@ -226,14 +213,12 @@ function connect_peer() {
                     console.log(data["msg"]["sdp"]);
                     console.groupEnd();
                 }
-                result.peer.setRemoteDescription(new RTCSessionDescription(data["msg"])).then(function () {
+                result.peer.setRemoteDescription(new RTCSessionDescription(data["msg"])).then(() => {
                     console.log("[RTC][SDP] Remote answer set!");
-                    for (var _i = 0, candidate_buffer_1 = candidate_buffer; _i < candidate_buffer_1.length; _i++) {
-                        var can = candidate_buffer_1[_i];
+                    for (let can of candidate_buffer)
                         candidate_apply(can);
-                    }
                     candidate_buffer = undefined;
-                })["catch"](function (error) {
+                }).catch(error => {
                     console.log("Failed to set remote exception %o", error);
                 });
             }
@@ -245,52 +230,53 @@ function connect_peer() {
 }
 /* draw stuff */
 {
-    var canvas_1 = video_source.getContext("2d");
-    var canvas_width_1 = video_source.width;
-    var canvas_height_1 = video_source.height;
-    canvas_1.font = "20px sans-serif";
-    var position_x_1 = canvas_width_1 / 2, position_y_1 = canvas_height_1 / 2;
-    var motion_x_1 = 1, motion_y_1 = 1;
-    var flag_motion_change_1 = false;
-    var text_1 = "Hello World";
-    var text_measurements_1 = {
-        height: parseInt(canvas_1.font.match(/\d+/)[0], 10),
-        width: canvas_1.measureText(text_1).width
+    const canvas = video_source.getContext("2d");
+    const canvas_width = video_source.width;
+    const canvas_height = video_source.height;
+    canvas.font = "20px sans-serif";
+    let position_x = canvas_width / 2, position_y = canvas_height / 2;
+    let motion_x = 1, motion_y = 1;
+    let flag_motion_change = false;
+    const text = "Hello World";
+    const text_measurements = {
+        height: parseInt(canvas.font.match(/\d+/)[0], 10),
+        width: canvas.measureText(text).width
     };
-    var bg_color_chars_1 = "0123456789ABCDEF";
-    var bg_color_1 = "#FFFFFF";
-    console.log("Text measurement: %o. Front: %s", text_measurements_1, canvas_1.font);
-    var update = function () {
-        position_x_1 += motion_x_1;
-        position_y_1 += motion_y_1;
-        flag_motion_change_1 = false;
-        if (position_x_1 < 0) {
-            position_x_1 = 0;
-            motion_x_1 *= -1;
-            flag_motion_change_1 = true;
+    let bg_color_chars = "0123456789ABCDEF";
+    let bg_color = "#FFFFFF";
+    console.log("Text measurement: %o. Front: %s", text_measurements, canvas.font);
+    const update = () => {
+        position_x += motion_x;
+        position_y += motion_y;
+        flag_motion_change = false;
+        if (position_x < 0) {
+            position_x = 0;
+            motion_x *= -1;
+            flag_motion_change = true;
         }
-        if (position_x_1 > canvas_width_1 - text_measurements_1.width) {
-            position_x_1 = canvas_width_1 - text_measurements_1.width;
-            motion_x_1 *= -1;
-            flag_motion_change_1 = true;
+        if (position_x > canvas_width - text_measurements.width) {
+            position_x = canvas_width - text_measurements.width;
+            motion_x *= -1;
+            flag_motion_change = true;
         }
-        if (position_y_1 < text_measurements_1.height) {
-            position_y_1 = text_measurements_1.height;
-            motion_y_1 *= -1;
-            flag_motion_change_1 = true;
+        if (position_y < text_measurements.height) {
+            position_y = text_measurements.height;
+            motion_y *= -1;
+            flag_motion_change = true;
         }
-        if (position_y_1 > canvas_height_1) {
-            position_y_1 = canvas_height_1;
-            motion_y_1 *= -1;
-            flag_motion_change_1 = true;
+        if (position_y > canvas_height) {
+            position_y = canvas_height;
+            motion_y *= -1;
+            flag_motion_change = true;
         }
-        if (flag_motion_change_1)
-            bg_color_1 = '#' + __spreadArrays(new Array(6)).map(function () { return bg_color_chars_1.charAt(Math.floor(Math.random() * bg_color_chars_1.length)); }).reduce(function (a, b) { return a + b; });
-        canvas_1.fillStyle = bg_color_1;
-        canvas_1.fillRect(0, 0, canvas_width_1, canvas_height_1);
-        canvas_1.strokeStyle = "#000000";
-        canvas_1.strokeText(text_1, position_x_1, position_y_1);
+        if (flag_motion_change)
+            bg_color = '#' + [...new Array(6)].map(() => bg_color_chars.charAt(Math.floor(Math.random() * bg_color_chars.length))).reduce((a, b) => a + b);
+        canvas.fillStyle = bg_color;
+        canvas.fillRect(0, 0, canvas_width, canvas_height);
+        canvas.strokeStyle = "#000000";
+        canvas.strokeText(text, position_x, position_y);
     };
     setInterval(update, 25);
     update();
 }
+//# sourceMappingURL=main.js.map

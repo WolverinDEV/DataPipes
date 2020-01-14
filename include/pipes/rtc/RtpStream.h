@@ -4,6 +4,7 @@
 #include "./Protocol.h"
 #include "../misc/logger.h"
 
+#include <map>
 #include <cstdint>
 #include <sstream>
 #ifdef SRTP_VERSION_1
@@ -34,6 +35,8 @@ namespace rtc {
 
 			std::vector<std::string> parameters;
 
+			std::map<std::string, std::vector<std::string>> local_parameters{};
+
 			bool accepted = false;
 			virtual bool write_sdp(std::ostringstream& /* ss */) = 0;
 			virtual bool local_accepted();
@@ -49,6 +52,7 @@ namespace rtc {
 			protected:
 				bool write_sdp_rtpmap(std::ostringstream& /* ss */);
 				bool write_sdp_fmtp(std::ostringstream& /* ss */);
+                bool write_local_parameters(std::ostringstream& /* ss */);
 		};
 
 		struct OpusCodec : public UnknownCodec {
