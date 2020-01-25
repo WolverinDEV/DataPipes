@@ -13,6 +13,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules"
 option(USE_BUNDELED_SPDTRANSFORM "Use the bundeled spdtransform from libraries/" ON)
 if(USE_BUNDELED_SPDTRANSFORM)
     add_subdirectory(libraries/sdptransform)
+    include_directories(libraries/sdptransform/include)
 else()
     find_package(spdtransform REQUIRED)
 endif()
