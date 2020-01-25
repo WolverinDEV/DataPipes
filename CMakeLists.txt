@@ -12,9 +12,9 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules"
 
 option(USE_BUNDELED_SPDTRANSFORM "Use the bundeled spdtransform from libraries/" ON)
 if(USE_BUNDELED_SPDTRANSFORM)
-	add_subdirectory(libraries/sdptransform)
+    add_subdirectory(libraries/sdptransform)
 else()
-	find_package(spdtransform REQUIRED)
+    find_package(spdtransform REQUIRED)
 endif()
 
 add_definitions(-DLOG_LEVEL=0) #FIXME!
@@ -182,25 +182,6 @@ endmacro()
 configure_msvc_runtime()
 
 if(BUILD_STATIC)
-<<<<<<< HEAD
-	add_library(DataPipes-Static STATIC ${HEADER_FILES} ${SOURCE_FILES})
-	set_target_properties(DataPipes-Static PROPERTIES OUTPUT_NAME DataPipes)
-
-	install(TARGETS DataPipes-Static DESTINATION lib)
-
-	if(BUILD_WEBRTC)
-		target_link_libraries(
-				DataPipes-Static
-				LibNice::LibNice
-				#SctpLab::UsrSCTP
-				usrsctp.a
-				sdptransform
-				#srtp
-				${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
-				stdc++fs.a
-		)
-	endif()
-=======
     add_library(DataPipes-Static STATIC ${HEADER_FILES} ${SOURCE_FILES})
     install(TARGETS DataPipes-Static DESTINATION lib)
     set_target_properties(DataPipes-Static PROPERTIES OUTPUT_NAME DataPipes)
@@ -215,9 +196,9 @@ if(BUILD_STATIC)
                 #srtp
                 ${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
                 stdc++fs.a
+                ${GLIB_LIBRARIES}
         )
     endif()
->>>>>>> cf24ac6
 endif()
 if(BUILD_SHARED)
     add_library(DataPipes-Shared SHARED ${HEADER_FILES} ${SOURCE_FILES})
