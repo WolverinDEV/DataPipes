@@ -91,49 +91,6 @@ else()
 endif()
 
 if(BUILD_WEBRTC)
-<<<<<<< HEAD
-	# Find packages
-	find_package(LibNice REQUIRED) # Includes GLIB
-	find_package(UsrSCTP)
-
-	if (NOT UsrSCTP_FOUND)
-		message("Missing UsrSCTP, disabling data channel support")
-	endif ()
-
-	if (NOT GLIBC_PREBUILD_PATH)
-		execute_process(
-				COMMAND bash -c "pkg-config --cflags --libs glib-2.0"
-				OUTPUT_VARIABLE GLIB_FLAGS
-		)
-		string(REPLACE "\t" " " GLIB_FLAGS "${GLIB_FLAGS}")
-		string(REPLACE "\n" "" GLIB_FLAGS "${GLIB_FLAGS}")
-
-		message("Got GLIB include directories ${GLIB_FLAGS}")
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GLIB_FLAGS}")
-	endif ()
-
-	set(HEADER_FILES ${HEADER_FILES}
-			#WebRTC
-			include/rtc/Stream.h
-			include/rtc/NiceWrapper.h
-			include/rtc/PeerConnection.h
-			include/rtc/ApplicationStream.h
-			include/rtc/AudioStream.h
-			include/rtc/MergedStream.h
-	)
-
-
-	set(SOURCE_FILES ${SOURCE_FILES}
-			src/sctp.cpp
-
-			src/rtc/Stream.cpp
-			src/rtc/AudioStream.cpp
-			src/rtc/ApplicationChannel.cpp
-			src/rtc/NiceWrapper.cpp
-			src/rtc/PeerConnection.cpp
-			src/rtc/MergedStream.cpp
-	)
-=======
     # Find packages
     set(THREADS_PREFER_PTHREAD_FLAG ON)
     find_package(Threads REQUIRED)
@@ -183,7 +140,6 @@ if(BUILD_WEBRTC)
             src/rtc/PeerConnection.cpp
             src/rtc/MergedStream.cpp
     )
->>>>>>> cf24ac6
 endif()
 
 option(BUILD_STATIC "Build static library" ON)
