@@ -24,7 +24,6 @@ list(APPEND SOURCE_FILES
         src/tls.cpp
         src/pipeline.cpp
         src/buffer.cpp
-        src/allocator_paged.cpp
         src/allocator.cpp
 
         src/ssl/ssl.cpp
@@ -32,6 +31,10 @@ list(APPEND SOURCE_FILES
 
         src/http/http.cpp
 )
+if (NOT WIN32)
+	message("We're not on windows")
+	list(APPEND SOURCE_FILES src/allocator_paged.cpp)
+endif ()
 
 list(APPEND PUBLIC_HEADER_DIRECTORIES
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -50,7 +53,35 @@ if (UsrSCTP_FOUND)
     list(APPEND LIBRARIES_PRIVATE SctpLab::UsrSCTP)
 endif ()
 
+#Crypto librarie (OpenSSL or BoringSSL)
+find_package(Crypto REQUIRED)
+include_directories(BEFORE SYSTEM ${Crypto_INCLUDE_DIR})
+link_libraries (${Crypto_LIBRARIES})
 
+if(CRYPTO_TYPE STREQUAL "openssl" AND NOT Crypto_OPENSSL)
+	if(Crypto_BORINGSSL)
+		message(FATAL_ERROR "Used to use OpenSSL, but found BoringSSL (${Crypto_INCLUDE_DIR}).\nConcider to set the OpenSSL root in Crypto_ROOT_DIR")
+	elseif(NOT Crypto_OPENSSL)
+		message(FATAL_ERROR "Used to use OpenSSL, but haven't found OpenSSL.\nConcider to set the OpenSSL root in Crypto_ROOT_DIR")
+	endif()
+elseif(CRYPTO_TYPE STREQUAL "boringssl")
+	if(Crypto_OPENSSL)
+		message(FATAL_ERROR "Used to use BoringSSL, but found OpenSSL (${Crypto_INCLUDE_DIR}).\nConcider to set the BoringSSL root in Crypto_ROOT_DIR")
+	elseif(NOT Crypto_BORINGSSL)
+		message(FATAL_ERROR "Used to use BoringSSL, but haven't found BoringSSL.\nConcider to set the BoringSSL root in Crypto_ROOT_DIR")
+	endif()
+elseif(CRYPTO_TYPE)
+	message(FATAL_ERROR "Unknown CRYPTO_TYPE. Availible types: openssl | boringssl")
+endif()
+
+if(Crypto_OPENSSL)
+	message("Using OpenSSL")
+elseif(Crypto_BORINGSSL)
+	add_definitions(-DUSE_BORINGSSL)
+	message("Using BoringSSL")
+else()
+	message(FATAL_ERROR "Failed to detect crypto library type!")
+endif()
 
 # WebRTC part
 message("WebRTC support: ${WEBRTC_SUPPORT}")
