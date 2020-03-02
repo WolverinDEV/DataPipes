@@ -54,7 +54,11 @@ namespace pipes {
 
 			virtual ~SSL();
 
-			bool initialize(const std::shared_ptr<Options>& /* options */);
+            inline bool initialize(const std::shared_ptr<Options>& options) {
+                std::string _error{};
+                return this->initialize(options, _error);
+            }
+            bool initialize(const std::shared_ptr<Options>& /* options */, std::string& /* error */);
 			bool do_handshake();
 			void finalize();
 
@@ -68,7 +72,7 @@ namespace pipes {
 
 			inline ::SSL *ssl_handle() { return this->sslLayer; }
 		private:
-			bool initializeBio();
+			bool initializeBio(std::string& /* error */);
 
 		protected:
 			ProcessResult process_data_in() override;

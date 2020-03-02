@@ -5,7 +5,7 @@
 #include "include/ssl.h"
 #include "OpenSSLDefinitions.h"
 
-#define BIO_C_SET_SSLHANDLE (1 | 0x8000)
+#define BIO_C_SET_SSLHANDLE (1U | 0x8000U)
 
 
 int pipes::SSL::bio_puts(BIO *, const char *) {
@@ -87,10 +87,11 @@ BIO_METHOD* pipes::SSL::SSLSocketBioMethods = new BIO_METHOD {
 		pipes::SSL::bio_callback_ctrl
 };
 
-bool pipes::SSL::initializeBio() {
+bool pipes::SSL::initializeBio(std::string& error) {
 	auto bio = BIO_new(pipes::SSL::SSLSocketBioMethods);
-	if(!BIO_ctrl(bio, BIO_C_SET_SSLHANDLE, 0, this)) {
+	if(auto err = BIO_ctrl(bio, BIO_C_SET_SSLHANDLE, 0, this); !err) {
 		BIO_free(bio);
+		error = "failed to set ssl handle (" + std::to_string(err) + ")";
 		return false;
 	}
 	SSL_set_bio(this->sslLayer, bio, bio);

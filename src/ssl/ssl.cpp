@@ -72,23 +72,29 @@ int pipes::SSL::_sni_callback(::SSL* handle, int* ad, void* _ptr_ssl) {
 	return SSL_TLSEXT_ERR_OK;
 }
 
-bool pipes::SSL::initialize(const std::shared_ptr<pipes::SSL::Options> &options) {
-	if(!options->context_method)
-		return false;
+bool pipes::SSL::initialize(const std::shared_ptr<pipes::SSL::Options> &options, std::string& error) {
+	if(!options->context_method) {
+        error = "missing context method";
+        return false;
+	}
 
 	this->options = options;
 
 
 	this->sslContext = shared_ptr<SSL_CTX>(SSL_CTX_new(options->context_method), SSL_CTX_free);
-	if(!this->sslContext)
-		return false;
+	if(!this->sslContext) {
+        error = "failed to allocate ssl context";
+        return false;
+	}
 
 	if(options->context_initializer)
 		options->context_initializer(&*this->sslContext); /* TODO: Test result */
 
 	this->sslLayer = SSL_new(&*this->sslContext);
-	if(!this->sslLayer)
-		return false;
+	if(!this->sslLayer) {
+        error = "failed to allocate ssl context";
+        return false;
+	}
 
 	if(options->type == SERVER) {
 		SSL_set_accept_state(this->sslLayer);
@@ -103,28 +109,39 @@ bool pipes::SSL::initialize(const std::shared_ptr<pipes::SSL::Options> &options)
 		SSL_CTX_set_tlsext_servername_arg(&*this->sslContext, this);
 	} else if(options->servername_keys.size() == 1) {
 		auto default_keypair = options->servername_keys.begin();
-		if(!SSL_use_PrivateKey(this->sslLayer, &*default_keypair->second.first))
-			return false;
+		if(!SSL_use_PrivateKey(this->sslLayer, &*default_keypair->second.first)) {
+            error = "failed to use private key";
+            return false;
+		}
 
-		if(!SSL_use_certificate(this->sslLayer, &*default_keypair->second.second))
-			return false;
+		if(!SSL_use_certificate(this->sslLayer, &*default_keypair->second.second)) {
+            error = "failed to use certificate";
+            return false;
+        }
 
 		if(options->type == CLIENT && !default_keypair->first.empty()) {
-			if(!SSL_set_tlsext_host_name(this->sslLayer, default_keypair->first.c_str()))
-				return false;
+			if(!SSL_set_tlsext_host_name(this->sslLayer, default_keypair->first.c_str())){
+                error = "failed to set tlsext hostname";
+                return false;
+            }
 		}
 
 		if(options->free_unused_keypairs)
 			options->servername_keys.clear();
 	} else {
-		if(!SSL_CTX_get0_privatekey(&*this->sslContext))
-			return false;
+		if(!SSL_CTX_get0_privatekey(&*this->sslContext)) {
+            error = "no private key given";
+            return false;
+		}
 
-		if(!SSL_CTX_get0_certificate(&*this->sslContext))
-			return false;
+		if(!SSL_CTX_get0_certificate(&*this->sslContext)) {
+            error = "no certificate given";
+            return false;
+		}
 	}
 
-	if(!this->initializeBio()) return false;
+	if(!this->initializeBio(error))
+	    return false;
 	this->sslState = SSLSocketState::SSL_STATE_INIT;
 
 	return true;
