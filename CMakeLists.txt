@@ -8,19 +8,49 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 
 # Custom CMake modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules")
-#set(CMAKE_CXX_COMPILER "c++")
 
-option(USE_BUNDELED_SPDTRANSFORM "Use the bundeled spdtransform from libraries/" ON)
-if(USE_BUNDELED_SPDTRANSFORM)
-    add_subdirectory(libraries/sdptransform)
-    include_directories(libraries/sdptransform/include)
-else()
-    find_package(spdtransform REQUIRED)
-endif()
+option(BUILD_STATIC "Build static library" ON)
+option(BUILD_SHARED "Build shared library" ON)
+option(BUILD_WEBRTC "Build the WebRTC package" ON)
 
 add_definitions(-DLOG_LEVEL=0) #FIXME!
 
-option(BUILD_WEBRTC "Build the WebRTC package" ON)
+# Using static library linking
+macro(configure_msvc_runtime)
+    if(MSVC)
+        # Default to statically-linked runtime.
+        if("${MSVC_RUNTIME}" STREQUAL "")
+            set(MSVC_RUNTIME "static")
+        endif()
+
+        # Set compiler options.
+        set(variables
+                CMAKE_C_FLAGS_DEBUG
+                CMAKE_C_FLAGS_MINSIZEREL
+                CMAKE_C_FLAGS_RELEASE
+                CMAKE_C_FLAGS_RELWITHDEBINFO
+                CMAKE_CXX_FLAGS_DEBUG
+                CMAKE_CXX_FLAGS_MINSIZEREL
+                CMAKE_CXX_FLAGS_RELEASE
+                CMAKE_CXX_FLAGS_RELWITHDEBINFO
+        )
+        if(${MSVC_RUNTIME} STREQUAL "static")
+            foreach(variable ${variables})
+                if(${variable} MATCHES "/MD")
+                    string(REGEX REPLACE "/MD" "/MT" ${variable} "${${variable}}")
+                endif()
+            endforeach()
+        else()
+            foreach(variable ${variables})
+                if(${variable} MATCHES "/MT")
+                    string(REGEX REPLACE "/MT" "/MD" ${variable} "${${variable}}")
+                endif()
+            endforeach()
+        endif()
+    endif()
+endmacro()
+configure_msvc_runtime()
+
 
 set(HEADER_FILES
         #General definitions
@@ -61,7 +91,7 @@ if (NOT WIN32)
     set(SOURCE_FILES ${SOURCE_FILES} src/allocator_paged.cpp)
 endif ()
 
-#Crypto librarie (OpenSSL or BoringSSL)
+#Crypto library (OpenSSL or BoringSSL)
 find_package(Crypto REQUIRED)
 include_directories(BEFORE SYSTEM ${Crypto_INCLUDE_DIR})
 link_libraries (${Crypto_LIBRARIES})
@@ -91,12 +121,31 @@ else()
     message(FATAL_ERROR "Failed to detect crypto library type!")
 endif()
 
+if(BUILD_STATIC)
+    add_library(DataPipes__core__static STATIC ${HEADER_FILES} ${SOURCE_FILES})
+    install(TARGETS DataPipes__core__static DESTINATION lib)
+    set_target_properties(DataPipes__core__static PROPERTIES OUTPUT_NAME DataPipes)
+    target_compile_definitions(DataPipes__core__static PRIVATE DEFINE_LOG_HELPERS)
+endif()
+
+if(BUILD_SHARED)
+    add_library(DataPipes__core__shared SHARED ${HEADER_FILES} ${SOURCE_FILES})
+    install(TARGETS DataPipes__core__shared DESTINATION lib)
+    set_target_properties(DataPipes__core__shared PROPERTIES OUTPUT_NAME DataPipes)
+endif()
+
 if(BUILD_WEBRTC)
     # Find packages
     set(THREADS_PREFER_PTHREAD_FLAG ON)
     find_package(Threads REQUIRED)
     find_package(LibNice REQUIRED)
     find_package(UsrSCTP REQUIRED)
+
+    #spdtransform library
+    if (NOT sdptransform_ROOT_DIR)
+        set(sdptransform_ROOT_DIR "${CMAKE_SOURCE_DIR}/libraries/sdptransform/out/")
+    endif ()
+    find_package(sdptransform REQUIRED)
 
     # When supplying a prebuild (may static) version of glib2.0
     if (NOT GLIB_PREBUILD_LIBRARIES OR NOT GLIB_PREBUILD_FLAGS)
@@ -121,7 +170,7 @@ if(BUILD_WEBRTC)
     endif()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GLIB_FLAGS}")
 
-    set(HEADER_FILES ${HEADER_FILES}
+    set(RTC_HEADER_FILES
             include/rtc/Stream.h
             include/rtc/NiceWrapper.h
             include/rtc/PeerConnection.h
@@ -131,7 +180,7 @@ if(BUILD_WEBRTC)
     )
 
 
-    set(SOURCE_FILES ${SOURCE_FILES}
+    set(RTC_SOURCE_FILES
             src/sctp.cpp
 
             src/rtc/Stream.cpp
@@ -141,59 +190,38 @@ if(BUILD_WEBRTC)
             src/rtc/PeerConnection.cpp
             src/rtc/MergedStream.cpp
     )
-endif()
 
-option(BUILD_STATIC "Build static library" ON)
-option(BUILD_SHARED "Build shared library" ON)
+    if(BUILD_STATIC)
+        add_library(DataPipes__rtc__static STATIC ${RTC_SOURCE_FILES})
+        install(TARGETS DataPipes__rtc__static DESTINATION lib)
+        set_target_properties(DataPipes__rtc__static PROPERTIES OUTPUT_NAME DataPipes-RTC)
+        target_compile_definitions(DataPipes__rtc__static PRIVATE DEFINE_LOG_HELPERS)
 
-macro(configure_msvc_runtime)
-    if(MSVC)
-        # Default to statically-linked runtime.
-        if("${MSVC_RUNTIME}" STREQUAL "")
-            set(MSVC_RUNTIME "static")
-        endif()
-        add_compile_options(/EHsc) # Enable unwind semantics
-
-        # Set compiler options.
-        set(variables
-                CMAKE_C_FLAGS_DEBUG
-                CMAKE_C_FLAGS_MINSIZEREL
-                CMAKE_C_FLAGS_RELEASE
-                CMAKE_C_FLAGS_RELWITHDEBINFO
-                CMAKE_CXX_FLAGS_DEBUG
-                CMAKE_CXX_FLAGS_MINSIZEREL
-                CMAKE_CXX_FLAGS_RELEASE
-                CMAKE_CXX_FLAGS_RELWITHDEBINFO
-        )
-        if(${MSVC_RUNTIME} STREQUAL "static")
-            foreach(variable ${variables})
-                if(${variable} MATCHES "/MD")
-                    string(REGEX REPLACE "/MD" "/MT" ${variable} "${${variable}}")
-                endif()
-            endforeach()
-        else()
-            foreach(variable ${variables})
-                if(${variable} MATCHES "/MT")
-                    string(REGEX REPLACE "/MT" "/MD" ${variable} "${${variable}}")
-                endif()
-            endforeach()
-        endif()
-    endif()
-endmacro()
-configure_msvc_runtime()
-
-if(BUILD_STATIC)
-    add_library(DataPipes-Static STATIC ${HEADER_FILES} ${SOURCE_FILES})
-    install(TARGETS DataPipes-Static DESTINATION lib)
-    set_target_properties(DataPipes-Static PROPERTIES OUTPUT_NAME DataPipes)
-
-    if(BUILD_WEBRTC)
         target_link_libraries(
-                DataPipes-Static
+                DataPipes__rtc__static
                 LibNice::LibNice
                 #SctpLab::UsrSCTP
                 usrsctp.a
-                sdptransform
+                sdptransform::static
+                #srtp
+                ${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
+                stdc++fs.a
+                ${GLIB_LIBRARIES}
+        )
+    endif()
+
+    if(BUILD_SHARED)
+        add_library(DataPipes__rtc__shared SHARED ${RTC_SOURCE_FILES})
+        install(TARGETS DataPipes__rtc__shared DESTINATION lib)
+        set_target_properties(DataPipes__rtc__shared PROPERTIES OUTPUT_NAME DataPipes-RTC)
+        target_compile_definitions(DataPipes__rtc__shared PRIVATE DEFINE_LOG_HELPERS)
+
+        target_link_libraries(
+                DataPipes__rtc__shared
+                LibNice::LibNice
+                #SctpLab::UsrSCTP
+                usrsctp.a
+                sdptransform::static
                 #srtp
                 ${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
                 stdc++fs.a
@@ -201,25 +229,7 @@ if(BUILD_STATIC)
         )
     endif()
 endif()
-if(BUILD_SHARED)
-    add_library(DataPipes-Shared SHARED ${HEADER_FILES} ${SOURCE_FILES})
-    install(TARGETS DataPipes-Shared DESTINATION lib)
-    set_target_properties(DataPipes-Shared PROPERTIES OUTPUT_NAME DataPipes)
 
-    if(BUILD_WEBRTC)
-        target_link_libraries(
-                DataPipes-Shared
-                LibNice::LibNice
-                #SctpLab::UsrSCTP
-                usrsctp.a
-                sdptransform
-                #srtp
-                ${CMAKE_SOURCE_DIR}/libraries/srtp/build/libsrtp2.a
-                stdc++fs.a
-                ${GLIB_LIBRARIES}
-        )
-    endif()
-endif()
 install(DIRECTORY include/ DESTINATION include/pipes)
 
 if(BUILD_TESTS)

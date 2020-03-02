@@ -10,8 +10,6 @@
 #include <bitset>
 #include <csignal>
 #include "include/sctp.h"
-
-#define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
 
 using namespace std;

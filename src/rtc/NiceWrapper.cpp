@@ -5,14 +5,10 @@
 #include <sstream>
 #include <cassert>
 #include <mutex>
-#include <algorithm>
 #include <include/rtc/NiceWrapper.h>
 #include <string.h>
 #include <ifaddrs.h>
 #include <net/if.h>
-#include "include/rtc/NiceWrapper.h"
-
-#define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
 
 extern "C" {

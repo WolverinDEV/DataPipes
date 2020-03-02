@@ -2,8 +2,6 @@
 #include "include/rtc/PeerConnection.h"
 #include "include/rtc/MergedStream.h"
 #include "include/rtc/Stream.h"
-
-#define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
 
 using namespace std;

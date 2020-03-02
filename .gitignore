@@ -3,3 +3,5 @@ build/
 .idea/
 out/
 .build_*.txt
+libraries/sdptransform/build
+libraries/sdptransform/out

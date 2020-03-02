@@ -1,7 +1,6 @@
 #include <cstring>
 #include <assert.h>
 #include <iostream>
-#define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
 #include "include/ssl.h"
 #include "OpenSSLDefinitions.h"

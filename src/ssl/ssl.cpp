@@ -2,8 +2,6 @@
 #include <cstring>
 #include <iostream>
 #include <openssl/err.h>
-
-#define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
 #include "include/ssl.h"
 #include "OpenSSLDefinitions.h"

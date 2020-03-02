@@ -1,12 +1,10 @@
 #include <sstream>
-#include "json.hpp"
+#include <sdptransform/json.hpp>
 #include "include/misc/endianness.h"
 #include "include/rtc/PeerConnection.h"
 #include "include/rtc/AudioStream.h"
 #include "include/tls.h"
 #include "include/sctp.h"
-
-#define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
 #include <openssl/srtp.h>
 

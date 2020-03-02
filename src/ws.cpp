@@ -4,8 +4,6 @@
 #include <include/misc/endianness.h>
 #include <cstring>
 #include "include/ws.h"
-
-#define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
 
 using namespace std;

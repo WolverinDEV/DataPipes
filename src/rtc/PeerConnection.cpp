@@ -1,17 +1,12 @@
-#include <sstream>
 #include <iostream>
-#include <cstring>
 #include <utility>
 #include <cassert>
-#include "sdptransform.hpp"
+#include <sdptransform/sdptransform.hpp>
 #include "include/rtc/NiceWrapper.h"
 #include "include/rtc/PeerConnection.h"
 #include "include/rtc/ApplicationStream.h"
 #include "include/rtc/AudioStream.h"
 #include "include/rtc/MergedStream.h"
-#include "include/misc/endianness.h"
-
-#define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
 
 using namespace std;

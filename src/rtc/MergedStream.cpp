@@ -3,8 +3,6 @@
 #include "include/rtc/PeerConnection.h"
 #include "include/rtc/MergedStream.h"
 #include "include/tls.h"
-
-#define DEFINE_LOG_HELPERS
 #include "include/misc/logger.h"
 
 
