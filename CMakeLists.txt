@@ -96,7 +96,7 @@ find_package(Crypto REQUIRED)
 include_directories(BEFORE SYSTEM ${Crypto_INCLUDE_DIR})
 link_libraries (${Crypto_LIBRARIES})
 
-if(CRYPTO_TYPE STREQUAL "openssl" AND NOT Crypto_OPENSSL)
+if(CRYPTO_TYPE STREQUAL "openssl")
     if(Crypto_BORINGSSL)
         message(FATAL_ERROR "Used to use OpenSSL, but found BoringSSL (${Crypto_INCLUDE_DIR}).\nConcider to set the OpenSSL root in Crypto_ROOT_DIR")
     elseif(NOT Crypto_OPENSSL)
