@@ -39,15 +39,16 @@ namespace rtc {
 		typedef std::function<void()> cb_ready;
 
 		uint32_t stream_id = 0xFFFF;
-		bool ready = false;
+		bool ready{false};
 		cb_receive callback_receive;
 		cb_ready callback_ready;
 
 		/* will be applied to the nice stream when gathering candidates */
-		GSList* ice_remote_candidate_list = nullptr; /* protected with the IO lock */
-		GSList* ice_local_candidate_list = nullptr; /* protected with the IO lock */
-		bool negotiation_required = false;
-		bool gathering_done = false;
+		GSList* ice_remote_candidate_list{nullptr}; /* protected with the IO lock */
+		bool remote_candidates_finished{false};
+
+		size_t ice_remote_candidate_count{0};
+        bool local_candidates_finished{false};
 
 		~NiceStream();
 	};
@@ -92,7 +93,7 @@ namespace rtc {
 				bool use_upnp = false;
 			};
 
-			explicit NiceWrapper(const std::shared_ptr<Config>& /* config */);
+			explicit NiceWrapper(std::shared_ptr<Config>  /* config */);
 			virtual ~NiceWrapper();
 
 			bool initialize(std::string& /* error */);
@@ -104,7 +105,7 @@ namespace rtc {
 
 			bool gather_candidates(const std::shared_ptr<NiceStream>& /* stream */); /* generate a list of candidates */
 			ssize_t apply_remote_ice_candidates(const std::shared_ptr<NiceStream>& /* stream */, const std::deque<std::string>& /* candidates */);
-			bool execute_negotiation(const std::shared_ptr<rtc::NiceStream> &stream); /* sets the remote candidates and begin to connect */
+			bool remote_ice_candidates_finished(const std::shared_ptr<rtc::NiceStream> &stream); /* sets the remote candidates and begin to connect */
 
 
 			bool send_data(g::uint /* stream */, g::uint /* component */, const pipes::buffer_view& /* buffer */);
@@ -150,5 +151,7 @@ namespace rtc {
 
 			cb_candidate callback_local_candidates;
 			cb_failed callback_failed;
+
+            bool apply_remote_candidates(const std::shared_ptr<rtc::NiceStream> &stream);
 	};
 }

@@ -92,9 +92,11 @@ bool PeerConnection::initialize(std::string &error) {
 			if(this->merged_stream) {
 				for(const auto& s : this->available_streams()) {
 					if(this->callback_ice_candidate) {
-						for(auto it = candidates.begin(); it != candidates.end(); it++) {
-							this->callback_ice_candidate(IceCandidate{it->length() > 2 ? it->substr(2) : *it, s->get_mid(), this->sdp_mline_index(s)}, !more_candidates && (it + 1) == candidates.end());
+						for(const auto &it : candidates) {
+							this->callback_ice_candidate(IceCandidate{it.length() > 2 ? it.substr(2) : it, s->get_mid(), this->sdp_mline_index(s)});
 						}
+						if(!more_candidates)
+						    this->callback_ice_candidate(IceCandidate{"", s->get_mid(), this->sdp_mline_index(s)});
 					}
 				}
 			} else {
@@ -113,9 +115,11 @@ bool PeerConnection::initialize(std::string &error) {
 				}
 
 				if(this->callback_ice_candidate) {
-					for(auto it = candidates.begin(); it != candidates.end(); it++) {
-						this->callback_ice_candidate(IceCandidate{it->length() > 2 ? it->substr(2) : *it, handle->get_mid(), this->sdp_mline_index(handle)}, !more_candidates && (it + 1) == candidates.end());
-					}
+                    for(const auto &it : candidates) {
+                        this->callback_ice_candidate(IceCandidate{it.length() > 2 ? it.substr(2) : it, handle->get_mid(), this->sdp_mline_index(handle)});
+                    }
+                    if(!more_candidates)
+                        this->callback_ice_candidate(IceCandidate{"", handle->get_mid(), this->sdp_mline_index(handle)});
 				}
 			}
 		});
@@ -318,10 +322,9 @@ int PeerConnection::apply_ice_candidates(const std::deque<std::shared_ptr<rtc::I
 	return success_counter;
 }
 
-bool PeerConnection::execute_negotiation() {
+bool PeerConnection::remote_candidates_finished() {
 	for(const auto& stream : this->nice->available_streams())
-		if(stream->negotiation_required)
-			this->nice->execute_negotiation(stream);
+		this->nice->remote_ice_candidates_finished(stream);
 	return true;
 }
 

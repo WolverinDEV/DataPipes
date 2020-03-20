@@ -119,7 +119,7 @@ class PeerConnection {
                     this.socket.send(JSON.stringify({
                         type: 'candidate',
                         msg: event.candidate
-                    }));
+                    }); //.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}.local/i, "92.211.135.230");
                 else
                     this.socket.send(JSON.stringify({
                         type: 'candidate_finish'
@@ -262,7 +262,8 @@ function connect_peer(config?: PeerConnectionConfig) : Promise<PeerConnection> {
         let result = new PeerConnection();
         result.config = config;
 
-        result.socket = new WebSocket("wss://192.168.43.141:1111");
+        //result.socket = new WebSocket("wss://192.168.43.141:1111");
+        result.socket = new WebSocket("wss://46.101.178.66:1111");
         //result.socket = new WebSocket("wss://felix.did.science:1111");
 
         result.socket.onopen = event => {

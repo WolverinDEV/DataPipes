@@ -11,6 +11,8 @@
 #include <include/rtc/ApplicationStream.h>
 #include "test/json/json.h"
 
+#include <glib-2.0/glib.h>
+
 using namespace std;
 
 struct Client {
@@ -169,7 +171,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 	}
 
 	{
-		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice, bool) {
+		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice) {
 			Json::Value jsonCandidate;
 			jsonCandidate["type"] = "candidate";
 			jsonCandidate["msg"]["candidate"] = ice.candidate;
@@ -235,12 +237,12 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 			if(client->reader.parse(message.data.string(), root)) {
 				std::cout << "Got msg of type: " << root["type"] << endl;
 				if (root["type"] == "offer") {
-					cout << "Recived offer" << endl;
+					cout << "Received offer" << endl;
 
 					client->peer->apply_offer(error, root["msg"]["sdp"].asString());
 					Json::Value answer;
 					answer["type"] = "answer";
-					answer["msg"]["sdp"] = client->peer->generate_answer(true);
+					answer["msg"]["sdp"] = client->peer->generate_answer(false);
 					answer["msg"]["type"] = "answer";
 
 					std::cout << "Sending Answer: " << answer << endl;
@@ -248,6 +250,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					pipes::buffer buf;
 					buf += Json::writeString(client->json_writer, answer);
 					client->websocket->send({pipes::OpCode::TEXT, buf});
+				} else if(root["type"] == "candidate_finish") {
+				    client->peer->remote_candidates_finished();
 				} else if (root["type"] == "candidate") {
 					cout << "Apply candidates: " << client->peer->apply_ice_candidates(
 							deque<shared_ptr<rtc::IceCandidate>> { make_shared<rtc::IceCandidate>(root["msg"]["candidate"].asString(), root["msg"]["sdpMid"].asString(), root["msg"]["sdpMLineIndex"].asInt()) }
