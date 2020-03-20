@@ -257,6 +257,21 @@ if(BUILD_TESTS)
     )
 
 
+
+    function(resolve_event)
+        set(LIBEVENT_STATIC_LINK TRUE)
+        find_package(Libevent 2.2 REQUIRED COMPONENTS core)
+    endfunction()
+    resolve_event()
+
+    add_executable(DataPipes-Test-rtc-data test/rtc/rtc_test_data.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
+    target_link_libraries(DataPipes-Test-rtc-data
+            libevent::core
+            DataPipes__rtc__static
+            LibNice::LibNice
+            ${GLIB_LIBRARIES}
+    )
+
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libgcc -static-libstdc++")
 
     add_executable(DataPipes-Test-SSL test/ssl_pipeline_server.cpp test/utils/socket.cpp)
@@ -276,17 +291,3 @@ if(BUILD_TESTS)
     add_executable(DataPipes-Test-video test/video.cpp test/video/ivfenc.cpp)
     target_link_libraries(DataPipes-Test-video ${TEST_LIBRARIES} vpx)
 endif()
-
-function(resolve_event)
-    set(LIBEVENT_STATIC_LINK TRUE)
-    find_package(Libevent 2.2 REQUIRED COMPONENTS core)
-endfunction()
-resolve_event()
-
-add_executable(DataPipes-Test-rtc-data test/rtc/rtc_test_data.cpp test/utils/socket.cpp test/json/jsoncpp.cpp)
-target_link_libraries(DataPipes-Test-rtc-data
-        libevent::core
-        DataPipes__rtc__static
-        LibNice::LibNice
-        ${GLIB_LIBRARIES}
-)
