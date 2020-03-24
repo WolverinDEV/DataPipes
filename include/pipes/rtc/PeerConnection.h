@@ -21,6 +21,8 @@ namespace rtc {
 		std::string candidate;
 		std::string sdpMid;
 		int sdpMLineIndex;
+
+		[[nodiscard]] inline bool is_finished_candidate() const { return this->candidate.empty(); }
 	};
 	class PeerConnection {
 			friend class Stream;
@@ -45,7 +47,7 @@ namespace rtc {
 				SCTP
 			};
 
-			typedef std::function<void(const IceCandidate& /* candidate */, bool /* last candidate */)> cb_ice_candidate;
+			typedef std::function<void(const IceCandidate& /* candidate */)> cb_ice_candidate;
 			typedef std::function<void(ConnectionComponent /* component */, const std::string& /* reason */)> cb_setup_fail;
 			typedef std::function<void(const std::shared_ptr<Stream>& /* stream */)> cb_new_stream;
 
@@ -61,7 +63,7 @@ namespace rtc {
 			std::string generate_answer(bool /* candidates */);
 
             int apply_ice_candidates(const std::deque<std::shared_ptr<IceCandidate>>& /* candidates */);
-            bool execute_negotiation();
+            bool remote_candidates_finished();
 
             cb_ice_candidate callback_ice_candidate;
 			cb_setup_fail callback_setup_fail;

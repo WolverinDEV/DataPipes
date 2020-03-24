@@ -11,7 +11,6 @@
 #include "./json.h"
 
 #include <iostream>
-#include <cstring>
 #include <utility>
 #include <cassert>
 #include <sdptransform/sdptransform.hpp>
@@ -67,9 +66,11 @@ bool PeerConnection::initialize(std::string &error) {
 
             for(const auto& stream : this->available_streams()) {
                 if(stream->nice_stream_id() == nice_stream->stream_id) {
-                    for(auto it = candidates.begin(); it != candidates.end(); it++) {
-                        this->callback_ice_candidate(IceCandidate{it->length() > 2 ? it->substr(2) : *it, stream->get_mid(), this->sdp_mline_index(stream)}, !more_candidates && (it + 1) == candidates.end());
+                     for(const auto &it : candidates) {
+                        this->callback_ice_candidate(IceCandidate{it.length() > 2 ? it.substr(2) : it, stream->get_mid(), this->sdp_mline_index(stream)});
                     }
+                    if(!more_candidates)
+                        this->callback_ice_candidate(IceCandidate{"", stream->get_mid(), this->sdp_mline_index(stream)});
                 }
             }
         });
@@ -343,10 +344,9 @@ int PeerConnection::apply_ice_candidates(const std::deque<std::shared_ptr<rtc::I
     return success_counter;
 }
 
-bool PeerConnection::execute_negotiation() {
+bool PeerConnection::remote_candidates_finished() {
     for(const auto& stream : this->nice->available_streams())
-        if(stream->negotiation_required)
-            this->nice->execute_negotiation(stream);
+        this->nice->remote_ice_candidates_finished(stream);
     return true;
 }
 

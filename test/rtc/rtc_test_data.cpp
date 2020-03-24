@@ -176,7 +176,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 	}
 
 	{
-		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice, bool) {
+		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice) {
 			Json::Value jsonCandidate;
 			jsonCandidate["type"] = "candidate";
 			jsonCandidate["msg"]["candidate"] = ice.candidate;
@@ -258,6 +258,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					pipes::buffer buf;
 					buf += Json::writeString(client->json_writer, answer);
 					client->websocket->send({pipes::OpCode::TEXT, buf});
+				} else if(root["type"] == "candidate_finish") {
+				    client->peer->remote_candidates_finished();
 				} else if (root["type"] == "candidate") {
 					cout << "Apply candidates: " << client->peer->apply_ice_candidates(
 							deque<shared_ptr<rtc::IceCandidate>> { make_shared<rtc::IceCandidate>(root["msg"]["candidate"].asString(), root["msg"]["sdpMid"].asString(), root["msg"]["sdpMLineIndex"].asInt()) }

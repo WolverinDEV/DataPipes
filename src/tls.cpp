@@ -246,7 +246,7 @@ std::unique_ptr<TLSCertificate> TLSCertificate::generate(const std::string &comm
 		throw std::runtime_error("GenerateCertificate: !pkey || !rsa || !exponent");
 	}
 
-	if (!BN_set_word(exponent.get(), 0x10001) || !RSA_generate_key_ex(rsa, 1024, exponent.get(), NULL) || !EVP_PKEY_assign_RSA(pkey.get(), rsa)) {
+	if (!BN_set_word(exponent.get(), 0x10001) || !RSA_generate_key_ex(rsa, 1024 * 4, exponent.get(), NULL) || !EVP_PKEY_assign_RSA(pkey.get(), rsa)) {
 		throw std::runtime_error("GenerateCertificate: Error generating key");
 	}
 	auto cert = GenerateX509(pkey, common_name, days);
