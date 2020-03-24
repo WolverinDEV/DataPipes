@@ -9,18 +9,16 @@
 using namespace std;
 using namespace pipes;
 
-Socket::Socket(event_base* event_base_loop) {
-    if(event_base_loop)
-        this->event_base_loop = event_base_loop;
-    else {
-        this->event_base_loop = event_base_new();
-        this->own_event_base = true;
-    }
+Socket::Socket(::event_base* event_base) {
+    this->event_base_loop = event_base;
+    this->own_event_base = false;
 }
 
-Socket::~Socket() {}
+Socket::~Socket() {
+    this->stop();
+}
 
-bool Socket::start(uint16_t port) {
+bool Socket::start(std::string& error, uint16_t port) {
     struct sockaddr_in addr{};
 
     addr.sin_family = AF_INET;
@@ -28,10 +26,12 @@ bool Socket::start(uint16_t port) {
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     this->socket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (this->socket < 0) {
-        perror("Unable to create socket");
-        exit(EXIT_FAILURE);
+    if (this->socket <= 0) {
+        this->socket = 0;
+        error = "unable to create socket";
+        return false;
     }
+
     int optval = 1;
     if (setsockopt(this->socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(int)) < 0)
         printf("Cannot set SO_REUSEADDR option on listen socket (%s)\n", strerror(errno));
@@ -40,33 +40,65 @@ bool Socket::start(uint16_t port) {
         printf("Cannot set SO_REUSEADDR option on listen socket (%s)\n", strerror(errno));
 
     if (bind(this->socket, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        perror("Unable to bind");
-        return false;
+        error = "unable to bind socket";
+        goto error_exit;
     }
-    if (listen(this->socket, 1) < 0) {
-        perror("Unable to listen");
-        return false;
+    if (listen(this->socket, 5) < 0) {
+        error = "unable to listen on socket";
+        goto error_exit;
+    }
+
+    if(!this->event_base_loop) {
+        this->event_base_loop = event_base_new();
+        if(!this->event_base_loop) {
+            error = "failed to allocate event base";
+            goto error_exit;
+        }
+
+        this->own_event_base = true;
     }
 
     this->event_accept = event_new(this->event_base_loop, this->socket, EV_READ | EV_PERSIST, [](int fd, short _, void* _this) {
         ((Socket*) _this)->on_accept(fd, _);
     }, this);
+
+    if(!this->event_accept) {
+        error = "failed to allocate accept event";
+        goto error_exit;
+    }
+
     event_add(this->event_accept, nullptr);
-    if(this->own_event_base)
-        thread([&](){
-            event_base_dispatch(this->event_base_loop);
-        }).detach();
+    if(this->own_event_base) {
+        this->event_base_thread = std::thread([&]{
+            ::event_base_loop(this->event_base_loop, EVLOOP_NO_EXIT_ON_EMPTY);
+        });
+    }
     return true;
+
+    error_exit:
+    if(this->socket) {
+        ::close(this->socket);
+        this->socket = 0;
+    }
+    if(this->event_accept) {
+        event_del(this->event_accept);
+        event_free(this->event_accept);
+        this->event_accept = nullptr;
+    }
+    if(this->own_event_base) {
+        event_base_loopexit(this->event_base_loop, nullptr);
+        if(this->event_base_thread.joinable()) this->event_base_thread.join();
+        event_base_free(this->event_base_loop);
+        this->event_base_loop = nullptr;
+        this->own_event_base = false;
+    }
+    return false;
 }
 
 void Socket::stop() {
     if(this->event_accept) {
-#ifdef LIBEVENT_USE_BLOCK
-        if(blocking) event_del_block(this->event_accept);
-        else event_del_noblock(this->event_accept);
-#else
-        event_del(this->event_accept);
-#endif
+        event_del_block(this->event_accept);
+        event_free(this->event_accept);
     }
 
     {
@@ -76,8 +108,13 @@ void Socket::stop() {
         this->connections.clear();
     }
 
-    if(this->own_event_base) {
+    if(this->own_event_base){
         event_base_loopexit(this->event_base_loop, nullptr);
+        if(this->event_base_thread.joinable()) this->event_base_thread.join();
+        event_base_free(this->event_base_loop);
+
+        this->event_base_loop = nullptr;
+        this->own_event_base = false;
     }
 }
 

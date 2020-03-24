@@ -196,7 +196,7 @@ void ApplicationStream::handle_sctp_event(union sctp_notification* event) {
 			LOG_DEBUG(this->config->logger, "ApplicationStream::handle_sctp_event", "OnNotification(type=SCTP_ASSOC_RESET_EVENT)");
 			break;
 		case SCTP_STREAM_CHANGE_EVENT:
-			LOG_DEBUG(this->config->logger, "ApplicationStream::handle_sctp_event", "OnNotification(type=SCTP_STREAM_CHANGE_EVENT)");
+			LOG_DEBUG(this->config->logger, "ApplicationStream::handle_sctp_event", "OnNotification(type=SCTP_STREAM_CHANGE_EVENT)")
 			break;
 		default:
 			LOG_DEBUG(this->config->logger, "ApplicationStream::handle_sctp_event", "OnNotification(type=%s (unknown))", event->sn_header.sn_type);

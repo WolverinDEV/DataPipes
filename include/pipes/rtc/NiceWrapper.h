@@ -102,7 +102,6 @@ namespace rtc {
 			bool initialize(std::string& /* error */);
 			void finalize();
 
-
 			bool apply_remote_sdp(std::string& /* error */, std::string /* sdp */);
 			std::deque<std::unique_ptr<LocalSdpEntry>> generate_local_sdp(bool /* with candidates */);
 

@@ -43,11 +43,9 @@ namespace rtc {
 			std::string _protocol;
 	};
 
-	class MergedStream;
 	class ApplicationStream : public Stream {
 			friend class DataChannel;
 			friend class PeerConnection;
-			friend class MergedStream;
 		public:
 			struct Configuration {
 				std::shared_ptr<pipes::Logger> logger;

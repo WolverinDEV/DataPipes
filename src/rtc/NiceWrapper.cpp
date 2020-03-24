@@ -8,9 +8,9 @@
 #include <cassert>
 #include <mutex>
 #include <algorithm>
-#include <string.h>
 #include <ifaddrs.h>
 #include <net/if.h>
+#include <condition_variable>
 
 extern "C" {
     #include <nice/agent.h>
@@ -20,16 +20,6 @@ using namespace std;
 using namespace rtc;
 
 void _null_deleter(GMainLoop* loop) { }
-
-NiceStream::~NiceStream() {
-	if(this->ice_remote_candidate_list)
-		g_slist_free_full(this->ice_remote_candidate_list, (GDestroyNotify) &nice_candidate_free);
-}
-
-NiceWrapper::NiceWrapper(std::shared_ptr<Config> config) : config(std::move(config)), agent(nullptr, nullptr), loop(nullptr, _null_deleter) {}
-NiceWrapper::~NiceWrapper() {
-    this->finalize();
-}
 
 /* Static callbacks */ //TODO Test pointers for validation!
 void NiceWrapper::cb_received(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer user_data) {
@@ -79,22 +69,33 @@ void g_log_handler(const gchar   *log_domain,
     (void) wrapper;
 }
 
+NiceStream::~NiceStream() {
+    if(this->ice_remote_candidate_list)
+        g_slist_free_full(this->ice_remote_candidate_list, (GDestroyNotify) &nice_candidate_free);
+}
+
+NiceWrapper::NiceWrapper(std::shared_ptr<Config> config) : config(std::move(config)), agent(nullptr, nullptr), loop(nullptr, _null_deleter) {}
+NiceWrapper::~NiceWrapper() {
+    this->finalize();
+}
+
+
 bool NiceWrapper::initialize(std::string& error) {
     //if(this->config->ice_servers.size() != 1) ERRORQ("Invalid ice server count!");
 
     /* log setup */
-    auto log_flags = (unsigned) G_LOG_LEVEL_MASK | (unsigned) G_LOG_FLAG_FATAL | (unsigned)G_LOG_FLAG_RECURSION;
+    auto log_flags = (unsigned) G_LOG_LEVEL_MASK | (unsigned) G_LOG_FLAG_FATAL | (unsigned) G_LOG_FLAG_RECURSION;
     g_log_set_handler(nullptr, (GLogLevelFlags) log_flags, g_log_handler, this);
 
     if(this->config->main_loop) {
-        this->loop = std::unique_ptr<GMainLoop, void(*)(GMainLoop*)>(&*this->config->main_loop, _null_deleter);//std::unique_ptr<GMainLoop, void(*)(GMainLoop*)>(g_main_loop_ref(&*this->config->main_loop), g_main_loop_unref);
+        this->loop = std::unique_ptr<GMainLoop, void(*)(GMainLoop*)>(g_main_loop_ref(&*this->config->main_loop), g_main_loop_unref);
         if(!this->loop)
             ERRORQ("Failed to reference the main loop");
         this->own_loop = false;
     } else {
         this->loop = std::unique_ptr<GMainLoop, void(*)(GMainLoop*)>(g_main_loop_new(nullptr, false), g_main_loop_unref);
         this->own_loop = true;
-        this->g_main_loop_thread = std::thread(g_main_loop_run, this->loop.get());
+        this->g_main_loop_thread = std::thread(g_main_loop_run, &*this->loop);
     }
     if (!this->loop) ERRORQ("Failed to initialize GMainLoop");
 
@@ -256,46 +257,48 @@ std::shared_ptr<NiceStream> NiceWrapper::find_stream(const std::string_view &nam
     return nullptr;
 }
 
+struct CloseAwait {
+    std::mutex mutex{};
+    std::condition_variable cv{};
+};
+
 void NiceWrapper::finalize() {
-    std::unique_lock<std::recursive_mutex> lock(io_lock);
+    std::unique_lock<std::recursive_mutex> lock{this->io_lock};
 
-    if(this->loop && this->agent) { //Finish handling
-        auto context = g_main_loop_get_context(loop.get());
-        if(!g_main_context_ref(context)) {
-            //TODO error
-        }
+    auto agent_handle = std::exchange(this->agent, nullptr);
+    if(agent_handle) {
+        CloseAwait close_wait{};
 
-        for(const auto& stream : this->available_streams()) {
-            nice_agent_attach_recv(agent.get(), stream->stream_id, 1, context, nullptr, nullptr);
-            nice_agent_remove_stream(agent.get(), stream->stream_id);
-        }
-        { //Let the other thread so something with IO
-            lock.unlock();
-            size_t iterations = 0, max_iterations = 1024;
-            while(g_main_context_iteration(context, false) && iterations < max_iterations) { } /* flush */
-            if(max_iterations == iterations); //TODO error?
-            lock.lock();
-        }
-        g_main_context_unref(context);
-        this->streams.clear();
-    }
-    { /* allow the agent to remove all events from the event loop, may event triggers some events then */
+        nice_agent_close_async(&*agent_handle, [](GObject *source_object,
+                                                  GAsyncResult *res,
+                                                  gpointer user_data){
+            auto close_wait = (CloseAwait*) user_data;
+            std::lock_guard clock{close_wait->mutex};
+            close_wait->cv.notify_all();
+        }, &close_wait);
+
         lock.unlock();
-        this->agent.reset();
+        {
+            std::unique_lock clock{close_wait.mutex};
+            close_wait.cv.wait(clock);
+        }
         lock.lock();
     }
+    agent_handle.reset();
 
-    if(this->own_loop && this->loop) {
+    if(this->own_loop) {
+        auto cloop = std::exchange(this->loop, nullptr);
+
         g_main_loop_quit(this->loop.get());
-
+        lock.unlock();
         if (this->g_main_loop_thread.joinable())
             this->g_main_loop_thread.join();
+        lock.lock();
     }
-    this->loop.reset();
 }
 
 bool NiceWrapper::send_data(guint stream, guint component, const pipes::buffer_view &data) {
-    if(!this->agent.get()) return false;
+    if(!this->agent) return false;
     //LOG_DEBUG(this->_logger, "NiceWrapper::send_data", "Sending on stream %i component %i", stream, component);
 
     auto result = nice_agent_send(this->agent.get(), stream, component, data.length(), (gchar*) data.data_ptr());

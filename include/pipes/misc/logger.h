@@ -13,14 +13,15 @@ namespace pipes {
 				INFO,
 				ERROR
 			};
-			typedef void(*cb_log)(LogLevel, const std::string&, const std::string&, ...);
+			typedef void(*cb_log)(void* /* user data */, LogLevel /* level */, const std::string& /* name */, const std::string& /* message */, ... /* args */);
 
-			cb_log callback_log = nullptr;
+			cb_log callback_log{nullptr};
+			void* callback_argument{nullptr};
 
 			template <typename... Args>
-			void log(LogLevel level, const std::string& name, const std::string& message, Args&&... args) {
-				if(callback_log)
-					callback_log(level, name, message, args...);
+			inline void log(LogLevel level, const std::string& name, const std::string& message, Args&&... args) {
+				if(auto callback{callback_log}; callback)
+					callback(callback_argument, level, name, message, args...);
 			}
 		private:
 	};

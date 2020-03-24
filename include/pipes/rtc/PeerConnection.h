@@ -34,7 +34,6 @@ namespace rtc {
 
 				size_t max_data_channels = 1024;
 				bool print_parse_sdp = false;
-				bool disable_merged_stream = false;
 
 				struct {
 					uint16_t local_port = 5000;
@@ -47,6 +46,10 @@ namespace rtc {
 				SCTP
 			};
 
+			/**
+			 * All callbacks will be called within the gmain_loop supplied by the config.
+			 * Do not deallocate the PeerConnection within this loop!
+			 */
 			typedef std::function<void(const IceCandidate& /* candidate */)> cb_ice_candidate;
 			typedef std::function<void(ConnectionComponent /* component */, const std::string& /* reason */)> cb_setup_fail;
 			typedef std::function<void(const std::shared_ptr<Stream>& /* stream */)> cb_new_stream;

@@ -252,7 +252,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 					) << endl;
 				} else if (root["type"] == "candidate_finish") {
 					//client->peer->gather();
-					client->peer->execute_negotiation();
+					client->peer->remote_candidates_finished();
 				}
 			} else {
 				cerr << "Failed to parse json" << endl;
@@ -261,18 +261,20 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 	}
 
 	{
-		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice, bool finished) {
-			Json::Value jsonCandidate;
-			jsonCandidate["type"] = "candidate";
-			jsonCandidate["finished"] = finished;
-			jsonCandidate["msg"]["candidate"] = ice.candidate;
-			jsonCandidate["msg"]["sdpMid"] = ice.sdpMid;
-			jsonCandidate["msg"]["sdpMLineIndex"] = ice.sdpMLineIndex;
+		client->peer->callback_ice_candidate = [client](const rtc::IceCandidate& ice) {
+		    if(!ice.is_finished_candidate()) {
+                Json::Value jsonCandidate;
+                jsonCandidate["type"] = "candidate";
+                jsonCandidate["finished"] = false;
+                jsonCandidate["msg"]["candidate"] = ice.candidate;
+                jsonCandidate["msg"]["sdpMid"] = ice.sdpMid;
+                jsonCandidate["msg"]["sdpMLineIndex"] = ice.sdpMLineIndex;
 
-			cout << "Sending ice candidate " << ice.candidate << " (" << ice.sdpMid << " | " << ice.sdpMLineIndex << "). Last: " << finished << endl;
-            pipes::buffer buffer;
-            buffer += Json::writeString(client->json_writer, jsonCandidate);
-            client->websocket->send({pipes::OpCode::TEXT, buffer});
+                cout << "Sending ice candidate " << ice.candidate << " (" << ice.sdpMid << " | " << ice.sdpMLineIndex << "). Last: " << false << endl;
+                pipes::buffer buffer;
+                buffer += Json::writeString(client->json_writer, jsonCandidate);
+                client->websocket->send({pipes::OpCode::TEXT, buffer});
+		    }
 		};
 
 		client->peer->callback_new_stream = [client](const shared_ptr<rtc::Stream>& stream) {

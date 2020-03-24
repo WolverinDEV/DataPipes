@@ -15,8 +15,8 @@ namespace pipes {
 namespace rtc {
 	class PeerConnection;
 	class DTLSPipe;
-	class RTPPacket;
-    class RTCPPacket;
+    struct RTPPacket;
+    struct RTCPPacket;
     struct json;
 
 	enum StreamType {

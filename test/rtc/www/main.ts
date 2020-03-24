@@ -9,7 +9,7 @@ let button = $("#connect");
 let current_track: RTCRtpSender;
 
 let _auto_stream = undefined;
-let audio_stream = (): AudioContext => {
+let audio_context = (): AudioContext => {
     if(_auto_stream) return _auto_stream as AudioContext;
     _auto_stream = new AudioContext();
     return _auto_stream;
@@ -18,7 +18,7 @@ let audio_stream = (): AudioContext => {
 let disable_console = 1; //Useable when you've enabled verbose output within the browser
 
 button.on('click', () => {
-    audio_stream();
+    audio_context();
     if(connection) {
         connection.peer.close();
         connection.socket.close();
@@ -26,9 +26,6 @@ button.on('click', () => {
     }
 
     let config = new PeerConnectionConfig();
-    config.open_data_channel = true;
-    config.open_audio_channel = false;
-
     connect_peer(config).then(c => connection = c, error => {
         console.log("Got connect error %o", error);
     });
@@ -54,7 +51,7 @@ $("#send").on('click', () => {
 
 class PeerConnectionConfig {
     open_data_channel: boolean = false;
-    open_audio_channel: boolean = false;
+    open_audio_channel: boolean = true;
 }
 
 let track;
@@ -91,10 +88,19 @@ class PeerConnection {
             }
             event.track.onunmute = e => {
                 console.log("[RTC] Track %o unmuted", event.track.id);
-            }
+            };
+
             event.track.onoverconstrained = e => {
                 console.log("[RTC] Track %o onoverconstrained", event.track.id);
             }
+            let handle = new RemoteSource();
+            handle.stream = event.streams[0];
+
+            let context = audio_context();
+            handle.media_stream = context.createMediaStreamSource(handle.stream);
+            handle.media_stream.connect(context.destination);
+
+            remote_sources.push(handle);
         };
 
         this.peer.onnegotiationneeded = event => {
@@ -133,44 +139,27 @@ class PeerConnection {
             event.stream.onactive = e => {
                 console.log("[RTC][STREAM] Stream %o got active", event.stream.id);
             };
+
             event.stream.oninactive = e => {
                 console.log("[RTC][STREAM] Stream %o got inactive", event.stream.id);
-            }
+            };
+
             event.stream.onaddtrack = e => {
                 console.log("[RTC][STREAM] Stream %o got a new track %o", event.stream.id, e.track.id);
-            }
+            };
+
             event.stream.onremovetrack = e => {
                 console.log("[RTC][STREAM] Stream %o removed the track %o", event.stream.id, e.track.id);
-            }
+            };
 
+            return false;
             let handle = new RemoteSource();
             handle.stream = event.stream;
 
-            let context = audio_stream();
+            let context = audio_context();
             handle.media_stream = context.createMediaStreamSource(event.stream);
-            handle.script_prcessor = context.createScriptProcessor(1024,  2, 2);
-            //handle.media_stream.connect(handle.script_prcessor);
+            handle.media_stream.connect(context.destination);
 
-            handle.script_prcessor.addEventListener('audioprocess', ev => {
-                if(!disable_console) {
-                    let buffer = ev.inputBuffer.getChannelData(0);
-                    let sum = 0;
-                    for(let c of buffer)
-                        sum += c;
-                    console.log("Got buffer sum of %o with length %o", sum, buffer.length);
-                }
-                for(let channel = 0; channel < ev.outputBuffer.numberOfChannels; channel++) {
-                    ev.outputBuffer.copyToChannel(ev.inputBuffer.getChannelData(channel), channel);
-                }
-            });
-            handle.script_prcessor.connect(context.destination);
-
-            handle.audio = new Audio();
-            try {
-                handle.audio.srcObject = event.stream;
-            } catch(_) {
-                handle.audio.src = (URL || webkitURL || mozURL).createObjectURL(event.stream);
-            }
             remote_sources.push(handle);
         };
         this.peer.onremovestream = event => {
@@ -184,6 +173,7 @@ class PeerConnection {
 
 
         if(this.config.open_data_channel) {
+            console.log("Creating new data channel");
             let dataChannel = this.peer.createDataChannel('main', { ordered: false, maxRetransmits: 0 });
             this.initialize_data_channel(dataChannel);
         }
@@ -193,44 +183,48 @@ class PeerConnection {
         sdpConstraints.offerToReceiveVideo = false;
 
 
-        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-            .then(stream => {
-                console.log("[GOT MIC!] %o", stream.getAudioTracks());
-                if(this.config.open_audio_channel) {
-                    this.peer.addStream(stream);
-                }
-                /*
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(stream => {
+            console.log("[GOT MIC!] %o", stream.getAudioTracks());
+            if(this.config.open_audio_channel)
                 current_track = this.peer.addTrack(stream.getAudioTracks()[0]);
-                console.log("Response: %o", current_track);
-                current_track.onerror = error => {
-                    console.log("[RTC][TRACK] Got error %o", error);
-                }
-                current_track.onssrcconflict = error => {
-                    console.log("[RTC][TRACK] Got ssrc conflict %o", error);
-                }
-                */
 
-                //let s = context.createMediaStreamSource(stream);
-                //s.connect(context.destination);
-                
-                //document.getElementById("local_video").srcObject = stream;
+            /* local auto loopback */
+            if(false) {
+                const context = audio_context();
+                const audio_souce = context.createMediaStreamSource(stream);
+                audio_souce.connect(context.destination);
+            }
+            /*
+            console.log("Response: %o", current_track);
+            current_track.onerror = error => {
+                console.log("[RTC][TRACK] Got error %o", error);
+            }
+            current_track.onssrcconflict = error => {
+                console.log("[RTC][TRACK] Got ssrc conflict %o", error);
+            }
+            */
 
-                this.peer.createOffer(sdp => {
-                    console.log("[RTC][SDP] Local SDP: %s\n", sdp.sdp);
-                    this.peer.setLocalDescription(sdp).then(() => {
-                        console.log("[RTC] Got local sdp. Sending to partner");
-                        this.socket.send(JSON.stringify({
-                            type: "offer",
-                            msg: sdp
-                        }));
-                    });
-                }, () => {
-                    console.log("[RTC] Failed to setup peer!");
-                }, sdpConstraints);
-            })
-            .catch(function(err) {
-                /* handle the error */
+            //let s = context.createMediaStreamSource(stream);
+            //s.connect(context.destination);
+
+            //document.getElementById("local_video").srcObject = stream;
+
+            this.peer.createOffer(sdpConstraints).then(sdp => {
+                console.log("[RTC][SDP] Local SDP: %s\n", sdp.sdp);
+                this.peer.setLocalDescription(sdp).then(() => {
+                    console.log("[RTC] Got local sdp. Sending to partner");
+                    this.socket.send(JSON.stringify({
+                        type: "offer",
+                        msg: sdp
+                    }));
+                });
+            }).catch(error => {
+                console.log("[RTC] Failed to setup peer (%o)!", error);
             });
+        }).catch(function(err) {
+            /* handle the error */
+            console.error(err);
+        });
         return true;
     }
 
@@ -264,8 +258,9 @@ function connect_peer(config?: PeerConnectionConfig) : Promise<PeerConnection> {
         result.config = config;
 
         //result.socket = new WebSocket("wss://192.168.43.141:1111");
-        result.socket = new WebSocket("wss://46.101.178.66:1111");
+        //result.socket = new WebSocket("wss://46.101.178.66:1111");
         //result.socket = new WebSocket("wss://felix.did.science:1111");
+        result.socket = new WebSocket("wss://localhost:1111");
 
         result.socket.onopen = event => {
             console.log("[WS] WebSocket connected!");

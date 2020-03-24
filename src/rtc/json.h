@@ -1,6 +1,10 @@
 #pragma once
 
-#include <sdptransform/json.hpp>
+#ifdef SDPTRANSFORM_INTERNAL
+    #include <json.hpp>
+#else
+    #include <sdptransform/json.hpp>
+#endif
 
 namespace rtc {
     struct json : nlohmann::basic_json<> {

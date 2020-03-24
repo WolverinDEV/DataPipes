@@ -88,7 +88,6 @@ namespace rtc {
 		};
 	};
 
-	class MergedStream;
 	class RTPStream : public Stream {
 			friend class PeerConnection;
 		public:
@@ -99,13 +98,13 @@ namespace rtc {
 			/** buffer contains the full rtp packet inc. header and extensions **/
 			typedef std::function<void(const std::shared_ptr<Channel>& /* codec */, const pipes::buffer_view& /* buffer */, size_t /* payload offset */)> callback_data;
 
-			RTPStream(PeerConnection* /* owner */, NiceStreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
+			RTPStream(PeerConnection* /* owner */, NiceStreamId /* channel id */, std::shared_ptr<Configuration>  /* configuration */);
 			virtual ~RTPStream();
 
 			bool initialize(std::string &string) override;
 
 			bool apply_sdp(const json& /* sdp */, const json& /* media */) override;
-			const std::string& get_mid() const override { return this->mid; }
+			[[nodiscard]] const std::string& get_mid() const override { return this->mid; }
 
 			std::string generate_sdp() override;
 			bool reset(std::string &string) override;
@@ -118,20 +117,20 @@ namespace rtc {
 			std::shared_ptr<codec::Codec> find_codec_by_id(const codec::id_t& /* id */);
 			std::deque<std::shared_ptr<codec::Codec>> list_codecs();
 
-			std::shared_ptr<Channel> find_channel_by_id(uint32_t /* src */, direction::value /* direction mask */ = direction::bidirectional);
-			std::deque<std::shared_ptr<Channel>> list_channels(direction::value /* direction mask */ = direction::bidirectional);
+            std::shared_ptr<Channel> find_channel_by_id(uint32_t /* src */, direction::value /* direction mask */ = direction::bidirectional);
+            std::deque<std::shared_ptr<Channel>> list_channels(direction::value /* direction mask */ = direction::bidirectional);
 
 			std::shared_ptr<HeaderExtension> find_extension_by_id(uint8_t /* id */,direction::value /* direction mask */ = direction::bidirectional);
 			std::deque<std::shared_ptr<HeaderExtension>> list_extensions(direction::value /* direction mask */ = direction::bidirectional);
 
-			void register_local_channel(const std::string& /* stream id */, const std::string& /* track id */, const std::shared_ptr<codec::Codec>& /* type */);
+            std::shared_ptr<Channel> register_local_channel(const std::string& /* stream id */, const std::string& /* track id */, const std::shared_ptr<codec::Codec>& /* type */);
 			std::shared_ptr<HeaderExtension> register_local_extension(const std::string& /* name/uri */, const std::string& /* direction */ = "", const std::string& /* config */ = "", uint8_t /* supposed id */ = 0);
 
 		protected:
 			/* some events */
             void on_dtls_initialized(const std::shared_ptr<DTLSPipe>&ptr) override;
 
-			/* some data processors */
+            /* some data processors */
             bool process_incoming_dtls_data(const pipes::buffer_view& /* data */) override;
             bool process_incoming_rtp_data(RTPPacket& /* data */) override;
             bool process_incoming_rtcp_data(RTCPPacket& /* data */) override;
@@ -140,15 +139,15 @@ namespace rtc {
             void process_rtcp_data(const std::shared_ptr<Channel>& channel, const pipes::buffer_view & /* data */);
 
 		protected: /* methods to implement */
-			virtual std::string sdp_media_type() const = 0;
+			[[nodiscard]] virtual std::string sdp_media_type() const = 0;
 
 		private:
 			std::shared_ptr<Configuration> config;
 
-			srtp_t srtp_in = nullptr;
-			bool srtp_in_ready = false;
-			srtp_t srtp_out = nullptr;
-			bool srtp_out_ready = false;
+			srtp_t srtp_in{nullptr};
+			bool srtp_in_ready{false};
+			srtp_t srtp_out{nullptr};
+			bool srtp_out_ready{false};
 			srtp_policy_t remote_policy;
 			srtp_policy_t local_policy;
 

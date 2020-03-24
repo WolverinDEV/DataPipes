@@ -33,29 +33,30 @@ public:
             std::mutex buffer_lock;
             std::deque<pipes::buffer> buffer_write;
     };
-    friend class Client;
+    friend struct Client;
 
-    typedef void(*fnc_accept)(const std::shared_ptr<Client>&);
-    typedef void(*fnc_disconnect)(const std::shared_ptr<Client>&);
+    typedef std::function<void(const std::shared_ptr<Client>&)> fnc_accept;
+    typedef std::function<void(const std::shared_ptr<Client>&)> fnc_disconnect;
     typedef void(*fnc_read)(const std::shared_ptr<Client>&, const pipes::buffer_view&);
 public:
     explicit Socket(event_base* event_base = nullptr);
     virtual ~Socket();
 
-    bool start(uint16_t /* port */);
+    bool start(std::string& /* error */, uint16_t /* port */);
     void stop();
 
     fnc_accept callback_accept = [](const std::shared_ptr<Client>&){};
     fnc_disconnect callback_disconnect = [](const std::shared_ptr<Client>&){};
     fnc_read callback_read;
 private:
-    int socket = 0;
+    int socket{0};
 
-    event* event_accept = nullptr;
+    event* event_accept{nullptr};
     void on_accept(int fd, short);
 
-    event_base* event_base_loop = nullptr;
-    bool own_event_base = false;
+    std::thread event_base_thread{};
+    ::event_base* event_base_loop{nullptr};
+    bool own_event_base{false};
 
     std::mutex connection_lock;
     std::deque<std::shared_ptr<Client>> connections;

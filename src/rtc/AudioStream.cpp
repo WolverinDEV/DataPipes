@@ -10,7 +10,7 @@ using namespace rtc::codec;
 
 AudioStream::AudioStream(rtc::PeerConnection *owner, rtc::NiceStreamId id, const std::shared_ptr<rtc::AudioStream::Configuration> &config) : RTPStream(owner, id, config) { }
 
-AudioStream::~AudioStream() { }
+AudioStream::~AudioStream() = default;
 
 string AudioStream::sdp_media_type() const {
 	return "audio";

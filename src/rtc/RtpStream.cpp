@@ -4,16 +4,16 @@
 #include "pipes/sctp.h"
 #include "pipes/rtc/DTLSPipe.h"
 #include "pipes/rtc/RTPPacket.h"
-#include "pipes/misc/logger.h"
 
 #include <sstream>
 #include <openssl/srtp.h>
 #include <cinttypes> //For printf
+#include <utility>
 #include <glib.h>
 
 #include "./json.h"
 
-#ifdef SRTP_VERSION_1
+#if defined(SRTP_VERSION_1)
     #include <srtp/srtp.h>
 
     #define srtp_err_status_t err_status_t
@@ -25,18 +25,20 @@
     #define srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80 crypto_policy_set_aes_cm_128_hmac_sha1_80
     #define srtp_crypto_policy_set_aes_gcm_256_16_auth crypto_policy_set_aes_gcm_256_16_auth
     #define srtp_crypto_policy_set_aes_gcm_128_16_auth crypto_policy_set_aes_gcm_128_16_auth
-#else
+#elif defined(SRTP_VERSION_1)
     #include <srtp2/srtp.h>
+#elif defined(SRTP_BUNDLED)
+    #include <srtp.h>
+#else
+    #error "Invalid SRTP version!"
 #endif
+
 /* SRTP stuff (http://tools.ietf.org/html/rfc3711) */
 #define SRTP_MASTER_KEY_LENGTH	(128 / 8) // => 16 bytes (128 bits)
 #define SRTP_MASTER_SALT_LENGTH	(112 / 8) // => 12 bytes (112 bits)
 
 #define SRTP_MASTER_LENGTH (SRTP_MASTER_KEY_LENGTH + SRTP_MASTER_SALT_LENGTH)
-/*
-	#define SSL3_MASTER_SECRET_SIZE 48
-	#define SSL3_RANDOM_SIZE 32
- */
+
 /* AES-GCM stuff (http://tools.ietf.org/html/rfc7714) */
 #define SRTP_AESGCM128_MASTER_KEY_LENGTH	16
 #define SRTP_AESGCM128_MASTER_SALT_LENGTH	12
@@ -70,7 +72,6 @@ std::shared_ptr<Codec> codec::create(const json& sdp) {
 	std::shared_ptr<Codec> result;
 
 	//TODO implement more codecs
-
 	if(sdp["codec"] == "opus") {
 		if(sdp.count("encoding") <= 0 || !sdp["encoding"].is_string()) return nullptr;
 
@@ -99,10 +100,12 @@ bool Codec::local_accepted() {
 }
 
 bool UnknownCodec::write_sdp(std::ostringstream &os) {
-	if(!this->write_sdp_fmtp(os))
-		return false;
-    if(!this->write_sdp_rtpmap(os))
+	if(!this->write_sdp_fmtp(os)) {
         return false;
+	}
+    if(!this->write_sdp_rtpmap(os)) {
+        return false;
+    }
 	return this->write_local_parameters(os);
 }
 
@@ -155,7 +158,7 @@ std::shared_ptr<codec::Codec> RTPStream::find_codec_by_id(const rtc::codec::id_t
 	return nullptr;
 }
 
-void RTPStream::register_local_channel(const std::string &stream_id, const std::string &track_id, const shared_ptr<codec::Codec> &type) {
+std::shared_ptr<Channel> RTPStream::register_local_channel(const std::string &stream_id, const std::string &track_id, const shared_ptr<codec::Codec> &type) {
 	auto channel = make_shared<Channel>();
 	channel->stream_id = stream_id;
 	channel->track_id = track_id;
@@ -165,9 +168,11 @@ void RTPStream::register_local_channel(const std::string &stream_id, const std::
 	for(const auto& ch : this->list_channels(direction::outgoing))
 		if(ch->track_id == track_id) throw std::invalid_argument("Track with id \"" + track_id + "\" already exists!");
 
-	while(!channel->ssrc || this->find_channel_by_id(channel->ssrc)) channel->ssrc = rand();
+	while(!channel->ssrc || this->find_channel_by_id(channel->ssrc))
+	    channel->ssrc = rand();
 
 	this->local_channels.push_back(channel);
+	return channel;
 }
 
 std::shared_ptr<HeaderExtension> RTPStream::register_local_extension(const std::string &name, const std::string & direction, const std::string & config, uint8_t id) {
@@ -237,7 +242,7 @@ std::deque<std::shared_ptr<HeaderExtension>> RTPStream::list_extensions(directio
 }
 
 static bool srtp_initialized = false;
-RTPStream::RTPStream(rtc::PeerConnection *owner, rtc::NiceStreamId id, const std::shared_ptr<rtc::RTPStream::Configuration> &config) : Stream(owner, id), config(config) {
+RTPStream::RTPStream(rtc::PeerConnection *owner, rtc::NiceStreamId id, std::shared_ptr<rtc::RTPStream::Configuration> config) : Stream(owner, id), config(std::move(config)) {
 	memset(&this->remote_policy, 0, sizeof(remote_policy));
 	memset(&this->local_policy, 0, sizeof(local_policy));
 	if(!srtp_initialized) {
@@ -422,7 +427,7 @@ bool RTPStream::apply_sdp(const json& sdp, const json& media_entry) {
 		const json& ssrcs = media_entry["ssrcs"];
 		if(!ssrcs.is_array()) return false;
 
-		for (const json &ssrc : ssrcs) {
+		for (const auto &ssrc : ssrcs) {
 			TEST_AV_TYPE(ssrc, "attribute", is_string, continue, "RTPStream::apply_sdp", "SSRC contains invalid/missing attribute");
 			TEST_AV_TYPE(ssrc, "id", is_number, continue, "RTPStream::apply_sdp", "SSRC contains invalid/missing id");
 
@@ -494,7 +499,7 @@ bool RTPStream::apply_sdp(const json& sdp, const json& media_entry) {
 		const json& exts = media_entry["ext"];
 		if(!exts.is_array()) return false;
 
-		for (const json &ext : exts) {
+		for (const auto &ext : exts) {
 			auto extension = make_shared<HeaderExtension>();
 			TEST_AV_TYPE(ext, "value", is_number, continue, "RTPStream::apply_sdp", "Extension contains invalid/missing value");
 			TEST_AV_TYPE(ext, "uri", is_string, continue, "RTPStream::apply_sdp", "Extension contains invalid/missing uri");
@@ -526,7 +531,7 @@ string RTPStream::generate_sdp() {
 		ids += " " + to_string((uint32_t) codec->id);
 	}
 	sdp << "m=" << this->sdp_media_type() << " 9 UDP/TLS/RTP/SAVPF " << (ids.empty() ? "" : ids.substr(1)) << "\r\n";
-	sdp << "c=IN IP4 0.0.0.0\r\n"; //FIXME May localhost address?
+	sdp << "c=IN IP4 0.0.0.0\r\n";
 	{
 		sdp << "a=";
 		if(this->remote_channels.empty())
@@ -657,7 +662,7 @@ void RTPStream::process_rtp_data(const shared_ptr<Channel>& channel, const pipes
 
 	auto payload_offset = protocol::rtp_payload_offset(in);
 	if(payload_offset < 0 || (size_t) payload_offset >= in.length()) {
-	    //TODo: Evalulate if it might not only contain header extensions and if this would be valid according to the RFC XXXX
+	    //TODo: Evaluate if it might not only contain header extensions and if this would be valid according to the RFC XXXX
 	    LOG_ERROR(this->config->logger, "RTPStream::process_rtp_data", "Received packet which contains no payload data. Dropping packet.");
 	    return;
 	}

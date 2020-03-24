@@ -13,7 +13,12 @@
 #include <iostream>
 #include <utility>
 #include <cassert>
-#include <sdptransform/sdptransform.hpp>
+
+#ifdef SDPTRANSFORM_INTERNAL
+    #include <sdptransform.hpp>
+#else
+    #include <sdptransform/sdptransform.hpp>
+#endif
 
 using namespace std;
 using namespace rtc;
@@ -26,8 +31,8 @@ PeerConnection::~PeerConnection() {
 void PeerConnection::reset() {
     //TODO: Somehow join all still running callbacks (manly because of arrived data)
     {
-        std::unique_lock streams_lock(this->stream_lock);
-        auto streams = std::move(this->streams);
+        std::unique_lock streams_lock{this->stream_lock};
+        auto open_streams = std::move(this->streams);
 
         for(auto& stream : this->dtls_streams) {
             stream->on_initialized = nullptr;
@@ -36,8 +41,8 @@ void PeerConnection::reset() {
         this->dtls_streams.clear();
         streams_lock.unlock();
 
-        for(auto& stream : streams) {
-            std::unique_lock stream_lock(stream->_owner_lock);
+        for(auto& stream : open_streams) {
+            std::unique_lock owner_lock{stream->_owner_lock};
             stream->_owner = nullptr;
             stream->_nice_stream_id = 0;
         }
