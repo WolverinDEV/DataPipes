@@ -68,7 +68,6 @@ std::shared_ptr<Codec> codec::create(const json_guard& sdp) {
 	if(sdp.count("codec") <= 0 || !sdp["codec"].is_string()) return nullptr;
 	if(sdp.count("payload") <= 0 || !sdp["payload"].is_number()) return nullptr;
 
-	cout << "OP: " << sdp.dump() << endl;
 	std::shared_ptr<Codec> result;
 
 	//TODO implement more codecs
@@ -422,10 +421,6 @@ bool MediaChannelHandler::apply_sdp(const json_guard& sdp, const json_guard& med
 		this->mid = media_entry["mid"];
 		LOG_DEBUG(this->config->logger, "RTPStream::apply_sdp", "Got mid type %s", this->mid.c_str());
 	}
-
-    {
-        std::cout << nlohmann::to_string(sdp) << "\n";
-    }
 
 	if(media_entry.count("ssrcs") > 0) { //Parse remote streams
 		const json_guard& ssrcs = media_entry["ssrcs"];
