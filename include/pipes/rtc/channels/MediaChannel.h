@@ -90,7 +90,7 @@ namespace rtc {
 		};
 	};
 
-	class MediaStream : public Channel {
+	class MediaChannelHandler : public Channel {
 			friend class PeerConnection;
 		public:
 			struct Configuration {
@@ -100,8 +100,8 @@ namespace rtc {
 			/** buffer contains the full rtp packet inc. header and extensions **/
 			typedef std::function<void(const std::shared_ptr<MediaChannel>& /* codec */, const pipes::buffer_view& /* buffer */, size_t /* payload offset */)> callback_data;
 
-			MediaStream(PeerConnection* /* owner */, NiceStreamId /* channel id */, std::shared_ptr<Configuration>  /* configuration */);
-			virtual ~MediaStream();
+			MediaChannelHandler(PeerConnection* /* owner */, NiceStreamId /* channel id */, std::shared_ptr<Configuration>  /* configuration */);
+			virtual ~MediaChannelHandler();
 
 			bool initialize(std::string &string) override;
 

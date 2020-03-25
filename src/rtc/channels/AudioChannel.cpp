@@ -8,7 +8,7 @@ using namespace std::chrono;
 using namespace rtc;
 using namespace rtc::codec;
 
-AudioChannel::AudioChannel(rtc::PeerConnection *owner, rtc::NiceStreamId id, const std::shared_ptr<rtc::AudioChannel::Configuration> &config) : MediaStream(owner, id, config) { }
+AudioChannel::AudioChannel(rtc::PeerConnection *owner, rtc::NiceStreamId id, const std::shared_ptr<rtc::AudioChannel::Configuration> &config) : MediaChannelHandler(owner, id, config) { }
 
 AudioChannel::~AudioChannel() = default;
 

@@ -3,7 +3,7 @@
 #include "pipes/rtc/channels/ApplicationChannel.h"
 #include "pipes/rtc/channels/MediaChannel.h"
 #include "pipes/rtc/channels/AudioChannel.h"
-#include "pipes/rtc/channels/VideoChannels.h"
+#include "pipes/rtc/channels/VideoChannel.h"
 #include "pipes/rtc/DTLSHandler.h"
 #include "pipes/rtc/RTPPacket.h"
 #include "pipes/rtc/Protocol.h"

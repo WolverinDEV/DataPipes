@@ -29,13 +29,14 @@ endif ()
 
 # RTC files
 list(APPEND RTC_SOURCE_FILES
-        src/rtc/ApplicationChannel.cpp
-        src/rtc/AudioStream.cpp
-        src/rtc/DTLSPipe.cpp
+        src/rtc/channels/ApplicationChannel.cpp
+        src/rtc/channels/VideoChannel.cpp
+        src/rtc/channels/AudioChannel.cpp
+        src/rtc/channels/Channel.cpp
+
+        src/rtc/DTLSHandler.cpp
         src/rtc/NiceWrapper.cpp
         src/rtc/PeerConnection.cpp
         src/rtc/Protocol.cpp
-        src/rtc/RtpStream.cpp
-        src/rtc/Stream.cpp
-        src/rtc/VideoStream.cpp
+        src/rtc/MediaChannel.cpp
 )

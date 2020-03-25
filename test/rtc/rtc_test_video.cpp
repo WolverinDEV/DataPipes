@@ -10,7 +10,7 @@
 #include <pipes/rtc/PeerConnection.h>
 #include <pipes/rtc/channels/ApplicationChannel.h>
 #include <pipes/rtc/channels/AudioChannel.h>
-#include <pipes/rtc/channels/VideoChannels.h>
+#include <pipes/rtc/channels/VideoChannel.h>
 
 #include "./video_utils.h"
 #include "../utils/socket.h"

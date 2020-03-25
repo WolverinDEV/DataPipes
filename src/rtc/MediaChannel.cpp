@@ -138,11 +138,11 @@ bool OpusCodec::write_sdp(std::ostringstream &os) {
 	return this->write_sdp_fmtp(os);
 }
 
-std::deque<std::shared_ptr<codec::Codec>> MediaStream::list_codecs() {
+std::deque<std::shared_ptr<codec::Codec>> MediaChannelHandler::list_codecs() {
 	return this->offered_codecs;
 }
 
-std::deque<std::shared_ptr<codec::Codec>> MediaStream::find_codecs_by_name(const std::string &name) {
+std::deque<std::shared_ptr<codec::Codec>> MediaChannelHandler::find_codecs_by_name(const std::string &name) {
 	deque<shared_ptr<codec::Codec>> result;
 
 	for(const auto& codec : this->offered_codecs)
@@ -151,14 +151,14 @@ std::deque<std::shared_ptr<codec::Codec>> MediaStream::find_codecs_by_name(const
 	return result;
 }
 
-std::shared_ptr<codec::Codec> MediaStream::find_codec_by_id(const rtc::codec::id_t &id) {
+std::shared_ptr<codec::Codec> MediaChannelHandler::find_codec_by_id(const rtc::codec::id_t &id) {
 	for(const auto& codec : this->offered_codecs)
 		if(codec->id == id)
 			return codec;
 	return nullptr;
 }
 
-std::shared_ptr<MediaChannel> MediaStream::register_local_channel(const std::shared_ptr<codec::Codec> &codec, std::optional<std::string> track_label, std::optional<std::string> stream_label) {
+std::shared_ptr<MediaChannel> MediaChannelHandler::register_local_channel(const std::shared_ptr<codec::Codec> &codec, std::optional<std::string> track_label, std::optional<std::string> stream_label) {
     auto channel = make_shared<MediaChannel>();
 
     channel->codec = codec;
@@ -175,7 +175,7 @@ std::shared_ptr<MediaChannel> MediaStream::register_local_channel(const std::sha
     return channel;
 }
 
-std::shared_ptr<HeaderExtension> MediaStream::register_local_extension(const std::string &name, const std::string & direction, const std::string & config, uint8_t id) {
+std::shared_ptr<HeaderExtension> MediaChannelHandler::register_local_extension(const std::string &name, const std::string & direction, const std::string & config, uint8_t id) {
 	for(const auto& ext : this->local_extensions)
 		if(ext->name == name) return ext;
 
@@ -191,7 +191,7 @@ std::shared_ptr<HeaderExtension> MediaStream::register_local_extension(const std
 	return extension;
 }
 
-std::shared_ptr<MediaChannel> MediaStream::find_track_by_id(uint32_t id, direction::value direction) {
+std::shared_ptr<MediaChannel> MediaChannelHandler::find_track_by_id(uint32_t id, direction::value direction) {
 	if((direction & direction::outgoing) > 0) {
 		for(const auto& channel : this->local_channels)
 			if(channel->ssrc == id) return channel;
@@ -203,7 +203,7 @@ std::shared_ptr<MediaChannel> MediaStream::find_track_by_id(uint32_t id, directi
 	return nullptr;
 }
 
-std::deque<std::shared_ptr<MediaChannel>> MediaStream::list_channels(direction::value direction) {
+std::deque<std::shared_ptr<MediaChannel>> MediaChannelHandler::list_channels(direction::value direction) {
 	std::deque<std::shared_ptr<MediaChannel>> result;
 	if((direction & direction::outgoing) > 0) {
 		for(const auto& channel : this->local_channels)
@@ -216,7 +216,7 @@ std::deque<std::shared_ptr<MediaChannel>> MediaStream::list_channels(direction::
 	return result;
 }
 
-std::shared_ptr<HeaderExtension> MediaStream::find_extension_by_id(uint8_t id, direction::value direction) {
+std::shared_ptr<HeaderExtension> MediaChannelHandler::find_extension_by_id(uint8_t id, direction::value direction) {
 	if((direction & direction::outgoing) > 0) {
 		for(const auto& ext : this->local_extensions)
 			if(ext->id == id) return ext;
@@ -228,7 +228,7 @@ std::shared_ptr<HeaderExtension> MediaStream::find_extension_by_id(uint8_t id, d
 	return nullptr;
 }
 
-std::deque<std::shared_ptr<HeaderExtension>> MediaStream::list_extensions(direction::value direction) {
+std::deque<std::shared_ptr<HeaderExtension>> MediaChannelHandler::list_extensions(direction::value direction) {
 	std::deque<std::shared_ptr<HeaderExtension>> result;
 	if((direction & direction::outgoing) > 0) {
 		for(const auto& ext : this->local_extensions)
@@ -242,7 +242,7 @@ std::deque<std::shared_ptr<HeaderExtension>> MediaStream::list_extensions(direct
 }
 
 static bool srtp_initialized = false;
-MediaStream::MediaStream(rtc::PeerConnection *owner, rtc::NiceStreamId id, std::shared_ptr<rtc::MediaStream::Configuration> config) : Channel(owner, id), config(std::move(config)) {
+MediaChannelHandler::MediaChannelHandler(rtc::PeerConnection *owner, rtc::NiceStreamId id, std::shared_ptr<rtc::MediaChannelHandler::Configuration> config) : Channel(owner, id), config(std::move(config)) {
 	memset(&this->remote_policy, 0, sizeof(remote_policy));
 	memset(&this->local_policy, 0, sizeof(local_policy));
 	if(!srtp_initialized) {
@@ -252,16 +252,16 @@ MediaStream::MediaStream(rtc::PeerConnection *owner, rtc::NiceStreamId id, std::
 		srtp_initialized = true;
 	}
 }
-MediaStream::~MediaStream() {
+MediaChannelHandler::~MediaChannelHandler() {
 	string error;
 	this->reset(error);
 }
 
-bool MediaStream::initialize(std::string &error) {
+bool MediaChannelHandler::initialize(std::string &error) {
 	return true;
 }
 
-void MediaStream::on_dtls_initialized(const std::shared_ptr<DTLSHandler> &handle) {
+void MediaChannelHandler::on_dtls_initialized(const std::shared_ptr<DTLSHandler> &handle) {
 	LOG_DEBUG(this->config->logger, "RTPStream::dtls", "Initialized!");
 
 	const auto pipe = handle->dtls_pipe();
@@ -416,7 +416,7 @@ void MediaStream::on_dtls_initialized(const std::shared_ptr<DTLSHandler> &handle
 	}
 }
 
-bool MediaStream::apply_sdp(const json_guard& sdp, const json_guard& media_entry) {
+bool MediaChannelHandler::apply_sdp(const json_guard& sdp, const json_guard& media_entry) {
 	{
 		TEST_AV_TYPE(media_entry, "mid", is_string, return false, "RTPStream::apply_sdp", "Entry contains invalid/missing mid");
 		this->mid = media_entry["mid"];
@@ -530,7 +530,7 @@ bool MediaStream::apply_sdp(const json_guard& sdp, const json_guard& media_entry
 	return true;
 }
 
-string MediaStream::generate_sdp() {
+string MediaChannelHandler::generate_sdp() {
 	ostringstream sdp;
 
 	string ids;
@@ -584,7 +584,7 @@ string MediaStream::generate_sdp() {
 	return sdp.str();
 }
 
-bool MediaStream::reset(std::string &string) {
+bool MediaChannelHandler::reset(std::string &string) {
 	this->srtp_out_ready = false;
 	if(this->srtp_out) {
 		if(srtp_dealloc(this->srtp_out) != srtp_err_status_ok); //TODO error handling?
@@ -599,7 +599,7 @@ bool MediaStream::reset(std::string &string) {
 	return true;
 }
 
-bool MediaStream::process_incoming_rtp_data(RTPPacket &packet) {
+bool MediaChannelHandler::process_incoming_rtp_data(RTPPacket &packet) {
     auto channel = this->find_track_by_id(htonl(packet.buffer.data_ptr<protocol::rtp_header>()->ssrc),
                                           direction::incoming);
     if(!channel)
@@ -630,7 +630,7 @@ bool MediaStream::process_incoming_rtp_data(RTPPacket &packet) {
     return true;
 }
 
-bool MediaStream::process_incoming_rtcp_data(RTCPPacket &packet) {
+bool MediaChannelHandler::process_incoming_rtcp_data(RTCPPacket &packet) {
     auto channel = this->find_track_by_id(htonl(packet.buffer.data_ptr<protocol::rtcp_header>()->ssrc),
                                           direction::incoming);
     if(!channel)
@@ -661,12 +661,12 @@ bool MediaStream::process_incoming_rtcp_data(RTCPPacket &packet) {
     return true;
 }
 
-bool MediaStream::process_incoming_dtls_data(const pipes::buffer_view &) {
+bool MediaChannelHandler::process_incoming_dtls_data(const pipes::buffer_view &) {
     return false;
 }
 
 //#define ENABLE_PROTOCOL_LOGGING
-void MediaStream::process_rtp_data(const shared_ptr<MediaChannel>& channel, const pipes::buffer_view&in) {
+void MediaChannelHandler::process_rtp_data(const shared_ptr<MediaChannel>& channel, const pipes::buffer_view&in) {
     auto header = (protocol::rtp_header*) in.data_ptr();
 
 #ifdef ENABLE_PROTOCOL_LOGGING
@@ -709,7 +709,7 @@ void MediaStream::process_rtp_data(const shared_ptr<MediaChannel>& channel, cons
 		this->incoming_data_handler(channel, in, payload_offset);
 }
 
-bool MediaStream::send_rtp_data(const shared_ptr<MediaChannel> &stream, const pipes::buffer_view &extensions_and_payload, uint32_t timestamp, bool flag_extension, int marker_bit) {
+bool MediaChannelHandler::send_rtp_data(const shared_ptr<MediaChannel> &stream, const pipes::buffer_view &extensions_and_payload, uint32_t timestamp, bool flag_extension, int marker_bit) {
 	static_assert(protocol::rtp_header_base_size == 12, "Invalid structure size");
 	static_assert(protocol::rtp_header_extension_size == 4, "Invalid structure size");
 	if(!this->srtp_out_ready) {
@@ -816,7 +816,7 @@ private:
     uint32_t _payload_byte_size{0};
 };
 
-bool MediaStream::send_rtcp_data(const std::shared_ptr <MediaChannel> &channel, const pipes::buffer_view &payload, protocol::rtcp_type pt, int rc) {
+bool MediaChannelHandler::send_rtcp_data(const std::shared_ptr <MediaChannel> &channel, const pipes::buffer_view &payload, protocol::rtcp_type pt, int rc) {
     if(!this->srtp_out_ready) {
         LOG_ERROR(this->config->logger, "RTPStream::send_rtcp_data", "Srtp not ready yet!");
         return false;
@@ -856,7 +856,7 @@ bool MediaStream::send_rtcp_data(const std::shared_ptr <MediaChannel> &channel, 
     return true;
 }
 
-void MediaStream::process_rtcp_data(const shared_ptr<MediaChannel>& channel, const pipes::buffer_view& in) {
+void MediaChannelHandler::process_rtcp_data(const shared_ptr<MediaChannel>& channel, const pipes::buffer_view& in) {
 	auto header = (protocol::rtcp_header*) in.data_ptr();
 
 	if(header->type == 200) { /* sender report */
