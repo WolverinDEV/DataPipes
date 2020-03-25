@@ -109,8 +109,8 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 	};
 	options->ssl_initializer = [&](::SSL* ssl) {
 		std::shared_ptr<EC_KEY> ecdh = std::shared_ptr<EC_KEY>(EC_KEY_new_by_curve_name(NID_X9_62_prime256v1), EC_KEY_free);
-		SSL_set_options(this->ssh_handle_, SSL_OP_SINGLE_ECDH_USE);
-		SSL_set_tmp_ecdh(this->ssh_handle_, ecdh.get());
+		SSL_set_options(this->ssl_handle_, SSL_OP_SINGLE_ECDH_USE);
+		SSL_set_tmp_ecdh(this->ssl_handle_, ecdh.get());
 		return true;
 	};
 

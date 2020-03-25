@@ -91,37 +91,37 @@ bool pipes::SSL::initialize(const std::shared_ptr<pipes::SSL::Options> &options,
     if(options->context_initializer)
         options->context_initializer(&*this->sslContext); /* TODO: Test result */
 
-    this->ssh_handle_ = SSL_new(&*this->sslContext);
-    if(!this->ssh_handle_) {
+    this->ssl_handle_ = SSL_new(&*this->sslContext);
+    if(!this->ssl_handle_) {
         error = "failed to allocate ssl context";
         return false;
     }
 
     if(options->type == SERVER) {
-        SSL_set_accept_state(this->ssh_handle_);
+        SSL_set_accept_state(this->ssl_handle_);
     } else {
-        SSL_set_connect_state(this->ssh_handle_);
+        SSL_set_connect_state(this->ssl_handle_);
     }
     if(options->ssl_initializer)
-        options->ssl_initializer(this->ssh_handle_); /* TODO: Test result */
+        options->ssl_initializer(this->ssl_handle_); /* TODO: Test result */
 
     if(options->servername_keys.size() > 1 || options->enforce_sni) {
         SSL_CTX_set_tlsext_servername_callback(&*this->sslContext, pipes::SSL::_sni_callback);
         SSL_CTX_set_tlsext_servername_arg(&*this->sslContext, this);
     } else if(options->servername_keys.size() == 1) {
         auto default_keypair = options->servername_keys.begin();
-        if(!SSL_use_PrivateKey(this->ssh_handle_, &*default_keypair->second.first)) {
+        if(!SSL_use_PrivateKey(this->ssl_handle_, &*default_keypair->second.first)) {
             error = "failed to use private key";
             return false;
         }
 
-        if(!SSL_use_certificate(this->ssh_handle_, &*default_keypair->second.second)) {
+        if(!SSL_use_certificate(this->ssl_handle_, &*default_keypair->second.second)) {
             error = "failed to use certificate";
             return false;
         }
 
         if(options->type == CLIENT && !default_keypair->first.empty()) {
-            if(!SSL_set_tlsext_host_name(this->ssh_handle_, default_keypair->first.c_str())){
+            if(!SSL_set_tlsext_host_name(this->ssl_handle_, default_keypair->first.c_str())){
                 error = "failed to set tlsext hostname";
                 return false;
             }
@@ -141,7 +141,7 @@ bool pipes::SSL::initialize(const std::shared_ptr<pipes::SSL::Options> &options,
         }
     }
 
-    if(!this->initializeBio()) {
+    if(!this->initialize_bios()) {
         error = "failed to initialize bio";
         return false;
     }
@@ -161,8 +161,8 @@ void pipes::SSL::continue_ssl_nolock() {
     if(handshake_start_timestamp.time_since_epoch().count() == 0)
         handshake_start_timestamp = std::chrono::system_clock::now();
 
-    auto code = this->_options->type == Type::CLIENT ? SSL_connect(this->ssh_handle_) : SSL_accept(this->ssh_handle_);
-    switch (SSL_get_error(this->ssh_handle_, code)) {
+    auto code = this->_options->type == Type::CLIENT ? SSL_connect(this->ssl_handle_) : SSL_accept(this->ssl_handle_);
+    switch (SSL_get_error(this->ssl_handle_, code)) {
         case SSL_ERROR_NONE:
             /* validate certificate! */
             this->ssl_state_ = SSLSocketState::SSL_STATE_CONNECTED;
@@ -199,15 +199,15 @@ void pipes::SSL::continue_ssl_nolock() {
 
         case SSL_ERROR_ZERO_RETURN:
         default:
-            _callback_error(PERROR_SSL_ACCEPT, "unknown error " + std::to_string(SSL_get_error(this->ssh_handle_, code)));
+            _callback_error(PERROR_SSL_ACCEPT, "unknown error " + std::to_string(SSL_get_error(this->ssl_handle_, code)));
             this->ssl_state_ = SSLSocketState::SSL_STATE_UNDEFINED;
             return;
     }
 }
 
 void pipes::SSL::finalize() {
-    if(this->ssh_handle_) SSL_free(this->ssh_handle_);
-    this->ssh_handle_ = nullptr;
+    if(this->ssl_handle_) SSL_free(this->ssl_handle_);
+    this->ssl_handle_ = nullptr;
     this->sslContext = nullptr;
     this->ssl_state_ = SSLSocketState::SSL_STATE_UNDEFINED;
 }
@@ -224,11 +224,11 @@ bool pipes::SSL::isSSLHeader(const std::string &data) {
 }
 
 ProcessResult pipes::SSL::process_data_in() {
-    if(!this->ssh_handle_) {
+    if(!this->ssl_handle_) {
         return ProcessResult::PROCESS_RESULT_INVALID_STATE;
     }
 
-    lock_guard slock{this->ssl_mutex_};
+    std::unique_lock slock{this->ssl_mutex_};
     if(this->ssl_state_ == SSLSocketState::SSL_STATE_CONNECTING) {
         this->continue_ssl_nolock();
         return ProcessResult::PROCESS_RESULT_OK;
@@ -236,12 +236,14 @@ ProcessResult pipes::SSL::process_data_in() {
         int read = 0;
         while(this->ssl_state_ == SSLSocketState::SSL_STATE_CONNECTED) { //State could be updated while message processing!
             buffer read_buffer(this->readBufferSize);
-            read = SSL_read(this->ssh_handle_, read_buffer.data_ptr(), (int) read_buffer.capacity());
+            read = SSL_read(this->ssl_handle_, read_buffer.data_ptr(), (int) read_buffer.capacity());
             if(read <= 0) break;
             read_buffer.resize(read);
 
             /* callback may changes ssl state */
+            slock.unlock();
             this->_callback_data(read_buffer);
+            slock.lock();
         }
 
         return PROCESS_RESULT_OK;
@@ -251,7 +253,7 @@ ProcessResult pipes::SSL::process_data_in() {
 }
 
 ProcessResult pipes::SSL::process_data_out() {
-    if(!this->ssh_handle_) return ProcessResult::PROCESS_RESULT_INVALID_STATE;
+    if(!this->ssl_handle_) return ProcessResult::PROCESS_RESULT_INVALID_STATE;
 
     lock_guard slock{this->ssl_mutex_};
     while(!this->write_buffer.empty()) {
@@ -259,7 +261,7 @@ ProcessResult pipes::SSL::process_data_out() {
         this->write_buffer.pop_front();
         int index = 5;
         while(index-- > 0) {
-            auto result{SSL_write(this->ssh_handle_, front.data_ptr(), front.length())};
+            auto result{SSL_write(this->ssl_handle_, front.data_ptr(), front.length())};
             if(this->_options->verbose_io) {
                 LOG_VERBOSE(this->logger(), "SSL::process_data_out", "Write (%i): %i (bytes: %i) (empty: %i)", index, result, front.length(), this->write_buffer.size());
             }
@@ -303,7 +305,7 @@ bool SSLSocket::isSSLHandschake(const std::string& data, bool full = false) {
 
 std::string pipes::SSL::remote_fingerprint() {
     lock_guard slock{this->ssl_mutex_};
-    X509 *rcert = SSL_get_peer_certificate(this->ssh_handle_);
+    X509 *rcert = SSL_get_peer_certificate(this->ssl_handle_);
     if(!rcert) {
         LOG_ERROR(this->_logger, "SSL::remote_fingerprint", "Failed to generate remote fingerprint (certificate missing)");
         return "";

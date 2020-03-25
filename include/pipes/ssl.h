@@ -77,9 +77,9 @@ namespace pipes {
 
             [[nodiscard]] std::string remote_fingerprint();
 
-            [[nodiscard]] inline ::SSL *ssl_handle() const { return this->ssh_handle_; }
+            [[nodiscard]] inline ::SSL *ssl_handle() const { return this->ssl_handle_; }
         private:
-            bool initializeBio();
+            bool initialize_bios();
             void continue_ssl_nolock();
 
         protected:
@@ -90,7 +90,7 @@ namespace pipes {
             std::shared_ptr<SSL_CTX> sslContext = nullptr;
 
             std::recursive_mutex ssl_mutex_{};
-            ::SSL *ssh_handle_{nullptr};
+            ::SSL *ssl_handle_{nullptr};
 
             SSLSocketState ssl_state_ = SSLSocketState::SSL_STATE_CONNECTING;
             std::chrono::system_clock::time_point handshake_start_timestamp;
@@ -98,7 +98,7 @@ namespace pipes {
         private:
             static int _sni_callback(::SSL*,int*,void*);
 
-            static BIO_METHOD * ssl_bio_method();
+            static BIO_METHOD * input_bio_method();
 
             //Required methods
             static int bio_read(BIO *, char *, int);

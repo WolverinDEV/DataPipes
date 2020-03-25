@@ -74,7 +74,7 @@ int pipes::SSL::bio_destroy(BIO* self) {
     return 1;
 }
 
-BIO_METHOD* pipes::SSL::ssl_bio_method() {
+BIO_METHOD* pipes::SSL::input_bio_method() {
     static BIO_METHOD* result{nullptr};
     if(result) return result;
 
@@ -92,12 +92,13 @@ BIO_METHOD* pipes::SSL::ssl_bio_method() {
     return result;
 }
 
-bool pipes::SSL::initializeBio() {
-    auto bio = BIO_new(pipes::SSL::ssl_bio_method());
+bool pipes::SSL::initialize_bios() {
+    auto bio = BIO_new(pipes::SSL::input_bio_method());
     if(!bio) return false;
 
     BIO_set_data(bio, this);
     BIO_set_init(bio, true);
-    SSL_set_bio(this->ssh_handle_, bio, bio);
+
+    SSL_set_bio(this->ssl_handle_, bio, bio);
     return true;
 }
