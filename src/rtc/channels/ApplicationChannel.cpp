@@ -7,6 +7,7 @@
 #include "../json_guard.h"
 
 #include <sstream>
+#include <pipes/rtc/channels/ApplicationChannel.h>
 
 using namespace std;
 using namespace rtc;
@@ -72,7 +73,8 @@ bool ApplicationChannel::initialize(std::string &error) {
         LOG_ERROR(this->config->logger, "ApplicationStream::sctp", "Got error (%i): %s", code, error.c_str());
     });
     this->sctp->callback_write([&](const pipes::buffer_view& data) {
-        LOG_VERBOSE(this->config->logger, "ApplicationStream::sctp", "outgoing %i bytes", data.length());
+    	if(this->logging_.log_sctp_io)
+        	LOG_VERBOSE(this->config->logger, "ApplicationStream::sctp", "outgoing %i bytes", data.length());
         this->send_data(data, true);
     });
 
@@ -183,7 +185,9 @@ void ApplicationChannel::handle_sctp_event(union sctp_notification* event) {
 			LOG_DEBUG(this->config->logger, "ApplicationStream::handle_sctp_event", "OnNotification(type=SCTP_AUTHENTICATION_EVENT)");
 			break;
 		case SCTP_SENDER_DRY_EVENT:
-			LOG_DEBUG(this->config->logger, "ApplicationStream::handle_sctp_event", "OnNotification(type=SCTP_SENDER_DRY_EVENT)");
+			if(this->logging_.log_event_sender_dry) {
+				LOG_DEBUG(this->config->logger, "ApplicationStream::handle_sctp_event", "OnNotification(type=SCTP_SENDER_DRY_EVENT)");
+			}
 			break;
 		case SCTP_NOTIFICATIONS_STOPPED_EVENT:
 			LOG_DEBUG(this->config->logger, "ApplicationStream::handle_sctp_event", "OnNotification(type=SCTP_NOTIFICATIONS_STOPPED_EVENT)");
@@ -296,7 +300,7 @@ void ApplicationChannel::handle_datachannel_new(uint16_t channel_id, const pipes
 	buffer[0] = DC_TYPE_ACK;
 	this->send_sctp({pipes::buffer_view(buffer, 1), channel_id, PPID_CONTROL}); //Acknowledge the shit
 
-	LOG_INFO(this->config->logger, "ApplicationStream::handle_datachannel_new", "Recived new data channel. Label: %s (Protocol: %s) ChannelId: %i (Type: %i)", packet.label.c_str(), packet.protocol.c_str(), channel_id, packet.header.channel_type);
+	LOG_INFO(this->config->logger, "ApplicationStream::handle_datachannel_new", "Received new data channel. Label: %s (Protocol: %s) ChannelId: %i (Type: %i)", packet.label.c_str(), packet.protocol.c_str(), channel_id, packet.header.channel_type);
 }
 
 void ApplicationChannel::handle_datachannel_ack(uint16_t channel_id) {

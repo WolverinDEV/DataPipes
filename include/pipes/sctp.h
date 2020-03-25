@@ -26,6 +26,8 @@ namespace pipes {
 			uint16_t local_port() { return this->_local_port; }
 			uint16_t remote_port() { return this->_remote_port; }
 			void remote_port(uint16_t port) { this->_remote_port = port; } //Works only when its not already connected
+
+			[[nodiscard]] inline auto& logging_options() { return this->logging_; }
 		protected:
 			ProcessResult process_data_in() override;
 			ProcessResult process_data_out() override;
@@ -48,5 +50,10 @@ namespace pipes {
 
 			struct socket *sock;
 			int stream_cursor;
+
+			struct {
+			    bool log_io_input{false};
+			    bool log_io_output{false};
+			} logging_;
 	};
 }

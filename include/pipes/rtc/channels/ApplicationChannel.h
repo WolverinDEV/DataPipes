@@ -70,6 +70,8 @@ namespace rtc {
 			std::shared_ptr<DataChannel> find_datachannel(uint16_t /* channel id */);
 			std::shared_ptr<DataChannel> find_datachannel(const std::string& /* channel name */);
 
+			[[nodiscard]] inline auto& logging_options() { return this->logging_; }
+
 			cb_datachannel_new callback_datachannel_new = nullptr;
 		private:
 		protected:
@@ -99,5 +101,12 @@ namespace rtc {
 
 			bool external_sctp_port;
 			std::unique_ptr<pipes::SCTP> sctp;
+
+			struct {
+				bool log_sctp_io{false};
+
+				/* really spamy and not much benefit because write succeeds every time fully */
+				bool log_event_sender_dry{false};
+			} logging_;
 	};
 }

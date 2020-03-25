@@ -6,6 +6,7 @@
 #include <iostream>
 #include <thread>
 #include <bitset>
+#include <pipes/sctp.h>
 
 using namespace std;
 using namespace pipes;
@@ -240,7 +241,9 @@ int SCTP::on_disconnect() {
 
 //TODO error handling?
 int SCTP::on_data_in(const buffer_view &data, struct sctp_rcvinfo recv_info, int flags) {
-	LOG_VERBOSE(this->_logger, "SCTP::on_data_in", "Got new data. Length: %i Flags: %s", data.length(), bitset<16>(flags).to_string().c_str());
+	if(this->logging_.log_io_input)
+		LOG_VERBOSE(this->_logger, "SCTP::on_data_in", "Got new data. Length: %i Flags: %s", data.length(), bitset<16>(flags).to_string().c_str());
+
 	if((flags & MSG_NOTIFICATION) > 0) {
 		auto notify = (union sctp_notification *) data.data_ptr();
 		if(notify->sn_header.sn_length != data.length()) {
