@@ -99,6 +99,5 @@ bool pipes::SSL::initializeBio() {
     BIO_set_data(bio, this);
     BIO_set_init(bio, true);
     SSL_set_bio(this->ssh_handle_, bio, bio);
-    SSL_set_mode(this->ssh_handle_, SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
     return true;
 }
