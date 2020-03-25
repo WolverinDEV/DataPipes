@@ -11,7 +11,7 @@
 namespace rtc {
     namespace codec { }
 
-    class VideoStream : public RTPStream {
+    class VideoStream : public MediaStream {
         public:
             VideoStream(PeerConnection* /* owner */, NiceStreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
             virtual ~VideoStream();

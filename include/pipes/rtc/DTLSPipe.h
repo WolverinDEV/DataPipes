@@ -15,6 +15,7 @@ namespace rtc {
         public:
             enum Role { Undefined, Client, Server }; //Undefined will fallback to client
             struct Config {
+                bool verbose_io{false}; /* requires verbose log level to be active */
                 std::shared_ptr<pipes::Logger> logger;
             };
             DTLSPipe(std::shared_ptr<NiceWrapper>, NiceStreamId, std::shared_ptr<Config>);

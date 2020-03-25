@@ -138,11 +138,11 @@ bool OpusCodec::write_sdp(std::ostringstream &os) {
 	return this->write_sdp_fmtp(os);
 }
 
-std::deque<std::shared_ptr<codec::Codec>> RTPStream::list_codecs() {
+std::deque<std::shared_ptr<codec::Codec>> MediaStream::list_codecs() {
 	return this->offered_codecs;
 }
 
-std::deque<std::shared_ptr<codec::Codec>> RTPStream::find_codecs_by_name(const std::string &name) {
+std::deque<std::shared_ptr<codec::Codec>> MediaStream::find_codecs_by_name(const std::string &name) {
 	deque<shared_ptr<codec::Codec>> result;
 
 	for(const auto& codec : this->offered_codecs)
@@ -151,31 +151,31 @@ std::deque<std::shared_ptr<codec::Codec>> RTPStream::find_codecs_by_name(const s
 	return result;
 }
 
-std::shared_ptr<codec::Codec> RTPStream::find_codec_by_id(const rtc::codec::id_t &id) {
+std::shared_ptr<codec::Codec> MediaStream::find_codec_by_id(const rtc::codec::id_t &id) {
 	for(const auto& codec : this->offered_codecs)
 		if(codec->id == id)
 			return codec;
 	return nullptr;
 }
 
-std::shared_ptr<Channel> RTPStream::register_local_channel(const std::string &stream_id, const std::string &track_id, const shared_ptr<codec::Codec> &type) {
-	auto channel = make_shared<Channel>();
-	channel->stream_id = stream_id;
-	channel->track_id = track_id;
-	channel->codec = type;
-	channel->local = true;
+std::shared_ptr<MediaTrack> MediaStream::register_local_channel(const std::shared_ptr<codec::Codec> &codec, std::optional<std::string> track_label, std::optional<std::string> stream_label) {
+    auto channel = make_shared<MediaTrack>();
 
-	for(const auto& ch : this->list_channels(direction::outgoing))
-		if(ch->track_id == track_id) throw std::invalid_argument("Track with id \"" + track_id + "\" already exists!");
+    channel->codec = codec;
+    channel->local = true;
 
-	while(!channel->ssrc || this->find_channel_by_id(channel->ssrc))
-	    channel->ssrc = rand();
+    while(!channel->ssrc || this->find_track_by_id(channel->ssrc))
+        channel->ssrc = (uint8_t) rand();
+    channel->id = std::to_string(channel->ssrc);
 
-	this->local_channels.push_back(channel);
-	return channel;
+    channel->track_label = std::move(track_label);
+    channel->stream_label = std::move(stream_label);
+
+    this->local_channels.push_back(channel);
+    return channel;
 }
 
-std::shared_ptr<HeaderExtension> RTPStream::register_local_extension(const std::string &name, const std::string & direction, const std::string & config, uint8_t id) {
+std::shared_ptr<HeaderExtension> MediaStream::register_local_extension(const std::string &name, const std::string & direction, const std::string & config, uint8_t id) {
 	for(const auto& ext : this->local_extensions)
 		if(ext->name == name) return ext;
 
@@ -191,7 +191,7 @@ std::shared_ptr<HeaderExtension> RTPStream::register_local_extension(const std::
 	return extension;
 }
 
-std::shared_ptr<Channel> RTPStream::find_channel_by_id(uint32_t id, direction::value direction) {
+std::shared_ptr<MediaTrack> MediaStream::find_track_by_id(uint32_t id, direction::value direction) {
 	if((direction & direction::outgoing) > 0) {
 		for(const auto& channel : this->local_channels)
 			if(channel->ssrc == id) return channel;
@@ -203,8 +203,8 @@ std::shared_ptr<Channel> RTPStream::find_channel_by_id(uint32_t id, direction::v
 	return nullptr;
 }
 
-std::deque<std::shared_ptr<Channel>> RTPStream::list_channels(direction::value direction) {
-	std::deque<std::shared_ptr<Channel>> result;
+std::deque<std::shared_ptr<MediaTrack>> MediaStream::list_channels(direction::value direction) {
+	std::deque<std::shared_ptr<MediaTrack>> result;
 	if((direction & direction::outgoing) > 0) {
 		for(const auto& channel : this->local_channels)
 			result.push_back(channel);
@@ -216,7 +216,7 @@ std::deque<std::shared_ptr<Channel>> RTPStream::list_channels(direction::value d
 	return result;
 }
 
-std::shared_ptr<HeaderExtension> RTPStream::find_extension_by_id(uint8_t id, direction::value direction) {
+std::shared_ptr<HeaderExtension> MediaStream::find_extension_by_id(uint8_t id, direction::value direction) {
 	if((direction & direction::outgoing) > 0) {
 		for(const auto& ext : this->local_extensions)
 			if(ext->id == id) return ext;
@@ -228,7 +228,7 @@ std::shared_ptr<HeaderExtension> RTPStream::find_extension_by_id(uint8_t id, dir
 	return nullptr;
 }
 
-std::deque<std::shared_ptr<HeaderExtension>> RTPStream::list_extensions(direction::value direction) {
+std::deque<std::shared_ptr<HeaderExtension>> MediaStream::list_extensions(direction::value direction) {
 	std::deque<std::shared_ptr<HeaderExtension>> result;
 	if((direction & direction::outgoing) > 0) {
 		for(const auto& ext : this->local_extensions)
@@ -242,7 +242,7 @@ std::deque<std::shared_ptr<HeaderExtension>> RTPStream::list_extensions(directio
 }
 
 static bool srtp_initialized = false;
-RTPStream::RTPStream(rtc::PeerConnection *owner, rtc::NiceStreamId id, std::shared_ptr<rtc::RTPStream::Configuration> config) : Stream(owner, id), config(std::move(config)) {
+MediaStream::MediaStream(rtc::PeerConnection *owner, rtc::NiceStreamId id, std::shared_ptr<rtc::MediaStream::Configuration> config) : Stream(owner, id), config(std::move(config)) {
 	memset(&this->remote_policy, 0, sizeof(remote_policy));
 	memset(&this->local_policy, 0, sizeof(local_policy));
 	if(!srtp_initialized) {
@@ -252,16 +252,16 @@ RTPStream::RTPStream(rtc::PeerConnection *owner, rtc::NiceStreamId id, std::shar
 		srtp_initialized = true;
 	}
 }
-RTPStream::~RTPStream() {
+MediaStream::~MediaStream() {
 	string error;
 	this->reset(error);
 }
 
-bool RTPStream::initialize(std::string &error) {
+bool MediaStream::initialize(std::string &error) {
 	return true;
 }
 
-void RTPStream::on_dtls_initialized(const std::shared_ptr<DTLSPipe> &handle) {
+void MediaStream::on_dtls_initialized(const std::shared_ptr<DTLSPipe> &handle) {
 	LOG_DEBUG(this->config->logger, "RTPStream::dtls", "Initialized!");
 
 	const auto pipe = handle->dtls_pipe();
@@ -392,7 +392,7 @@ void RTPStream::on_dtls_initialized(const std::shared_ptr<DTLSPipe> &handle) {
 		memcpy(this->local_policy.key + key_length, local_salt, salt_length);
 #if HAS_DTLS_WINDOW_SIZE
 		this->local_policy.window_size = 128;
-				this->local_policy.allow_repeat_tx = 0;
+		this->local_policy.allow_repeat_tx = 0;
 #endif
 		this->local_policy.next = nullptr;
 	}
@@ -416,12 +416,16 @@ void RTPStream::on_dtls_initialized(const std::shared_ptr<DTLSPipe> &handle) {
 	}
 }
 
-bool RTPStream::apply_sdp(const json& sdp, const json& media_entry) {
+bool MediaStream::apply_sdp(const json& sdp, const json& media_entry) {
 	{
 		TEST_AV_TYPE(media_entry, "mid", is_string, return false, "RTPStream::apply_sdp", "Entry contains invalid/missing mid");
 		this->mid = media_entry["mid"];
 		LOG_DEBUG(this->config->logger, "RTPStream::apply_sdp", "Got mid type %s", this->mid.c_str());
 	}
+
+    {
+        std::cout << nlohmann::to_string(sdp) << "\n";
+    }
 
 	if(media_entry.count("ssrcs") > 0) { //Parse remote streams
 		const json& ssrcs = media_entry["ssrcs"];
@@ -433,7 +437,7 @@ bool RTPStream::apply_sdp(const json& sdp, const json& media_entry) {
 
 			string attribute = ssrc["attribute"];
 			uint32_t ssrc_id = ssrc["id"];
-			shared_ptr<Channel> channel;
+			shared_ptr<MediaTrack> channel;
 			{
 				for(const auto& ch : this->remote_channels) {
 					if(ch->ssrc == ssrc_id) {
@@ -441,19 +445,23 @@ bool RTPStream::apply_sdp(const json& sdp, const json& media_entry) {
 						break;
 					}
 				}
+
 				if(!channel) {
-					channel = make_shared<Channel>();
+					channel = make_shared<MediaTrack>();
 					channel->ssrc = ssrc_id;
 					channel->local = false;
 					this->remote_channels.push_back(channel);
 				}
 			}
+
 			if(attribute == "mslabel") {
-				TEST_AV_TYPE(ssrc, "value", is_string, continue, "RTPStream::apply_sdp", "SSRC contains invalid/missing value");
-				channel->stream_id = ssrc["value"];
+				TEST_AV_TYPE(ssrc, "value", is_string, continue, "RTPStream::apply_sdp", "SSRC contains invalid value");
+                channel->stream_label = ssrc["value"];
 			} else if(attribute == "label") {
-				TEST_AV_TYPE(ssrc, "value", is_string, continue, "RTPStream::apply_sdp", "SSRC contains invalid/missing value");
-				channel->track_id = ssrc["value"];
+				TEST_AV_TYPE(ssrc, "value", is_string, continue, "RTPStream::apply_sdp", "SSRC contains invalid value");
+                channel->track_label = ssrc["value"];
+			} else if(attribute == "msid") {
+			    /* test association */
 			}
 		}
 		LOG_DEBUG(this->config->logger, "RTPStream::apply_sdp", "Got %u remote channels", this->remote_channels.size());
@@ -522,7 +530,7 @@ bool RTPStream::apply_sdp(const json& sdp, const json& media_entry) {
 	return true;
 }
 
-string RTPStream::generate_sdp() {
+string MediaStream::generate_sdp() {
 	ostringstream sdp;
 
 	string ids;
@@ -561,15 +569,22 @@ string RTPStream::generate_sdp() {
 	}
 
 	for(const auto& channel : this->local_channels) {
-		sdp << "a=ssrc:" << channel->ssrc << " cname:" << channel->stream_id << "\r\n";
-		sdp << "a=ssrc:" << channel->ssrc << " msid:" << channel->stream_id << " " << channel->track_id << "\r\n";
-		sdp << "a=ssrc:" << channel->ssrc << " mslabel:" << channel->stream_id << "\r\n";
-		sdp << "a=ssrc:" << channel->ssrc << " label:" << channel->track_id << "\r\n";
+		sdp << "a=ssrc:" << channel->ssrc << " cname:" << channel->id << "\r\n";
+		if(channel->track_label.has_value()) {
+		    sdp << "a=ssrc:" << channel->ssrc << " label:" << *channel->track_label << "\r\n";
+
+		    if(channel->stream_label.has_value()) {
+                sdp << "a=ssrc:" << channel->ssrc << " mslabel:" << *channel->stream_label << "\r\n";
+                sdp << "a=ssrc:" << channel->ssrc << " msid:" << *channel->track_label << " " << *channel->stream_label << "\r\n";
+		    } else {
+                sdp << "a=ssrc:" << channel->ssrc << " msid:" << *channel->track_label << "\r\n";
+		    }
+		}
 	}
 	return sdp.str();
 }
 
-bool RTPStream::reset(std::string &string) {
+bool MediaStream::reset(std::string &string) {
 	this->srtp_out_ready = false;
 	if(this->srtp_out) {
 		if(srtp_dealloc(this->srtp_out) != srtp_err_status_ok); //TODO error handling?
@@ -584,8 +599,9 @@ bool RTPStream::reset(std::string &string) {
 	return true;
 }
 
-bool RTPStream::process_incoming_rtp_data(RTPPacket &packet) {
-    auto channel = this->find_channel_by_id(htonl(packet.buffer.data_ptr<protocol::rtp_header>()->ssrc), direction::incoming);
+bool MediaStream::process_incoming_rtp_data(RTPPacket &packet) {
+    auto channel = this->find_track_by_id(htonl(packet.buffer.data_ptr<protocol::rtp_header>()->ssrc),
+                                          direction::incoming);
     if(!channel)
         return false;
 
@@ -614,8 +630,9 @@ bool RTPStream::process_incoming_rtp_data(RTPPacket &packet) {
     return true;
 }
 
-bool RTPStream::process_incoming_rtcp_data(RTCPPacket &packet) {
-    auto channel = this->find_channel_by_id(htonl(packet.buffer.data_ptr<protocol::rtcp_header>()->ssrc), direction::incoming);
+bool MediaStream::process_incoming_rtcp_data(RTCPPacket &packet) {
+    auto channel = this->find_track_by_id(htonl(packet.buffer.data_ptr<protocol::rtcp_header>()->ssrc),
+                                          direction::incoming);
     if(!channel)
         return false;
 
@@ -644,16 +661,16 @@ bool RTPStream::process_incoming_rtcp_data(RTCPPacket &packet) {
     return true;
 }
 
-bool RTPStream::process_incoming_dtls_data(const pipes::buffer_view &) {
+bool MediaStream::process_incoming_dtls_data(const pipes::buffer_view &) {
     return false;
 }
 
 //#define ENABLE_PROTOCOL_LOGGING
-void RTPStream::process_rtp_data(const shared_ptr<Channel>& channel, const pipes::buffer_view&in) {
+void MediaStream::process_rtp_data(const shared_ptr<MediaTrack>& channel, const pipes::buffer_view&in) {
     auto header = (protocol::rtp_header*) in.data_ptr();
 
 #ifdef ENABLE_PROTOCOL_LOGGING
-	LOG_VERBOSE(this->config->logger, "RTPStream::process_rtp_data", "incoming %i --> %i decrypted bytes. Type %i Version %i SSRC: %u => %i Seq: %u Pad: %u Ext: %u Ver: %u Mark: %u Count: %u", in.length(), buflen, (unsigned int) header->type, (unsigned int) header->version, be32toh(header->ssrc), (unsigned int) header->csrccount, ntohs(header->seq_number), (int) header->padding, (int) header->extension, (int) header->version, (int) header->markerbit, (int) header->csrccount);
+	LOG_VERBOSE(this->config->logger, "MediaStream::process_rtp_data", "incoming %i --> %i decrypted bytes. Type %i Version %i SSRC: %u => %i Seq: %u Pad: %u Ext: %u Ver: %u Mark: %u Count: %u", in.length(), buflen, (unsigned int) header->type, (unsigned int) header->version, be32toh(header->ssrc), (unsigned int) header->csrccount, ntohs(header->seq_number), (int) header->padding, (int) header->extension, (int) header->version, (int) header->markerbit, (int) header->csrccount);
 	if(header->extension) {
 		auto ext = (protocol::rtp_header_extension*) (in.data() + 12);
 		LOG_VERBOSE(this->config->logger, "XX", "Extenstion bytes (%x %u) %x %x %x %x", be16toh(ext->type), be16toh(ext->length), ext->data[0], ext->data[1], ext->data[2], ext->data[3]);
@@ -677,13 +694,13 @@ void RTPStream::process_rtp_data(const shared_ptr<Channel>& channel, const pipes
 			}
 		}
 		if(!channel->codec) {
-			LOG_ERROR(this->config->logger, "RTPStream::process_rtp_data", "Channel %u (%s -> %s) does not contains a codec which is locally supported!", be32toh(header->ssrc), channel->stream_id.c_str(), channel->track_id.c_str());
+			LOG_ERROR(this->config->logger, "RTPStream::process_rtp_data", "Channel %u (%s) does not contains a codec which is locally supported!", be32toh(header->ssrc), channel->id.c_str());
 			return;
 		}
 	}
 
 	if(channel->codec->id != header->type) {
-		LOG_ERROR(this->config->logger, "RTPStream::process_rtp_data", "Received type %u for channel %u (%s -> %s) does not match predefined type %u (%s)!", (int) header->type, be32toh(header->ssrc), channel->stream_id.c_str(), channel->track_id.c_str(), (int) channel->codec->id, channel->codec->codec.c_str());
+		LOG_ERROR(this->config->logger, "RTPStream::process_rtp_data", "Received type %u for channel %u (%s) does not match predefined type %u (%s)!", (int) header->type, be32toh(header->ssrc), channel->id.c_str(), (int) channel->codec->id, channel->codec->codec.c_str());
 		return;
 	}
 
@@ -692,7 +709,7 @@ void RTPStream::process_rtp_data(const shared_ptr<Channel>& channel, const pipes
 		this->incoming_data_handler(channel, in, payload_offset);
 }
 
-bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::buffer_view &extensions_and_payload, uint32_t timestamp, bool flag_extension, int marker_bit) {
+bool MediaStream::send_rtp_data(const shared_ptr<MediaTrack> &stream, const pipes::buffer_view &extensions_and_payload, uint32_t timestamp, bool flag_extension, int marker_bit) {
 	static_assert(protocol::rtp_header_base_size == 12, "Invalid structure size");
 	static_assert(protocol::rtp_header_extension_size == 4, "Invalid structure size");
 	if(!this->srtp_out_ready) {
@@ -719,6 +736,7 @@ bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::bu
 	header->markerbit = (uint16_t) (marker_bit == -1 ? stream->index_packet_send == 0 : marker_bit != 0);
 	header->timestamp = htonl(timestamp);
 	header->seq_number = htons(stream->index_packet_send);
+
 	stream->index_packet_send += 1;
     stream->timestamp_last_send = timestamp;
 
@@ -736,7 +754,7 @@ bool RTPStream::send_rtp_data(const shared_ptr<Channel> &stream, const pipes::bu
 	}
 	assert(buffer.length() >= buflen);
 #ifdef ENABLE_PROTOCOL_LOGGING
-	LOG_ERROR(this->config->logger, "RTPStream::process_srtp_data", "Protect succeeed %i (len=%i --> %i | len_org=%i)", res, buffer.length(), buflen, org_buflen);
+	LOG_ERROR(this->config->logger, "MediaStream::process_srtp_data", "Protect succeeed %i (len=%i --> %i | len_org=%i)", res, buffer.length(), buflen, org_buflen);
 #endif
 
 	this->send_data(buffer.view(0, buflen), false);
@@ -798,7 +816,7 @@ private:
     uint32_t _payload_byte_size{0};
 };
 
-bool RTPStream::send_rtcp_data(const std::shared_ptr <Channel> &channel, const pipes::buffer_view &payload, protocol::rtcp_type pt, int rc) {
+bool MediaStream::send_rtcp_data(const std::shared_ptr <MediaTrack> &channel, const pipes::buffer_view &payload, protocol::rtcp_type pt, int rc) {
     if(!this->srtp_out_ready) {
         LOG_ERROR(this->config->logger, "RTPStream::send_rtcp_data", "Srtp not ready yet!");
         return false;
@@ -838,7 +856,7 @@ bool RTPStream::send_rtcp_data(const std::shared_ptr <Channel> &channel, const p
     return true;
 }
 
-void RTPStream::process_rtcp_data(const shared_ptr<Channel>& channel, const pipes::buffer_view& in) {
+void MediaStream::process_rtcp_data(const shared_ptr<MediaTrack>& channel, const pipes::buffer_view& in) {
 	auto header = (protocol::rtcp_header*) in.data_ptr();
 
 	if(header->type == 200) { /* sender report */

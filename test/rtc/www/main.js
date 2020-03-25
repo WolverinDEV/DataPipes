@@ -71,7 +71,8 @@ class PeerConnection {
                 console.log("[RTC] Track %o onoverconstrained", event.track.id);
             };
             let handle = new RemoteSource();
-            handle.stream = event.streams[0];
+            handle.stream = new MediaStream();
+            handle.stream.addTrack(event.track);
             let context = audio_context();
             handle.media_stream = context.createMediaStreamSource(handle.stream);
             handle.media_stream.connect(context.destination);
@@ -120,7 +121,7 @@ class PeerConnection {
             event.stream.onremovetrack = e => {
                 console.log("[RTC][STREAM] Stream %o removed the track %o", event.stream.id, e.track.id);
             };
-            return false;
+            return;
             let handle = new RemoteSource();
             handle.stream = event.stream;
             let context = audio_context();
@@ -145,8 +146,11 @@ class PeerConnection {
         sdpConstraints.offerToReceiveVideo = false;
         navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(stream => {
             console.log("[GOT MIC!] %o", stream.getAudioTracks());
-            if (this.config.open_audio_channel)
-                current_track = this.peer.addTrack(stream.getAudioTracks()[0]);
+            if (this.config.open_audio_channel) {
+                for (const track of stream.getAudioTracks()) {
+                    current_track = this.peer.addTrack(track);
+                }
+            }
             /* local auto loopback */
             if (false) {
                 const context = audio_context();

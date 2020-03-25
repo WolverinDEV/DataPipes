@@ -44,7 +44,7 @@ create_example(
 create_example(
         NAME DataPipes-example-rtc-audio
         SOURCES ../test/utils/socket.cpp ../test/json/jsoncpp.cpp ../test/rtc/rtc_test_audio.cpp ../test/utils/rtc_server.cpp
-        LIBRARIES  DataPipes__static crypto ssl pthread libevent::core libevent::pthreads
+        LIBRARIES  DataPipes__static crypto ssl pthread libevent::core libevent::pthreads opus
 )
 
 find_package(GLIB)

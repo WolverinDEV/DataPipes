@@ -9,7 +9,7 @@
 #include "./RtpStream.h"
 
 namespace rtc {
-	class AudioStream : public RTPStream {
+	class AudioStream : public MediaStream {
 		public:
 			AudioStream(PeerConnection* /* owner */, NiceStreamId /* channel id */, const std::shared_ptr<Configuration>& /* configuration */);
 			virtual ~AudioStream();

@@ -16,6 +16,8 @@
 #include "../utils/rtc_server.h"
 #include "../json/json.h"
 
+#include <opus/opus.h>
+
 using namespace std;
 
 //#define DEBUG_SOUND_LOCAL
@@ -122,7 +124,11 @@ void initializes_certificates() {
 void initialize_client(rtc_server::Client* client) {
     auto peer = client->peer();
 
-    peer->callback_new_stream = [peer](const std::shared_ptr<rtc::Stream>& stream) {
+    int err{0};
+    auto decoder = opus_decoder_create(48000, 2, &err);
+    assert(err == OPUS_OK);
+
+    peer->callback_new_stream = [decoder](const std::shared_ptr<rtc::Stream>& stream) {
         if(stream->type() == rtc::CHANTYPE_AUDIO) {
             auto astream = dynamic_pointer_cast<rtc::AudioStream>(stream);
             assert(astream);
@@ -134,15 +140,15 @@ void initialize_client(rtc_server::Client* client) {
 
                 for(const auto& codec: opus_codec) {
                     codec->accepted = true;
-                    auto channel = astream->register_local_channel("voice_bridge_" + to_string(codec->id), "client_" + to_string(codec->id), codec);
+                    auto channel = astream->register_local_channel(codec);
                     //channel->timestamp_last_send = 0xf23;
                     break;
                 }
             }
-            //astream->register_local_extension("urn:ietf:params:rtp-hdrext:ssrc-audio-level");
+            astream->register_local_extension("urn:ietf:params:rtp-hdrext:ssrc-audio-level");
 
             weak_ptr<rtc::AudioStream> weak_astream = astream;
-            astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::Channel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
+            astream->incoming_data_handler = [&, weak_astream, decoder](const std::shared_ptr<rtc::MediaTrack>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
                 auto as = weak_astream.lock();
                 if(!as) return;
 
@@ -156,12 +162,24 @@ void initialize_client(rtc_server::Client* client) {
                     }
                 }
 
+                auto header = buffer.data_ptr<rtc::protocol::rtp_header>();
                 auto buf = buffer.view(payload_offset);
                 auto channels = as->list_channels();
+
+                if(false) {
+
+                    constexpr auto buffer_size = 4096;
+                    opus_int16 result_buffer[buffer_size];
+
+                    auto result = opus_decode(decoder, buf.data_ptr<unsigned char>(), buf.length(), result_buffer, buffer_size / 2, 0);
+                    std::cout << "Decode result: " << result << std::endl;
+                }
+
                 for(const auto& ch : channels)
                     if(ch->local) {
-                        cout << "Sending " << buf.length() << " - " << payload_offset << std::endl;
-                        as->send_rtp_data(ch, buf, ch->timestamp_last_send += 960); //960 = 20ms opus :)
+                        cout << "Sending " << buf.length() << " - " << payload_offset << " - " << ntohl(header->timestamp) << std::endl;
+                        //as->send_rtp_data(ch, buf, ch->timestamp_last_send += 960); //960 = 20ms opus :)
+                        as->send_rtp_data(ch, buf.view(0), ntohl(header->timestamp), false, false); //960 = 20ms opus :)
                     }
             };
         } else {

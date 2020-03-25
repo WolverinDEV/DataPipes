@@ -182,13 +182,24 @@ void pipes::SSL::continue_ssl_nolock() {
             break;
 
         case SSL_ERROR_SYSCALL:
-            _callback_error(PERROR_SSL_TIMEOUT, "syscall error (" + std::to_string(errno) + "/" + strerror(errno) + ")");
+            _callback_error(PERROR_SSL_ACCEPT, "syscall error (" + std::to_string(errno) + "/" + strerror(errno) + ")");
             this->ssl_state_ = SSLSocketState::SSL_STATE_UNDEFINED;
             return;
 
+        case SSL_ERROR_SSL: {
+            constexpr static auto buffer_size = 1024;
+            char buffer[buffer_size];
+            const auto error = ERR_get_error();
+
+            ERR_error_string_n(error, buffer, buffer_size);
+            _callback_error(PERROR_SSL_ACCEPT, std::string{buffer});
+            this->ssl_state_ = SSLSocketState::SSL_STATE_UNDEFINED;
+            return;
+        }
+
         case SSL_ERROR_ZERO_RETURN:
         default:
-            _callback_error(PERROR_SSL_TIMEOUT, "unknown error " + std::to_string(SSL_get_error(this->ssh_handle_, code)));
+            _callback_error(PERROR_SSL_ACCEPT, "unknown error " + std::to_string(SSL_get_error(this->ssh_handle_, code)));
             this->ssl_state_ = SSLSocketState::SSL_STATE_UNDEFINED;
             return;
     }

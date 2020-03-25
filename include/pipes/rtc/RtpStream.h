@@ -61,14 +61,16 @@ namespace rtc {
 		};
 	}
 
-	struct Channel {
+	struct MediaTrack {
 		bool local = false;
 
-		uint32_t ssrc = 0;
+		uint32_t ssrc{0};
+        std::string id; /* a=ssrc:<ssrc> cname:<unique name> */
+
 		std::shared_ptr<codec::Codec> codec;
 
-		std::string stream_id;
-		std::string track_id;
+		std::optional<std::string> track_label;
+        std::optional<std::string> stream_label;
 
 		/* just to keep track of some variables (for external use) */
 		uint32_t timestamp_last_send = 0;
@@ -88,7 +90,7 @@ namespace rtc {
 		};
 	};
 
-	class RTPStream : public Stream {
+	class MediaStream : public Stream {
 			friend class PeerConnection;
 		public:
 			struct Configuration {
@@ -96,10 +98,10 @@ namespace rtc {
 			};
 
 			/** buffer contains the full rtp packet inc. header and extensions **/
-			typedef std::function<void(const std::shared_ptr<Channel>& /* codec */, const pipes::buffer_view& /* buffer */, size_t /* payload offset */)> callback_data;
+			typedef std::function<void(const std::shared_ptr<MediaTrack>& /* codec */, const pipes::buffer_view& /* buffer */, size_t /* payload offset */)> callback_data;
 
-			RTPStream(PeerConnection* /* owner */, NiceStreamId /* channel id */, std::shared_ptr<Configuration>  /* configuration */);
-			virtual ~RTPStream();
+			MediaStream(PeerConnection* /* owner */, NiceStreamId /* channel id */, std::shared_ptr<Configuration>  /* configuration */);
+			virtual ~MediaStream();
 
 			bool initialize(std::string &string) override;
 
@@ -109,21 +111,23 @@ namespace rtc {
 			std::string generate_sdp() override;
 			bool reset(std::string &string) override;
 
-			bool send_rtp_data(const std::shared_ptr<Channel>& /* channel */, const pipes::buffer_view& /* data */, uint32_t /* timestamp */, bool /* contains extension */ = false, int /* marker bit */ = -1);
-            bool send_rtcp_data(const std::shared_ptr<Channel>& /* channel */, const pipes::buffer_view& /* data */, protocol::rtcp_type /* packet type */, int /* format type (rc) */);
+			bool send_rtp_data(const std::shared_ptr<MediaTrack>& /* channel */, const pipes::buffer_view& /* data */, uint32_t /* timestamp */, bool /* contains extension */ = false, int /* marker bit */ = -1);
+            bool send_rtcp_data(const std::shared_ptr<MediaTrack>& /* channel */, const pipes::buffer_view& /* data */, protocol::rtcp_type /* packet type */, int /* format type (rc) */);
 			callback_data incoming_data_handler = nullptr;
 
 			std::deque<std::shared_ptr<codec::Codec>> find_codecs_by_name(const std::string& /* name */);
 			std::shared_ptr<codec::Codec> find_codec_by_id(const codec::id_t& /* id */);
 			std::deque<std::shared_ptr<codec::Codec>> list_codecs();
 
-            std::shared_ptr<Channel> find_channel_by_id(uint32_t /* src */, direction::value /* direction mask */ = direction::bidirectional);
-            std::deque<std::shared_ptr<Channel>> list_channels(direction::value /* direction mask */ = direction::bidirectional);
+            std::shared_ptr<MediaTrack> find_track_by_id(uint32_t /* src */, direction::value /* direction mask */ = direction::bidirectional);
+            std::deque<std::shared_ptr<MediaTrack>> list_channels(direction::value /* direction mask */ = direction::bidirectional);
 
 			std::shared_ptr<HeaderExtension> find_extension_by_id(uint8_t /* id */,direction::value /* direction mask */ = direction::bidirectional);
 			std::deque<std::shared_ptr<HeaderExtension>> list_extensions(direction::value /* direction mask */ = direction::bidirectional);
 
-            std::shared_ptr<Channel> register_local_channel(const std::string& /* stream id */, const std::string& /* track id */, const std::shared_ptr<codec::Codec>& /* type */);
+            std::shared_ptr<MediaTrack> register_local_channel(const std::shared_ptr<codec::Codec>& /* type */,
+                                                               std::optional<std::string> /* track label */ = {},
+                                                               std::optional<std::string> /* stream label */ = {});
 			std::shared_ptr<HeaderExtension> register_local_extension(const std::string& /* name/uri */, const std::string& /* direction */ = "", const std::string& /* config */ = "", uint8_t /* supposed id */ = 0);
 
 		protected:
@@ -135,8 +139,8 @@ namespace rtc {
             bool process_incoming_rtp_data(RTPPacket& /* data */) override;
             bool process_incoming_rtcp_data(RTCPPacket& /* data */) override;
 
-            void process_rtp_data(const std::shared_ptr<Channel>& channel, const pipes::buffer_view & /* data */);
-            void process_rtcp_data(const std::shared_ptr<Channel>& channel, const pipes::buffer_view & /* data */);
+            void process_rtp_data(const std::shared_ptr<MediaTrack>& channel, const pipes::buffer_view & /* data */);
+            void process_rtcp_data(const std::shared_ptr<MediaTrack>& channel, const pipes::buffer_view & /* data */);
 
 		protected: /* methods to implement */
 			[[nodiscard]] virtual std::string sdp_media_type() const = 0;
@@ -156,7 +160,7 @@ namespace rtc {
 			std::vector<std::shared_ptr<HeaderExtension>> local_extensions;
 
 			std::mutex channel_lock;
-			std::vector<std::shared_ptr<Channel>> remote_channels;
-			std::vector<std::shared_ptr<Channel>> local_channels;
+			std::vector<std::shared_ptr<MediaTrack>> remote_channels;
+			std::vector<std::shared_ptr<MediaTrack>> local_channels;
 	};
 }

@@ -325,7 +325,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				astream->register_local_extension("urn:ietf:params:rtp-hdrext:ssrc-audio-level");
 
 				weak_ptr<rtc::AudioStream> weak_astream = astream;
-				astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::Channel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
+				astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::MediaTrack>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
 					auto as = weak_astream.lock();
 					if(!as) return;
 
@@ -426,7 +426,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 
                 auto timestamp_base{chrono::system_clock::now()};
 				weak_ptr<rtc::VideoStream> weak_astream = vstream;
-				vstream->incoming_data_handler = [weak_astream, timestamp_base, vpx](const std::shared_ptr<rtc::Channel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
+				vstream->incoming_data_handler = [weak_astream, timestamp_base, vpx](const std::shared_ptr<rtc::MediaTrack>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
 					auto vs = weak_astream.lock();
 					if(!vs) return;
 

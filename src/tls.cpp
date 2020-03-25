@@ -88,7 +88,6 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 	}
 
 	auto options = make_shared<SSL::Options>();
-    options->verbose_io = true;
 	options->type = handshake_mode;
 	options->context_method = method;
 	options->free_unused_keypairs = true;

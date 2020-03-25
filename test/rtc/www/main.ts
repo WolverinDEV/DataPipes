@@ -82,24 +82,27 @@ class PeerConnection {
             console.log("[RTC] Got new track %o (%o | %o) | %o", event.track.id, event.track.label, event.track, event.track.kind);
             event.track.onended = e => {
                 console.log("[RTC] Track %o ended (%o)", event.track.id, e.error);
-            }
+            };
+
             event.track.onmute = e => {
                 console.log("[RTC] Track %o muted", event.track.id);
-            }
+            };
+
             event.track.onunmute = e => {
                 console.log("[RTC] Track %o unmuted", event.track.id);
             };
 
             event.track.onoverconstrained = e => {
                 console.log("[RTC] Track %o onoverconstrained", event.track.id);
-            }
+            };
+
             let handle = new RemoteSource();
-            handle.stream = event.streams[0];
+            handle.stream = new MediaStream();
+            handle.stream.addTrack(event.track);
 
             let context = audio_context();
             handle.media_stream = context.createMediaStreamSource(handle.stream);
             handle.media_stream.connect(context.destination);
-
             remote_sources.push(handle);
         };
 
@@ -125,7 +128,7 @@ class PeerConnection {
                     this.socket.send(JSON.stringify({
                         type: 'candidate',
                         msg: event.candidate
-                    }); //.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}.local/i, "92.211.135.230");
+                    })); //.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}.local/i, "92.211.135.230");
                 else
                     this.socket.send(JSON.stringify({
                         type: 'candidate_finish'
@@ -152,7 +155,7 @@ class PeerConnection {
                 console.log("[RTC][STREAM] Stream %o removed the track %o", event.stream.id, e.track.id);
             };
 
-            return false;
+            return;
             let handle = new RemoteSource();
             handle.stream = event.stream;
 
@@ -165,6 +168,7 @@ class PeerConnection {
         this.peer.onremovestream = event => {
             console.log("[RTC] Removed a stream %o (%o)", event.stream.id, event);
         };
+
 
         this.peer.ondatachannel = event => {
             console.log("[RTC] Got new channel (Label: %s Id: %o)", event.channel.label, event.channel.id);
@@ -185,8 +189,11 @@ class PeerConnection {
 
         navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(stream => {
             console.log("[GOT MIC!] %o", stream.getAudioTracks());
-            if(this.config.open_audio_channel)
-                current_track = this.peer.addTrack(stream.getAudioTracks()[0]);
+            if(this.config.open_audio_channel) {
+                for(const track of stream.getAudioTracks()) {
+                    current_track = this.peer.addTrack(track);
+                }
+            }
 
             /* local auto loopback */
             if(false) {

@@ -28,18 +28,20 @@ bool DTLSPipe::initialize(std::string &error) {
     this->_dtls->logger(this->_config->logger);
 
     this->_dtls->callback_data([&](const pipes::buffer_view& data) {
-        LOG_VERBOSE(this->_config->logger, "MergedStream::dtls", "Decoded %i bytes", data.length());
+        if(this->_config->verbose_io)
+            LOG_VERBOSE(this->_config->logger, "DTLSPipe::dtls", "Decoded %i bytes", data.length());
         if(this->on_data)
             this->on_data(data);
     });
     this->_dtls->callback_write([&](const pipes::buffer_view& data) {
         /* keep in mind that peer connection streams are may read locked here */
-        LOG_VERBOSE(this->_config->logger, "MergedStream::dtls", "Encoded %i bytes", data.length());
+        if(this->_config->verbose_io)
+            LOG_VERBOSE(this->_config->logger, "DTLSPipe::dtls", "Encoded %i bytes", data.length());
         this->send_data(data, false);
     });
     this->_dtls->callback_error([&](int code, const std::string& error) {
         /* keep in mind that peer connection streams are may read locked here */
-        LOG_ERROR(this->_config->logger, "MergedStream::dtls", "Got error (%i): %s", code, error.c_str());
+        LOG_ERROR(this->_config->logger, "DTLSPipe::dtls", "Received error %d on DTLS pipe: %s", code, error.c_str());
         //TODO: Better handling?
     });
     this->_dtls->callback_initialized = [&]{
@@ -103,6 +105,7 @@ void DTLSPipe::on_nice_ready() {
 }
 
 void DTLSPipe::process_incoming_data(const pipes::buffer_view &data) {
-    LOG_VERBOSE(this->_config->logger, "MergedStream::process_incoming_data", "incoming %i bytes", data.length());
+    if(this->_config->verbose_io)
+        LOG_VERBOSE(this->_config->logger, "DTLSPipe::process_incoming_data", "incoming %i bytes", data.length());
     this->_dtls->process_incoming_data(data);
 }
