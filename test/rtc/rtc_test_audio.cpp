@@ -7,8 +7,8 @@
 #include <pipes/ssl.h>
 #include <pipes/ws.h>
 #include <pipes/rtc/PeerConnection.h>
-#include <pipes/rtc/ApplicationStream.h>
-#include <pipes/rtc/AudioStream.h>
+#include <pipes/rtc/channels/ApplicationChannel.h>
+#include <pipes/rtc/channels/AudioChannel.h>
 
 #include <event2/thread.h>
 #include <glib-2.0/glib.h>
@@ -128,9 +128,9 @@ void initialize_client(rtc_server::Client* client) {
     auto decoder = opus_decoder_create(48000, 2, &err);
     assert(err == OPUS_OK);
 
-    peer->callback_new_stream = [decoder](const std::shared_ptr<rtc::Stream>& stream) {
+    peer->callback_new_stream = [decoder](const std::shared_ptr<rtc::Channel>& stream) {
         if(stream->type() == rtc::CHANTYPE_AUDIO) {
-            auto astream = dynamic_pointer_cast<rtc::AudioStream>(stream);
+            auto astream = dynamic_pointer_cast<rtc::AudioChannel>(stream);
             assert(astream);
             {
                 auto opus_codec = astream->find_codecs_by_name("opus");
@@ -140,15 +140,15 @@ void initialize_client(rtc_server::Client* client) {
 
                 for(const auto& codec: opus_codec) {
                     codec->accepted = true;
-                    auto channel = astream->register_local_channel(codec);
+                    auto channel = astream->register_local_channel(codec, "X", "Y");
                     //channel->timestamp_last_send = 0xf23;
                     break;
                 }
             }
-            astream->register_local_extension("urn:ietf:params:rtp-hdrext:ssrc-audio-level");
+            //astream->register_local_extension("urn:ietf:params:rtp-hdrext:ssrc-audio-level");
 
-            weak_ptr<rtc::AudioStream> weak_astream = astream;
-            astream->incoming_data_handler = [&, weak_astream, decoder](const std::shared_ptr<rtc::MediaTrack>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
+            weak_ptr<rtc::AudioChannel> weak_astream = astream;
+            astream->incoming_data_handler = [&, weak_astream, decoder](const std::shared_ptr<rtc::MediaChannel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
                 auto as = weak_astream.lock();
                 if(!as) return;
 

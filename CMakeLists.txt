@@ -12,7 +12,6 @@ option(WEBRTC_SUPPORT   "Enable/disable support for all WebRTC components (requi
 option(BUILD_STATIC     "Enable/disable static build." ON)
 option(BUILD_SHARED     "Enable/disable static build." ON)
 option(BUILD_EXAMPLES   "Enable/disable the example builds." ON)
-option(EXPORT_OLD_LIBRARY_NAMES "If enabled the old library exports from the old cmake file will be exported as well" OFF)
 
 set(MAJOR_VERSION 1)
 set(MINOR_VERSION 1)
@@ -62,8 +61,6 @@ include(cmake/sources.cmake)
 # WebRTC part
 message("WebRTC support: ${WEBRTC_SUPPORT}")
 if (WEBRTC_SUPPORT)
-    set(WITH_RTC ON)
-
     include(cmake/rtc-libraries.cmake)
 endif ()
 

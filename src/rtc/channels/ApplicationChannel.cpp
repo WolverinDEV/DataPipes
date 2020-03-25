@@ -1,10 +1,10 @@
-#include "pipes/rtc/ApplicationStream.h"
+#include "pipes/rtc/channels/ApplicationChannel.h"
 #include "pipes/rtc/PeerConnection.h"
 #include "pipes/tls.h"
 #include "pipes/sctp.h"
 #include "pipes/misc/logger.h"
 #include "pipes/misc/endianness.h"
-#include "./json.h"
+#include "../json_guard.h"
 
 #include <sstream>
 
@@ -35,7 +35,7 @@ if(!json[key].type()) { \
 uint16_t DataChannel::id() const { return this->_id; }
 std::string DataChannel::protocol() const { return this->_protocol; }
 std::string DataChannel::lable() const { return this->_lable; }
-DataChannel::DataChannel(ApplicationStream* owner, uint16_t id, std::string lable, std::string protocol) : owner(owner), _id(id), _lable(std::move(lable)), _protocol(std::move(protocol)) {}
+DataChannel::DataChannel(ApplicationChannel* owner, uint16_t id, std::string lable, std::string protocol) : owner(owner), _id(id), _lable(std::move(lable)), _protocol(std::move(protocol)) {}
 
 void DataChannel::send(const pipes::buffer_view &message, rtc::DataChannel::MessageType type) {
 	int ppid_type = 0;
@@ -53,13 +53,13 @@ void DataChannel::close() {
 	this->owner->close_datachannel(this);
 }
 
-ApplicationStream::ApplicationStream(PeerConnection* owner, rtc::NiceStreamId id, const shared_ptr<rtc::ApplicationStream::Configuration> &config) : Stream(owner, id), config(config) { }
-ApplicationStream::~ApplicationStream() {
+ApplicationChannel::ApplicationChannel(PeerConnection* owner, rtc::NiceStreamId id, const shared_ptr<rtc::ApplicationChannel::Configuration> &config) : Channel(owner, id), config(config) { }
+ApplicationChannel::~ApplicationChannel() {
 	string error;
 	this->reset(error);
 }
 
-bool ApplicationStream::initialize(std::string &error) {
+bool ApplicationChannel::initialize(std::string &error) {
     this->sctp = make_unique<pipes::SCTP>(this->config->local_port);
     this->sctp->direct_process(pipes::PROCESS_DIRECTION_IN, true);
     this->sctp->direct_process(pipes::PROCESS_DIRECTION_OUT, true);
@@ -84,7 +84,7 @@ bool ApplicationStream::initialize(std::string &error) {
 	return true;
 }
 
-void ApplicationStream::on_dtls_initialized(const std::shared_ptr<DTLSPipe>&handle) {
+void ApplicationChannel::on_dtls_initialized(const std::shared_ptr<DTLSHandler>&handle) {
 	LOG_DEBUG(this->config->logger, "ApplicationStream::dtls", "Initialized! Starting SCTP connect");
 	if(!this->sctp->connect()) {
 		LOG_ERROR(this->config->logger, "ApplicationStream::sctp", "Failed to connect");
@@ -94,7 +94,7 @@ void ApplicationStream::on_dtls_initialized(const std::shared_ptr<DTLSPipe>&hand
 		LOG_DEBUG(this->config->logger, "ApplicationStream::sctp", "successful connected");
 }
 
-bool ApplicationStream::apply_sdp(const json &, const json &media_entry) {
+bool ApplicationChannel::apply_sdp(const json_guard &, const json_guard &media_entry) {
 	{
 		TEST_AV_TYPE(media_entry, "mid", is_string, return false, "ApplicationStream::apply_sdp", "Entry contains invalid/missing id");
 		this->mid = media_entry["mid"];
@@ -124,7 +124,7 @@ bool ApplicationStream::apply_sdp(const json &, const json &media_entry) {
 	return true;
 }
 
-std::string ApplicationStream::generate_sdp() {
+std::string ApplicationChannel::generate_sdp() {
 	std::ostringstream sdp;
 	sdp << "m=application 9 DTLS/SCTP " + to_string(this->sctp->local_port()) + "\r\n"; //The 9 is the port? https://tools.ietf.org/html/rfc4566#page-22
 	sdp << "c=IN IP4 0.0.0.0\r\n";
@@ -137,26 +137,26 @@ std::string ApplicationStream::generate_sdp() {
 	return sdp.str();
 }
 
-bool ApplicationStream::reset(std::string &) {
+bool ApplicationChannel::reset(std::string &) {
 	if(this->sctp) this->sctp->finalize();
 
 	return true;
 }
 
-bool ApplicationStream::process_incoming_dtls_data(const pipes::buffer_view &data) {
+bool ApplicationChannel::process_incoming_dtls_data(const pipes::buffer_view &data) {
     this->sctp->process_incoming_data(data);
     return true;
 }
 
-bool ApplicationStream::process_incoming_rtp_data(RTPPacket &) { return false; }
-bool ApplicationStream::process_incoming_rtcp_data(RTCPPacket &) { return false; }
+bool ApplicationChannel::process_incoming_rtp_data(RTPPacket &) { return false; }
+bool ApplicationChannel::process_incoming_rtcp_data(RTCPPacket &) { return false; }
 
-void ApplicationStream::send_sctp(const pipes::SCTPMessage &message) {
+void ApplicationChannel::send_sctp(const pipes::SCTPMessage &message) {
 	this->sctp->send(message);
 }
 
 //TODO error handling right!
-void ApplicationStream::handle_sctp_event(union sctp_notification* event) {
+void ApplicationChannel::handle_sctp_event(union sctp_notification* event) {
 	switch (event->sn_header.sn_type) {
 		case SCTP_ASSOC_CHANGE:
 			LOG_DEBUG(this->config->logger, "ApplicationStream::handle_sctp_event", "OnNotification(type=SCTP_ASSOC_CHANGE)");
@@ -204,11 +204,11 @@ void ApplicationStream::handle_sctp_event(union sctp_notification* event) {
 	}
 }
 
-void ApplicationStream::send_sctp_event(uint16_t channel_id, union sctp_notification* event) {
+void ApplicationChannel::send_sctp_event(uint16_t channel_id, union sctp_notification* event) {
 	this->send_sctp({pipes::buffer_view{(void *) event, event->sn_header.sn_length}, channel_id, MSG_NOTIFICATION});
 }
 
-void ApplicationStream::handle_event_stream_reset(struct sctp_stream_reset_event &ev) {
+void ApplicationChannel::handle_event_stream_reset(struct sctp_stream_reset_event &ev) {
 	deque<shared_ptr<DataChannel>> affected_channels;
 
 	auto nelements = (ev.strreset_length - sizeof(ev)) / sizeof(uint16_t);
@@ -239,7 +239,7 @@ void ApplicationStream::handle_event_stream_reset(struct sctp_stream_reset_event
 	}
 }
 
-void ApplicationStream::handle_sctp_message(const pipes::SCTPMessage &message) {
+void ApplicationChannel::handle_sctp_message(const pipes::SCTPMessage &message) {
 	LOG_VERBOSE(this->config->logger, "ApplicationStream::handle_sctp_message", "got new message of type %i for channel %i", message.ppid, message.channel_id);
 	if (message.ppid == PPID_CONTROL) {
 		if (message.data[0] == DC_TYPE_OPEN) {
@@ -268,7 +268,7 @@ struct dc_new {
 };
 
 
-void ApplicationStream::handle_datachannel_new(uint16_t channel_id, const pipes::buffer_view &message) {
+void ApplicationChannel::handle_datachannel_new(uint16_t channel_id, const pipes::buffer_view &message) {
 	if(this->active_channels.size() >= this->config->max_data_channels) { return; } //TODO error?
 	if(sizeof(dc_new_header) > message.length()) return;
 
@@ -299,11 +299,11 @@ void ApplicationStream::handle_datachannel_new(uint16_t channel_id, const pipes:
 	LOG_INFO(this->config->logger, "ApplicationStream::handle_datachannel_new", "Recived new data channel. Label: %s (Protocol: %s) ChannelId: %i (Type: %i)", packet.label.c_str(), packet.protocol.c_str(), channel_id, packet.header.channel_type);
 }
 
-void ApplicationStream::handle_datachannel_ack(uint16_t channel_id) {
+void ApplicationChannel::handle_datachannel_ack(uint16_t channel_id) {
 	//TODO acknowledge for create
 }
 
-void ApplicationStream::handle_datachannel_message(uint16_t channel_id, uint32_t type, const pipes::buffer_view &message) {
+void ApplicationChannel::handle_datachannel_message(uint16_t channel_id, uint32_t type, const pipes::buffer_view &message) {
 	auto channel = this->find_datachannel(channel_id);
 	if(!channel) return; //TODO error handling?
 
@@ -316,7 +316,7 @@ void ApplicationStream::handle_datachannel_message(uint16_t channel_id, uint32_t
 	}
 }
 
-std::shared_ptr<DataChannel> ApplicationStream::find_datachannel(uint16_t channel_id) {
+std::shared_ptr<DataChannel> ApplicationChannel::find_datachannel(uint16_t channel_id) {
 	for(const auto& entry : this->active_channels)
 		if(entry.first == channel_id)
 			return entry.second;
@@ -324,7 +324,7 @@ std::shared_ptr<DataChannel> ApplicationStream::find_datachannel(uint16_t channe
 	return nullptr;
 }
 
-std::shared_ptr<DataChannel> ApplicationStream::find_datachannel(const std::string &name) {
+std::shared_ptr<DataChannel> ApplicationChannel::find_datachannel(const std::string &name) {
 	for(const auto& entry : this->active_channels)
 		if(entry.second->_lable == name)
 			return entry.second;
@@ -332,7 +332,7 @@ std::shared_ptr<DataChannel> ApplicationStream::find_datachannel(const std::stri
 	return nullptr;
 }
 
-void ApplicationStream::close_datachannel(rtc::DataChannel *channel) {
+void ApplicationChannel::close_datachannel(rtc::DataChannel *channel) {
 	//TODO close the channel for the remote as well
 	/*
 	{

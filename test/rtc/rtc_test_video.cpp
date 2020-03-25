@@ -8,9 +8,9 @@
 #include <pipes/ssl.h>
 #include <pipes/ws.h>
 #include <pipes/rtc/PeerConnection.h>
-#include <pipes/rtc/ApplicationStream.h>
-#include <pipes/rtc/AudioStream.h>
-#include <pipes/rtc/VideoStream.h>
+#include <pipes/rtc/channels/ApplicationChannel.h>
+#include <pipes/rtc/channels/AudioChannel.h>
+#include <pipes/rtc/channels/VideoChannels.h>
 
 #include "./video_utils.h"
 #include "../utils/socket.h"
@@ -277,9 +277,9 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 		    }
 		};
 
-		client->peer->callback_new_stream = [client](const shared_ptr<rtc::Stream>& stream) {
+		client->peer->callback_new_stream = [client](const shared_ptr<rtc::Channel>& stream) {
 			if(stream->type() == rtc::CHANTYPE_APPLICATION) {
-				auto data_channel = dynamic_pointer_cast<rtc::ApplicationStream>(stream);
+				auto data_channel = dynamic_pointer_cast<rtc::ApplicationChannel>(stream);
 				data_channel->callback_datachannel_new = [](const std::shared_ptr<rtc::DataChannel>& channel) {
 					weak_ptr<rtc::DataChannel> weak = channel;
 					channel->callback_binary = [weak](const pipes::buffer_view& message) {
@@ -310,7 +310,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				};
 			}
 			else if(stream->type() == rtc::CHANTYPE_AUDIO) {
-				auto astream = dynamic_pointer_cast<rtc::AudioStream>(stream);
+				auto astream = dynamic_pointer_cast<rtc::AudioChannel>(stream);
 				assert(astream);
 				{
 					auto opus_codec = astream->find_codecs_by_name("opus");
@@ -324,8 +324,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				}
 				astream->register_local_extension("urn:ietf:params:rtp-hdrext:ssrc-audio-level");
 
-				weak_ptr<rtc::AudioStream> weak_astream = astream;
-				astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::MediaTrack>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
+				weak_ptr<rtc::AudioChannel> weak_astream = astream;
+				astream->incoming_data_handler = [&, weak_astream](const std::shared_ptr<rtc::MediaChannel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
 					auto as = weak_astream.lock();
 					if(!as) return;
 
@@ -347,7 +347,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				};
 			}
 			else if(stream->type() == rtc::CHANTYPE_VIDEO) {
-				auto vstream = dynamic_pointer_cast<rtc::VideoStream>(stream);
+				auto vstream = dynamic_pointer_cast<rtc::VideoChannel>(stream);
 				assert(vstream);
 
 				{
@@ -425,8 +425,8 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 				}
 
                 auto timestamp_base{chrono::system_clock::now()};
-				weak_ptr<rtc::VideoStream> weak_astream = vstream;
-				vstream->incoming_data_handler = [weak_astream, timestamp_base, vpx](const std::shared_ptr<rtc::MediaTrack>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
+				weak_ptr<rtc::VideoChannel> weak_astream = vstream;
+				vstream->incoming_data_handler = [weak_astream, timestamp_base, vpx](const std::shared_ptr<rtc::MediaChannel>& channel, const pipes::buffer_view& buffer, size_t payload_offset) {
 					auto vs = weak_astream.lock();
 					if(!vs) return;
 

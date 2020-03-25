@@ -3,17 +3,17 @@
 #include "pipes/tls.h"
 #include "../misc/logger.h"
 #include "./NiceWrapper.h"
-#include "./Stream.h"
+#include "pipes/rtc/channels/Channel.h"
 
 #include <map>
 #include <memory>
 #include <utility>
 
 namespace rtc {
-	class ApplicationStream;
-	class AudioStream;
-	class VideoStream;
-	class DTLSPipe;
+	class ApplicationChannel;
+	class AudioChannel;
+	class VideoChannel;
+	class DTLSHandler;
 
 	struct IceCandidate {
 		IceCandidate(std::string candidate, std::string sdpMid, int sdpMLineIndex)
@@ -25,8 +25,8 @@ namespace rtc {
 		[[nodiscard]] inline bool is_finished_candidate() const { return this->candidate.empty(); }
 	};
 	class PeerConnection {
-			friend class Stream;
-			friend class DTLSPipe;
+			friend class Channel;
+			friend class DTLSHandler;
 		public:
 			struct Config {
 				std::shared_ptr<pipes::Logger> logger;
@@ -52,27 +52,27 @@ namespace rtc {
 			 */
 			typedef std::function<void(const IceCandidate& /* candidate */)> cb_ice_candidate;
 			typedef std::function<void(ConnectionComponent /* component */, const std::string& /* reason */)> cb_setup_fail;
-			typedef std::function<void(const std::shared_ptr<Stream>& /* stream */)> cb_new_stream;
+			typedef std::function<void(const std::shared_ptr<Channel>& /* stream */)> cb_new_stream;
 
 			explicit PeerConnection(std::shared_ptr<Config>  /* config */);
 			virtual ~PeerConnection();
 
-			std::shared_ptr<Config> configuration() { return this->config; }
+            [[nodiscard]] std::shared_ptr<Config> configuration() { return this->config; }
 			void reset();
-			bool initialize(std::string& /* error */);
+            [[nodiscard]] bool initialize(std::string& /* error */);
 
 			//TODO vice versa (we create a offer and parse the answer?)
-			bool apply_offer(std::string& /* error */, const std::string& /* offer */);
-			std::string generate_answer(bool /* candidates */);
+            [[nodiscard]] bool apply_offer(std::string& /* error */, const std::string& /* offer */);
+            [[nodiscard]] std::string generate_answer(bool /* candidates */);
 
             int apply_ice_candidates(const std::deque<std::shared_ptr<IceCandidate>>& /* candidates */);
-            bool remote_candidates_finished();
+            void remote_candidates_finished();
 
             cb_ice_candidate callback_ice_candidate;
 			cb_setup_fail callback_setup_fail;
 			cb_new_stream callback_new_stream;
 
-            [[nodiscard]] inline std::vector<std::shared_ptr<Stream>> available_streams() {
+            [[nodiscard]] inline std::vector<std::shared_ptr<Channel>> available_channels() {
 			    std::lock_guard lock{this->stream_lock};
 			    return this->streams;
 			}
@@ -83,10 +83,10 @@ namespace rtc {
 			std::shared_ptr<NiceWrapper> nice;
 
 			std::shared_mutex stream_lock{};
-			std::vector<std::shared_ptr<Stream>> streams{}; /* streams in order with the media line indexes */
-			std::vector<std::shared_ptr<DTLSPipe>> dtls_streams{};
+			std::vector<std::shared_ptr<Channel>> streams{}; /* streams in order with the media line indexes */
+			std::vector<std::shared_ptr<DTLSHandler>> dtls_streams{};
 
-            inline int sdp_mline_index(const std::shared_ptr<Stream>& stream) {
+            inline int sdp_mline_index(const std::shared_ptr<Channel>& stream) {
                 int index = 0;
                 for(const auto& entry : this->streams)
                     if(entry == stream) return index;
@@ -94,8 +94,8 @@ namespace rtc {
                 return -1;
             }
 
-            std::shared_ptr<DTLSPipe> find_dts_pipe(NiceStreamId /* stream */);
-            std::vector<std::shared_ptr<Stream>> find_streams_from_nice_stream(NiceStreamId /* stream */);
+            std::shared_ptr<DTLSHandler> find_dts_pipe(NiceStreamId /* stream */);
+            std::vector<std::shared_ptr<Channel>> find_streams_from_nice_stream(NiceStreamId /* stream */);
 			void handle_nice_data(NiceStreamId /* stream */, const pipes::buffer_view& /* data */);
             void handle_dtls_data(NiceStreamId /* stream */, const pipes::buffer_view& /* data */);
 	};

@@ -8,7 +8,7 @@
 #include <pipes/ssl.h>
 #include <pipes/ws.h>
 #include <pipes/rtc/PeerConnection.h>
-#include <pipes/rtc/ApplicationStream.h>
+#include <pipes/rtc/channels/ApplicationChannel.h>
 
 #include "../utils/rtc_server.h"
 
@@ -91,10 +91,10 @@ void initializes_certificates() {
 void initialize_client(rtc_server::Client* client) {
     auto peer = client->peer();
 
-    peer->callback_new_stream = [peer](const std::shared_ptr<rtc::Stream>& stream) {
+    peer->callback_new_stream = [peer](const std::shared_ptr<rtc::Channel>& stream) {
         cout << "[Stream] Got new stream of type " << stream->type() << " | " << stream->nice_stream_id() << endl;
         if(stream->type() == rtc::CHANTYPE_APPLICATION) {
-            auto data_channel = dynamic_pointer_cast<rtc::ApplicationStream>(stream);
+            auto data_channel = dynamic_pointer_cast<rtc::ApplicationChannel>(stream);
             data_channel->callback_datachannel_new = [peer](const std::shared_ptr<rtc::DataChannel>& channel) {
                 weak_ptr<rtc::DataChannel> weak = channel;
                 channel->callback_binary = [weak](const pipes::buffer_view& message) {

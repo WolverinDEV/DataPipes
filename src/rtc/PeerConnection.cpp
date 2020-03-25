@@ -1,14 +1,14 @@
 #include "pipes/rtc/PeerConnection.h"
 #include "pipes/rtc/NiceWrapper.h"
-#include "pipes/rtc/ApplicationStream.h"
-#include "pipes/rtc/RtpStream.h"
-#include "pipes/rtc/AudioStream.h"
-#include "pipes/rtc/VideoStream.h"
-#include "pipes/rtc/DTLSPipe.h"
+#include "pipes/rtc/channels/ApplicationChannel.h"
+#include "pipes/rtc/channels/MediaChannel.h"
+#include "pipes/rtc/channels/AudioChannel.h"
+#include "pipes/rtc/channels/VideoChannels.h"
+#include "pipes/rtc/DTLSHandler.h"
 #include "pipes/rtc/RTPPacket.h"
 #include "pipes/rtc/Protocol.h"
 #include "pipes/misc/logger.h"
-#include "./json.h"
+#include "json_guard.h"
 
 #include <iostream>
 #include <utility>
@@ -69,7 +69,7 @@ bool PeerConnection::initialize(std::string &error) {
         this->nice->set_callback_local_candidate([&](const std::shared_ptr<NiceStream>& nice_stream, const std::vector<std::string>& candidates, bool more_candidates) {
             if(!this->callback_ice_candidate) return;
 
-            for(const auto& stream : this->available_streams()) {
+            for(const auto& stream : this->available_channels()) {
                 if(stream->nice_stream_id() == nice_stream->stream_id) {
                      for(const auto &it : candidates) {
                         this->callback_ice_candidate(IceCandidate{it.length() > 2 ? it.substr(2) : it, stream->get_mid(), this->sdp_mline_index(stream)});
@@ -179,10 +179,10 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
 
             /* the dtls stream */
             {
-                auto config = std::make_shared<DTLSPipe::Config>();
+                auto config = std::make_shared<DTLSHandler::Config>();
                 config->logger = this->config->logger;
 
-                auto dtls_stream = std::make_shared<DTLSPipe>(this->nice, nice_stream->stream_id, config);
+                auto dtls_stream = std::make_shared<DTLSHandler>(this->nice, nice_stream->stream_id, config);
                 if(!dtls_stream->initialize(error)) {
                     error = "failed to initialize dtls pipe for new nice stream (" + error + ")";
                     return false;
@@ -195,7 +195,7 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
                         return;
                     }
 
-                    for(const auto& stream : this->available_streams())
+                    for(const auto& stream : this->available_channels())
                         if(stream->nice_stream_id() == stream_id)
                             stream->on_dtls_initialized(dtls);
                 };
@@ -207,7 +207,7 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
                 this->dtls_streams.push_back(dtls_stream);
                 stream_lock.unlock();
 
-                nice_stream->callback_ready = [pipe = std::weak_ptr<DTLSPipe>{dtls_stream}]{
+                nice_stream->callback_ready = [pipe = std::weak_ptr<DTLSHandler>{dtls_stream}]{
                     auto pipe_ref = pipe.lock();
                     if(!pipe_ref) return;
 
@@ -249,13 +249,13 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
             string setup_type = media_entry["setup"];
             LOG_VERBOSE(this->config->logger, "PeerConnection::apply_offer", "Stream setup type: %s", setup_type.c_str());
 
-            DTLSPipe::Role target_role{DTLSPipe::Undefined};
+            DTLSHandler::Role target_role{DTLSHandler::Undefined};
             if(setup_type == "active")
-                target_role = DTLSPipe::Server;
+                target_role = DTLSHandler::Server;
             else if(setup_type == "passive")
-                target_role = DTLSPipe::Client;
-            if(target_role != DTLSPipe::Undefined) {
-                if(dtls_stream->role() != DTLSPipe::Undefined && dtls_stream->role() != target_role) {
+                target_role = DTLSHandler::Client;
+            if(target_role != DTLSHandler::Undefined) {
+                if(dtls_stream->role() != DTLSHandler::Undefined && dtls_stream->role() != target_role) {
                     error = "inconsistent media stream roles";
                     return false;
                 }
@@ -265,30 +265,30 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
         }
 
         string type = media_entry["type"];
-        std::shared_ptr<Stream> stream{nullptr};
+        std::shared_ptr<Channel> stream{nullptr};
         if(type == "audio") {
-            auto config = make_shared<AudioStream::Configuration>();
+            auto config = make_shared<AudioChannel::Configuration>();
             config->logger = this->config->logger;
 
-            stream = std::make_shared<AudioStream>(this, nice_stream->stream_id, config);
+            stream = std::make_shared<AudioChannel>(this, nice_stream->stream_id, config);
             if(!stream->apply_sdp(sdp, media_entry)) {
                 error = "failed to apply sdp for audio stream";
                 return false;
             }
         } else if(type == "video") {
-            auto config = make_shared<VideoStream::Configuration>();
+            auto config = make_shared<VideoChannel::Configuration>();
             config->logger = this->config->logger;
 
-            stream = std::make_shared<VideoStream>(this, nice_stream->stream_id, config);
+            stream = std::make_shared<VideoChannel>(this, nice_stream->stream_id, config);
             if(!stream->apply_sdp(sdp, media_entry)) {
                 error = "failed to apply sdp for video stream";
                 return false;
             }
         } else if(type == "application") {
-            auto config = make_shared<ApplicationStream::Configuration>();
+            auto config = make_shared<ApplicationChannel::Configuration>();
             config->logger = this->config->logger;
 
-            stream = std::make_shared<ApplicationStream>(this, nice_stream->stream_id, config);
+            stream = std::make_shared<ApplicationChannel>(this, nice_stream->stream_id, config);
             if(!stream->initialize(error)) {
                 error = "failed to initialize application stream";
                 return false;
@@ -330,7 +330,7 @@ int PeerConnection::apply_ice_candidates(const std::deque<std::shared_ptr<rtc::I
     for(const auto& candidate : candidates) {
         std::shared_ptr<NiceStream> nice_handle;
 
-        for(const auto& stream : this->available_streams()) {
+        for(const auto& stream : this->available_channels()) {
             if(stream->get_mid() == candidate->sdpMid) {
                 nice_handle = this->nice->find_stream(stream->nice_stream_id());
                 break;
@@ -349,10 +349,9 @@ int PeerConnection::apply_ice_candidates(const std::deque<std::shared_ptr<rtc::I
     return success_counter;
 }
 
-bool PeerConnection::remote_candidates_finished() {
+void PeerConnection::remote_candidates_finished() {
     for(const auto& stream : this->nice->available_streams())
         this->nice->remote_ice_candidates_finished(stream);
-    return true;
 }
 
 #define SESSION_ID_SIZE 16
@@ -398,7 +397,7 @@ std::string PeerConnection::generate_answer(bool candidates) {
             auto certificate = dtls_pipe->dtls_certificate();
             assert(certificate);
             sdp << "a=fingerprint:sha-256 " << certificate->getFingerprint() << "\r\n";
-            sdp << "a=setup:" << (dtls_pipe->role() == DTLSPipe::Server ? "passive" : "active") << "\r\n";
+            sdp << "a=setup:" << (dtls_pipe->role() == DTLSHandler::Server ? "passive" : "active") << "\r\n";
         } else {
             LOG_ERROR(this->config->logger, "PeerConnection::generate_answer", "Media stream %s (%u) missing dtls pipe!", entry->get_mid().c_str(), entry->nice_stream_id());
         }
@@ -475,15 +474,15 @@ void PeerConnection::handle_dtls_data(rtc::NiceStreamId stream, const pipes::buf
         str->process_incoming_dtls_data(buffer);
 }
 
-std::shared_ptr<DTLSPipe> PeerConnection::find_dts_pipe(rtc::NiceStreamId stream) {
+std::shared_ptr<DTLSHandler> PeerConnection::find_dts_pipe(rtc::NiceStreamId stream) {
     std::shared_lock lock{this->stream_lock};
     for(auto& dtls : this->dtls_streams)
         if(dtls->nice_stream_id() == stream)
             return dtls;
     return nullptr;
 }
-std::vector<std::shared_ptr<Stream>> PeerConnection::find_streams_from_nice_stream(rtc::NiceStreamId stream_id) {
-    std::vector<std::shared_ptr<Stream>> result{};
+std::vector<std::shared_ptr<Channel>> PeerConnection::find_streams_from_nice_stream(rtc::NiceStreamId stream_id) {
+    std::vector<std::shared_ptr<Channel>> result{};
 
     std::shared_lock lock{this->stream_lock};
     result.reserve(this->streams.size());
