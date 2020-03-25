@@ -24,7 +24,6 @@ if (WITH_UsrSCTP)
     message("Building with UsrSCTP support")
 
     list(APPEND SOURCE_FILES src/sctp.cpp)
-    list(APPEND LIBRARIES_PRIVATE SctpLab::UsrSCTP)
 endif ()
 
 # RTC files
