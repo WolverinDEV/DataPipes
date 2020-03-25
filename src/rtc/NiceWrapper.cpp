@@ -289,11 +289,15 @@ void NiceWrapper::finalize() {
     if(this->own_loop) {
         auto cloop = std::exchange(this->loop, nullptr);
 
-        g_main_loop_quit(this->loop.get());
-        lock.unlock();
-        if (this->g_main_loop_thread.joinable())
-            this->g_main_loop_thread.join();
-        lock.lock();
+        if(cloop) {
+            g_main_loop_quit(&*cloop);
+            lock.unlock();
+            if (this->g_main_loop_thread.joinable())
+                this->g_main_loop_thread.join();
+            lock.lock();
+        } else {
+            assert(!this->g_main_loop_thread.joinable());
+        }
     }
 }
 
