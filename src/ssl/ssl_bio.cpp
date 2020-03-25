@@ -2,17 +2,12 @@
 #include "pipes/misc/logger.h"
 
 #include <cstring>
-#include <assert.h>
-#include <iostream>
 
-#define BIO_C_SET_SSLHANDLE (1 | 0x8000)
+int pipes::SSL::bio_puts(BIO *bio, const char *buffer) {
+    return BIO_write(bio, buffer, strlen(buffer));
+}
 
-int pipes::SSL::bio_puts(BIO *, const char *) {
-    return 0;
-}
-int pipes::SSL::bio_gets(BIO *, char*, int) {
-    return 0;
-}
+int pipes::SSL::bio_gets(BIO *, char*, int) { return -1; }
 
 #ifdef USE_BORINGSSL
 long pipes::SSL::bio_callback_ctrl(BIO *, int, bio_info_cb) {
@@ -38,7 +33,15 @@ int pipes::SSL::bio_read(BIO* self, char* buffer, int length) {
     auto handle = static_cast<SSL*>(BIO_get_data(self));
     assert(handle);
 
-    return handle->buffer_read_read_bytes(buffer, length);
+    if(handle->_options->verbose_io)
+        LOG_VERBOSE(handle->logger(), "SSL::bio_read", "Want to read %u to %p", length, buffer);
+
+    BIO_clear_retry_flags(self);
+    auto read_result = handle->buffer_read_read_bytes(buffer, length);
+    if(read_result > 0) return read_result;
+
+    BIO_set_retry_read(self);
+    return -1;
 }
 
 long pipes::SSL::bio_ctrl(BIO* self, int operation, long larg, void* parg) {
@@ -46,17 +49,15 @@ long pipes::SSL::bio_ctrl(BIO* self, int operation, long larg, void* parg) {
     auto handle = static_cast<SSL*>(BIO_get_data(self));
 
 	switch (operation) {
-		case BIO_C_SET_SSLHANDLE:
-		    BIO_set_data(self, parg);
-		    BIO_set_init(self, parg != nullptr);
-            return 1L;
+        case BIO_CTRL_RESET:
+            return 0;
+        case BIO_CTRL_EOF:
+            return 0; /* socket isn't closed */
+        case BIO_CTRL_WPENDING:
         case BIO_CTRL_PENDING:
-            if(!handle) return -1L;
-            return handle->buffer_read_bytes_available();
+            return 0;
         case BIO_CTRL_FLUSH:
-        case BIO_CTRL_PUSH:
-        case BIO_CTRL_POP:
-            return 1L;
+            return 1;
         default:
             return 0L;
     }
@@ -77,16 +78,16 @@ BIO_METHOD* pipes::SSL::ssl_bio_method() {
     static BIO_METHOD* result{nullptr};
     if(result) return result;
 
-    result = BIO_meth_new(BIO_TYPE_SOCKET, "SSLBio");
+    result = BIO_meth_new(BIO_TYPE_BIO, "SSLBio");
     if(result) {
         BIO_meth_set_write(result, &pipes::SSL::bio_write);
         BIO_meth_set_read(result, &pipes::SSL::bio_read);
         BIO_meth_set_puts(result, &pipes::SSL::bio_puts);
-        BIO_meth_set_gets(result, &pipes::SSL::bio_gets);
+        //BIO_meth_set_gets(result, &pipes::SSL::bio_gets);
         BIO_meth_set_ctrl(result, &pipes::SSL::bio_ctrl);
         BIO_meth_set_create(result, &pipes::SSL::bio_create);
         BIO_meth_set_destroy(result, &pipes::SSL::bio_destroy);
-        BIO_meth_set_callback_ctrl(result, &pipes::SSL::bio_callback_ctrl);
+        //BIO_meth_set_callback_ctrl(result, &pipes::SSL::bio_callback_ctrl);
     }
     return result;
 }
@@ -94,10 +95,10 @@ BIO_METHOD* pipes::SSL::ssl_bio_method() {
 bool pipes::SSL::initializeBio() {
     auto bio = BIO_new(pipes::SSL::ssl_bio_method());
     if(!bio) return false;
-	if(auto err{BIO_ctrl(bio, BIO_C_SET_SSLHANDLE, 0, this)}; !err) {
-        BIO_free(bio);
-        return false;
-    }
-    SSL_set_bio(this->sslLayer, bio, bio);
+
+    BIO_set_data(bio, this);
+    BIO_set_init(bio, true);
+    SSL_set_bio(this->ssh_handle_, bio, bio);
+    SSL_set_mode(this->ssh_handle_, SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
     return true;
 }

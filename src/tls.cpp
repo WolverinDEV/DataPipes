@@ -88,6 +88,7 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 	}
 
 	auto options = make_shared<SSL::Options>();
+    options->verbose_io = true;
 	options->type = handshake_mode;
 	options->context_method = method;
 	options->free_unused_keypairs = true;
@@ -109,8 +110,8 @@ bool TLS::initialize(std::string& error, const std::shared_ptr<TLSCertificate> &
 	};
 	options->ssl_initializer = [&](::SSL* ssl) {
 		std::shared_ptr<EC_KEY> ecdh = std::shared_ptr<EC_KEY>(EC_KEY_new_by_curve_name(NID_X9_62_prime256v1), EC_KEY_free);
-		SSL_set_options(this->sslLayer, SSL_OP_SINGLE_ECDH_USE);
-		SSL_set_tmp_ecdh(this->sslLayer, ecdh.get());
+		SSL_set_options(this->ssh_handle_, SSL_OP_SINGLE_ECDH_USE);
+		SSL_set_tmp_ecdh(this->ssh_handle_, ecdh.get());
 		return true;
 	};
 

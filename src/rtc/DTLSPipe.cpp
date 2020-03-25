@@ -98,11 +98,8 @@ void DTLSPipe::on_nice_ready() {
         return;
     }
 
-    if(this->_role != Role::Server) {
-        if(!this->_dtls->do_handshake()) {
-            LOG_ERROR(this->_config->logger, "DTLSPipe::on_nice_ready", "Failed to process dtls handshake!");
-        }
-    }
+    /* begin initialize */
+    this->_dtls->continue_ssl();
 }
 
 void DTLSPipe::process_incoming_data(const pipes::buffer_view &data) {

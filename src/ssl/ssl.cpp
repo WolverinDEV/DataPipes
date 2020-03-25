@@ -91,37 +91,37 @@ bool pipes::SSL::initialize(const std::shared_ptr<pipes::SSL::Options> &options,
     if(options->context_initializer)
         options->context_initializer(&*this->sslContext); /* TODO: Test result */
 
-    this->sslLayer = SSL_new(&*this->sslContext);
-    if(!this->sslLayer) {
+    this->ssh_handle_ = SSL_new(&*this->sslContext);
+    if(!this->ssh_handle_) {
         error = "failed to allocate ssl context";
         return false;
     }
 
     if(options->type == SERVER) {
-        SSL_set_accept_state(this->sslLayer);
+        SSL_set_accept_state(this->ssh_handle_);
     } else {
-        SSL_set_connect_state(this->sslLayer);
+        SSL_set_connect_state(this->ssh_handle_);
     }
     if(options->ssl_initializer)
-        options->ssl_initializer(this->sslLayer); /* TODO: Test result */
+        options->ssl_initializer(this->ssh_handle_); /* TODO: Test result */
 
     if(options->servername_keys.size() > 1 || options->enforce_sni) {
         SSL_CTX_set_tlsext_servername_callback(&*this->sslContext, pipes::SSL::_sni_callback);
         SSL_CTX_set_tlsext_servername_arg(&*this->sslContext, this);
     } else if(options->servername_keys.size() == 1) {
         auto default_keypair = options->servername_keys.begin();
-        if(!SSL_use_PrivateKey(this->sslLayer, &*default_keypair->second.first)) {
+        if(!SSL_use_PrivateKey(this->ssh_handle_, &*default_keypair->second.first)) {
             error = "failed to use private key";
             return false;
         }
 
-        if(!SSL_use_certificate(this->sslLayer, &*default_keypair->second.second)) {
+        if(!SSL_use_certificate(this->ssh_handle_, &*default_keypair->second.second)) {
             error = "failed to use certificate";
             return false;
         }
 
         if(options->type == CLIENT && !default_keypair->first.empty()) {
-            if(!SSL_set_tlsext_host_name(this->sslLayer, default_keypair->first.c_str())){
+            if(!SSL_set_tlsext_host_name(this->ssh_handle_, default_keypair->first.c_str())){
                 error = "failed to set tlsext hostname";
                 return false;
             }
@@ -145,35 +145,60 @@ bool pipes::SSL::initialize(const std::shared_ptr<pipes::SSL::Options> &options,
         error = "failed to initialize bio";
         return false;
     }
-    this->sslState = SSLSocketState::SSL_STATE_INIT;
+    this->ssl_state_ = SSLSocketState::SSL_STATE_CONNECTING;
 
     return true;
 }
 
-bool pipes::SSL::do_handshake() {
-    if(this->_options->type != CLIENT) {
-        LOG_ERROR(this->logger(), "SSL::do_handshake", "Tried to do a handshake, but we're not in client mode!");
-        return false;
+void pipes::SSL::continue_ssl() {
+    lock_guard slock{this->ssl_mutex_};
+    return this->continue_ssl_nolock();
+}
+
+void pipes::SSL::continue_ssl_nolock() {
+    if(this->ssl_state_ != SSLSocketState::SSL_STATE_CONNECTING) return;
+
+    if(handshake_start_timestamp.time_since_epoch().count() == 0)
+        handshake_start_timestamp = std::chrono::system_clock::now();
+
+    auto code = this->_options->type == Type::CLIENT ? SSL_connect(this->ssh_handle_) : SSL_accept(this->ssh_handle_);
+    switch (SSL_get_error(this->ssh_handle_, code)) {
+        case SSL_ERROR_NONE:
+            /* validate certificate! */
+            this->ssl_state_ = SSLSocketState::SSL_STATE_CONNECTED;
+            this->callback_initialized();
+            this->process_data_in();
+            return;
+
+        case SSL_ERROR_WANT_READ:
+            if(handshake_start_timestamp + milliseconds(7500) < system_clock::now()) {
+                _callback_error(PERROR_SSL_TIMEOUT, "Handshake needs more than 7500ms");
+                this->ssl_state_ = SSLSocketState::SSL_STATE_UNDEFINED;
+            }
+
+            break;
+
+        case SSL_ERROR_WANT_WRITE:
+            break;
+
+        case SSL_ERROR_SYSCALL:
+            _callback_error(PERROR_SSL_TIMEOUT, "syscall error (" + std::to_string(errno) + "/" + strerror(errno) + ")");
+            this->ssl_state_ = SSLSocketState::SSL_STATE_UNDEFINED;
+            return;
+
+        case SSL_ERROR_ZERO_RETURN:
+        default:
+            _callback_error(PERROR_SSL_TIMEOUT, "unknown error " + std::to_string(SSL_get_error(this->ssh_handle_, code)));
+            this->ssl_state_ = SSLSocketState::SSL_STATE_UNDEFINED;
+            return;
     }
-    auto code = SSL_do_handshake(this->sslLayer);
-    if(code == 1) {
-        LOG_VERBOSE(this->logger(), "SSL::do_handshake", "Handshake as server succeeded");
-        return true;
-    }
-    auto error_code = SSL_get_error(this->sslLayer, code);
-    if(error_code == SSL_ERROR_SYSCALL) {
-        LOG_ERROR(this->logger(), "SSL::do_handshake", "Failed to process SSL handshake. Result: %i (syscall error): %u (%s)!", code, errno, strerror(errno));
-	} else {
-        LOG_ERROR(this->logger(), "SSL::do_handshake", "Failed to process SSL handshake. Result: %i => Error code %!", code, error_code);
-	}
-    return false;
 }
 
 void pipes::SSL::finalize() {
-    if(this->sslLayer) SSL_free(this->sslLayer);
-    this->sslLayer = nullptr;
+    if(this->ssh_handle_) SSL_free(this->ssh_handle_);
+    this->ssh_handle_ = nullptr;
     this->sslContext = nullptr;
-    this->sslState = SSLSocketState::SSL_STATE_UNDEFINED;
+    this->ssl_state_ = SSLSocketState::SSL_STATE_UNDEFINED;
 }
 
 bool pipes::SSL::isSSLHeader(const std::string &data) {
@@ -188,68 +213,42 @@ bool pipes::SSL::isSSLHeader(const std::string &data) {
 }
 
 ProcessResult pipes::SSL::process_data_in() {
-    if(!this->sslLayer) {
+    if(!this->ssh_handle_) {
         return ProcessResult::PROCESS_RESULT_INVALID_STATE;
     }
 
-    std::unique_lock<mutex> lock{this->lock};
-    if(this->sslState == SSLSocketState::SSL_STATE_INIT) {
-        if(handshakeStart.time_since_epoch().count() == 0)
-            handshakeStart = system_clock::now();
-        /*
-        auto buffered = this->bufferedBytes();
-        if(buffered < 5) return; //Still not got the header!
-        uint16_t frameLength;
-        if(!this->peekBytes((char *) &frameLength, 2, 3)) return;
-
-        if((frameLength + 5) > buffered) return; //Not enough buffered! (+5 for the SSL header)
-        */
-
-        auto code = SSL_accept(this->sslLayer);
-        if(code <= 0) {
-            if(auto err = SSL_get_error(this->sslLayer, code); err != SSL_ERROR_SYSCALL) {
-                _callback_error(PERROR_SSL_ACCEPT, "Could not proceed accept! (" + std::to_string(err) + "|" + ERR_error_string(ERR_get_error(), nullptr) + ")");
-                this->sslState = SSLSocketState::SSL_STATE_UNDEFINED;
-                return ProcessResult::PROCESS_RESULT_ERROR;
-            } else if(handshakeStart + milliseconds(7500) < system_clock::now()) {
-                _callback_error(PERROR_SSL_TIMEOUT, "Handshake needs more than 7500ms");
-                this->sslState = SSLSocketState::SSL_STATE_UNDEFINED;
-                return ProcessResult::PROCESS_RESULT_ERROR;
-            }
-            return ProcessResult::PROCESS_RESULT_NEED_DATA;
-        }
-        this->sslState = SSLSocketState::SSL_STATE_CONNECTED;
-        lock.unlock();
-
-        this->callback_initialized();
-        this->process_data_in();
-    } else if(this->sslState == SSLSocketState::SSL_STATE_CONNECTED) {
+    lock_guard slock{this->ssl_mutex_};
+    if(this->ssl_state_ == SSLSocketState::SSL_STATE_CONNECTING) {
+        this->continue_ssl_nolock();
+        return ProcessResult::PROCESS_RESULT_OK;
+    } else if(this->ssl_state_ == SSLSocketState::SSL_STATE_CONNECTED) {
         int read = 0;
-        while(this->sslState == SSLSocketState::SSL_STATE_CONNECTED) { //State could be updated while message processing!
+        while(this->ssl_state_ == SSLSocketState::SSL_STATE_CONNECTED) { //State could be updated while message processing!
             buffer read_buffer(this->readBufferSize);
-            read = SSL_read(this->sslLayer, read_buffer.data_ptr(), (int) read_buffer.capacity());
+            read = SSL_read(this->ssh_handle_, read_buffer.data_ptr(), (int) read_buffer.capacity());
             if(read <= 0) break;
             read_buffer.resize(read);
 
-            lock.unlock();
+            /* callback may changes ssl state */
             this->_callback_data(read_buffer);
-            lock.lock();
         }
+
+        return PROCESS_RESULT_OK;
     }
 
     return PROCESS_RESULT_ERROR;
 }
 
 ProcessResult pipes::SSL::process_data_out() {
-    if(!this->sslLayer) return ProcessResult::PROCESS_RESULT_INVALID_STATE;
+    if(!this->ssh_handle_) return ProcessResult::PROCESS_RESULT_INVALID_STATE;
 
-    lock_guard<mutex> lock{this->lock};
+    lock_guard slock{this->ssl_mutex_};
     while(!this->write_buffer.empty()) {
         auto front = this->write_buffer.front();
         this->write_buffer.pop_front();
         int index = 5;
         while(index-- > 0) {
-            auto result{SSL_write(this->sslLayer, front.data_ptr(), front.length())};
+            auto result{SSL_write(this->ssh_handle_, front.data_ptr(), front.length())};
             if(this->_options->verbose_io) {
                 LOG_VERBOSE(this->logger(), "SSL::process_data_out", "Write (%i): %i (bytes: %i) (empty: %i)", index, result, front.length(), this->write_buffer.size());
             }
@@ -292,7 +291,8 @@ bool SSLSocket::isSSLHandschake(const std::string& data, bool full = false) {
  */
 
 std::string pipes::SSL::remote_fingerprint() {
-    X509 *rcert = SSL_get_peer_certificate(this->sslLayer);
+    lock_guard slock{this->ssl_mutex_};
+    X509 *rcert = SSL_get_peer_certificate(this->ssh_handle_);
     if(!rcert) {
         LOG_ERROR(this->_logger, "SSL::remote_fingerprint", "Failed to generate remote fingerprint (certificate missing)");
         return "";

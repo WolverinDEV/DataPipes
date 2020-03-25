@@ -31,8 +31,8 @@ using namespace std;
 #define V_FPS 1
 #define V_KEYFRAME_INTERVAL 1
 
-#define V_WIDTH  (128 * 16)
-#define V_HEIGHT (128 * 16)
+#define V_WIDTH  (128 * 2)
+#define V_HEIGHT (128 * 2)
 
 struct Color {
 	uint8_t r;
@@ -59,7 +59,7 @@ static vpx_image_t* vpx_img_generate(vpx_image_t* handle) {
 		size_t buffer_index = 0;
 		for(int d_w = 0; d_w < V_WIDTH; d_w++) {
 			for(int d_h = 0; d_h < V_HEIGHT; d_h++) {
-				auto& color = c_pattern[c_index % 6];
+				auto& color = c_pattern[(c_index + d_w) % 6];
 				rgb_buffer[buffer_index++] = color.r;
                 rgb_buffer[buffer_index++] = color.g;
 				rgb_buffer[buffer_index++] = color.b;
@@ -105,7 +105,7 @@ const std::string currentDateTime() {
 	return buf;
 }
 
-void log(pipes::Logger::LogLevel level, const std::string& name, const std::string& message, ...) {
+void log(void*, pipes::Logger::LogLevel level, const std::string& name, const std::string& message, ...) {
 	auto max_length = 1024 * 32;
 	char buffer[max_length];
 
@@ -372,7 +372,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
 
 					assert(channel_codec);
                     channel_codec->local_parameters["rtcp-fb"].push_back("ccm fir");
-                    //vstream->register_local_channel("video_response_" + vstream->get_mid(), "video_response_normal", channel_codec);
+                    vstream->register_local_channel("video_response_" + vstream->get_mid(), "video_response_normal", channel_codec);
                     //vstream->register_local_channel("video_response_2" + vstream->get_mid(), "video_response_normal2", channel_codec);
 				}
 
@@ -532,7 +532,7 @@ void initialize_client(const std::shared_ptr<Socket::Client>& connection) {
  					}
 				};
 
-#if false /* Create video generator */
+#if true /* Create video generator */
 				{
 					std::thread([weak_astream]{
 						vpx_codec_err_t err;
@@ -665,7 +665,9 @@ int main() {
 		cout << "Client disconnected" << endl;
 		delete (Client*) client->data;
 	};
-	socket.start(1111);
+
+	std::string error{};
+	socket.start(error, 1111);
 
 
 	while(true) this_thread::sleep_for(chrono::seconds(100));

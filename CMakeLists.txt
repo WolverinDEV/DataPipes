@@ -19,6 +19,7 @@ set(MINOR_VERSION 1)
 set(PATCH_VERSION 0)
 set(PROJECT_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION})
 
+add_definitions(-DLOG_LEVEL=0)
 
 # Sctp
 find_package(UsrSCTP)

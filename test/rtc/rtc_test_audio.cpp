@@ -159,8 +159,10 @@ void initialize_client(rtc_server::Client* client) {
                 auto buf = buffer.view(payload_offset);
                 auto channels = as->list_channels();
                 for(const auto& ch : channels)
-                    if(ch->local)
+                    if(ch->local) {
+                        cout << "Sending " << buf.length() << " - " << payload_offset << std::endl;
                         as->send_rtp_data(ch, buf, ch->timestamp_last_send += 960); //960 = 20ms opus :)
+                    }
             };
         } else {
             cerr << "Remote offers invalid stream type! (" << stream->type() << ")" << endl;

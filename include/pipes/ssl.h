@@ -7,8 +7,9 @@
 
 namespace pipes {
     enum SSLSocketState {
-        SSL_STATE_INIT,
+        SSL_STATE_CONNECTING,
         SSL_STATE_CONNECTED,
+
         SSL_STATE_UNDEFINED
     };
 
@@ -62,54 +63,52 @@ namespace pipes {
                 return this->initialize(options, error_);
             }
             bool initialize(const std::shared_ptr<Options>& /* options */, std::string& /* error */);
-            bool do_handshake();
+            /* manually try to read/connect/write for the ssl handle */
+            void continue_ssl();
             void finalize();
 
-            std::shared_ptr<const Options> options() const { return this->_options; }
+            [[nodiscard]] std::shared_ptr<const Options> options() const { return this->_options; }
 
 			//Callbacks
 			InitializedHandler callback_initialized = []() {};
 			size_t readBufferSize = 1024;
 
-            SSLSocketState state() { return this->sslState; }
+            [[nodiscard]] SSLSocketState state() { return this->ssl_state_; }
 
-            std::string remote_fingerprint();
+            [[nodiscard]] std::string remote_fingerprint();
 
-            inline ::SSL *ssl_handle() const { return this->sslLayer; }
+            [[nodiscard]] inline ::SSL *ssl_handle() const { return this->ssh_handle_; }
         private:
             bool initializeBio();
+            void continue_ssl_nolock();
 
         protected:
             ProcessResult process_data_in() override;
-
             ProcessResult process_data_out() override;
 
             std::shared_ptr<Options> _options;
             std::shared_ptr<SSL_CTX> sslContext = nullptr;
-            ::SSL *sslLayer = nullptr;
-            SSLSocketState sslState = SSLSocketState::SSL_STATE_INIT;
-            std::chrono::system_clock::time_point handshakeStart;
+
+            std::recursive_mutex ssl_mutex_{};
+            ::SSL *ssh_handle_{nullptr};
+
+            SSLSocketState ssl_state_ = SSLSocketState::SSL_STATE_CONNECTING;
+            std::chrono::system_clock::time_point handshake_start_timestamp;
 
         private:
             static int _sni_callback(::SSL*,int*,void*);
 
-            std::mutex lock;
             static BIO_METHOD * ssl_bio_method();
 
             //Required methods
             static int bio_read(BIO *, char *, int);
-
             static int bio_write(BIO *, const char *, int);
-
             static long bio_ctrl(BIO *, int, long, void *);
-
             static int bio_create(BIO *);
-
             static int bio_destroy(BIO *);
 
             //"empty" methods
             static int bio_puts(BIO *, const char *);
-
             static int bio_gets(BIO *, char *, int);
 
 #ifdef USE_BORINGSSL
