@@ -38,4 +38,6 @@ list(APPEND RTC_SOURCE_FILES
         src/rtc/PeerConnection.cpp
         src/rtc/Protocol.cpp
         src/rtc/MediaChannel.cpp
+
+        src/rtc/sdp.cpp
 )

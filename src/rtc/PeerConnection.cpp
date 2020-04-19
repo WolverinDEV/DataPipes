@@ -463,11 +463,11 @@ std::string PeerConnection::generate_answer(bool candidates) {
             sdp << "a=ice-pwd:" << nice_entry->ice_pwd << "\r\n";
             sdp << "a=ice-options:trickle\r\n";
 
-            //We're sending the candidates later
-            //for(const auto& candidate : nice_entry->candidates)
-            //    sdp << "a=candidate:" << candidate << "\r\n";
-            //if(candidates)
-            //    sdp << "a=end-of-candidates\r\n";
+            /* In case our remote does not support trickle  */
+            for(const auto& candidate : nice_entry->candidates)
+                sdp << "a=candidate:" << candidate << "\r\n";
+            if(candidates)
+                sdp << "a=end-of-candidates\r\n";
             break;
         }
     }

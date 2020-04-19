@@ -1,4 +1,5 @@
 #include "pipes/rtc/NiceWrapper.h"
+#include "sdp.h"
 
 #include <netdb.h>
 #include <iostream>
@@ -380,21 +381,28 @@ void NiceWrapper::on_local_ice_candidate(guint stream_id, NiceCandidate* candida
 
 
 ssize_t NiceWrapper::apply_remote_ice_candidates(const std::shared_ptr<rtc::NiceStream> &stream, const std::deque<std::string> &candidates) {
+    using candidate_parse_result = sdp::candidate_parse_result;
+
     std::lock_guard<std::recursive_mutex> lock(io_lock);
 
     if(candidates.empty())
         return -1;
 
+    std::string error_value{};
 	GSList* list = nullptr;
 	for (const auto& candidate_sdp : candidates) {
-        //TODO: Add own parser for better error handing
-		auto candidate = nice_agent_parse_remote_candidate_sdp(this->agent.get(), stream->stream_id, candidate_sdp.c_str());
-		if(!candidate) {
-			LOG_ERROR(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Failed to parse remote candidate for stream %u. Ignoring it! Candidate string: %s", stream->stream_id, candidate_sdp.c_str());
-			continue;
-		}
+	    NiceCandidate* result{nullptr};
+	    auto parse_result = sdp::parse_candidate(candidate_sdp, error_value, result);
+        if(parse_result == candidate_parse_result::end_of_candidates) {
+            if(result) nice_candidate_free(result);
+            break;
+        } else if(parse_result != candidate_parse_result::success) {
+            if(result) nice_candidate_free(result);
+            LOG_ERROR(this->_logger, "NiceWrapper::apply_remote_ice_candidates", "Failed to parse candidate for stream %u (%d for value %s): %s", stream->stream_id, (int) parse_result, error_value.c_str(), candidate_sdp.c_str());
+            continue;
+        }
 
-		list = g_slist_append(list, candidate);
+		list = g_slist_append(list, result);
 	}
 	if(!list) return -3;
 
