@@ -464,7 +464,6 @@ std::deque<std::unique_ptr<LocalSdpEntry>> NiceWrapper::generate_local_sdp(bool 
     auto raw_sdp = unique_ptr<gchar, decltype(g_free)*>(nice_agent_generate_local_sdp(agent.get()), ::g_free); //TODO may use nice_agent_generate_local_stream_sdp?
     assert(raw_sdp);
     nice_sdp << raw_sdp.get();
-    std::cout << nice_sdp.str() << "\n";
 
     std::unique_ptr<LocalSdpEntry> current;
     while (std::getline(nice_sdp, line)) {

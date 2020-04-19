@@ -41,7 +41,7 @@ $("#send").on('click', () => {
 });
 class PeerConnectionConfig {
     constructor() {
-        this.open_data_channel = false;
+        this.open_data_channel = true;
         this.open_audio_channel = true;
     }
 }
@@ -94,17 +94,19 @@ class PeerConnection {
             console.log("[RTC][ICE] Gathering state changed. New state: %s", this.peer.iceGatheringState);
         };
         this.peer.onicecandidate = (event) => {
-            console.log("[RTC][ICE][LOCAL] Got new candidate %s (%o)", event.candidate, event);
+            console.log("[RTC][ICE][LOCAL] Got new candidate %s", event.candidate, event);
             if (event) {
-                if (event.candidate)
+                if (event.candidate) {
                     this.socket.send(JSON.stringify({
                         type: 'candidate',
                         msg: event.candidate
-                    })); //.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}.local/i, "92.211.135.230");
-                else
+                    }));
+                }
+                else {
                     this.socket.send(JSON.stringify({
                         type: 'candidate_finish'
                     }));
+                }
             }
         };
         this.peer.onaddstream = event => {
@@ -228,7 +230,9 @@ function connect_peer(config) {
             console.log("[WS] Got error %s!", event.type);
         };
         let candidate_buffer = [];
-        let candidate_apply = candidate => {
+        let candidate_apply = (candidate) => {
+            if (candidate.type === "host")
+                return;
             result.peer.addIceCandidate(candidate).then(any => {
                 console.log("[RTC][ICE][REMOTE] Sucessfully setupped candidate %o", candidate);
             }).catch(error => {
@@ -237,7 +241,7 @@ function connect_peer(config) {
         };
         result.socket.onmessage = event => {
             let data = JSON.parse(event.data);
-            if (data["type"] == "candidate") {
+            if (data["type"] == "candidate" || data["type"] === "candidate_finish") {
                 if (candidate_buffer) {
                     candidate_buffer.push(new RTCIceCandidate(data["msg"]));
                 }
