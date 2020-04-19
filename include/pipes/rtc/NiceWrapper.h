@@ -97,7 +97,7 @@ namespace rtc {
 				bool allow_ice_tcp{true};
 				bool allow_ice_udp{true};
 
-                bool ice_full_mode{true};
+                bool ice_full_mode{false};
                 bool ice_trickle{true};
 
 				bool use_upnp{false};
