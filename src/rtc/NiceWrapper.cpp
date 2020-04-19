@@ -120,7 +120,6 @@ bool NiceWrapper::initialize(std::string& error) {
     g_object_set(G_OBJECT(&*agent), "ice-tcp", this->config->allow_ice_tcp, nullptr);
     g_object_set(G_OBJECT(&*agent), "ice-udp", this->config->allow_ice_udp, nullptr);
     g_object_set(G_OBJECT(&*agent), "ice-trickle", this->config->ice_trickle, nullptr);
-    g_object_set(G_OBJECT(&*agent), "full-mode", this->config->ice_full_mode, nullptr);
 
     g_object_set(G_OBJECT(&*agent), "upnp", this->config->use_upnp, nullptr);
     g_object_set(G_OBJECT(&*agent), "controlling-mode", 0, NULL);
@@ -167,7 +166,6 @@ bool NiceWrapper::initialize(std::string& error) {
     g_signal_connect(G_OBJECT(&*agent), "reliable-transport-writable", G_CALLBACK(NiceWrapper::cb_transport_writeable), this);
 
     /* We don't need to explicitly add out local addresses. Nice now already dose this for us (0.0.5) */
-
     return true;
 }
 
@@ -378,6 +376,7 @@ void NiceWrapper::on_gathering_done(guint stream_id) {
     }
 
     LOG_DEBUG(this->_logger, "NiceWrapper::on_gathering_done", "Gathering completed for stream %u. Found %u ICE local ice candidates.", stream_id, stream->ice_remote_candidate_count);
+    this->callback_local_candidates(stream, {}, false);
 }
 
 void NiceWrapper::on_local_ice_candidate(guint stream_id, NiceCandidate* candidate) {
