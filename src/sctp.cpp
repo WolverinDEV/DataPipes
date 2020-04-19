@@ -221,7 +221,7 @@ ProcessResult SCTP::process_data_out() {
 
 	auto send = usrsctp_sendv(this->sock, message.data.data_ptr(), message.data.length(), nullptr, 0, &spa, sizeof(spa), SCTP_SENDV_SPA, 0);
 	if(send < 0) {
-		LOG_ERROR(this->logger(), "SCTP::process_data_out", "Failed to send data! Return code %i but expected %i", send, message.data.length());
+		LOG_ERROR(this->logger(), "SCTP::process_data_out", "Failed to send data! Return code %i (%i) but expected %i", send, errno, message.data.length());
 		return ProcessResult::PROCESS_RESULT_ERROR;
 	}
 	return ProcessResult::PROCESS_RESULT_OK;
