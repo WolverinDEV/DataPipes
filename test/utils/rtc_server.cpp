@@ -106,6 +106,9 @@ void rtc_server::initialize_client(const std::shared_ptr<Socket::Client> &connec
             Json::Value notify{};
             if(ice.is_finished_candidate()) {
                 notify["type"] = "candidate_finish";
+                notify["msg"]["candidate"] = "";
+                notify["msg"]["sdpMid"] = ice.sdpMid;
+                notify["msg"]["sdpMLineIndex"] = ice.sdpMLineIndex;
 
                 std::cout << "[" << (void*) client << "] Sending ice candidate gathering finished notification." << std::endl;;
             } else {
@@ -130,7 +133,7 @@ void rtc_server::initialize_client(const std::shared_ptr<Socket::Client> &connec
                     std::cout << "[" << (void*) client << "] Remote side send sdp offer. Applying offer and sending answer" << std::endl;;
 
                     if(!client->peer_->apply_offer(error, root["msg"]["sdp"].asString())) {
-                        std::cerr << "[" << (void*) client << "] Failed to apply remote offer" << std::endl;;
+                        std::cerr << "[" << (void*) client << "] Failed to apply remote offer: " << error << std::endl;;
                         //TODO: Disconnect client & cleanup
                         return;
                     }

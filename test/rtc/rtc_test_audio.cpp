@@ -140,7 +140,7 @@ void initialize_client(rtc_server::Client* client) {
 
                 for(const auto& codec: opus_codec) {
                     codec->accepted = true;
-                    auto channel = astream->register_local_channel(codec, "X", "Y");
+                    //auto channel = astream->register_local_channel(codec, "X", "Y");
                     //channel->timestamp_last_send = 0xf23;
                     break;
                 }
@@ -211,10 +211,10 @@ int main() {
         auto config = make_shared<rtc::PeerConnection::Config>();
         config->nice_config = make_shared<rtc::NiceWrapper::Config>();
 
-        config->nice_config->main_loop = main_loop;
-        config->nice_config->ice_servers.push_back({"stun.l.google.com", 19302});
+        config->event_loop = main_loop;
+        config->nice_config->stun_server = {"stun.l.google.com", 19301};
         config->nice_config->allow_ice_udp = true;
-        config->nice_config->allow_ice_tcp = false;
+        config->nice_config->allow_ice_tcp = true;
 
         config->logger = make_shared<pipes::Logger>();
         config->logger->callback_log = log;

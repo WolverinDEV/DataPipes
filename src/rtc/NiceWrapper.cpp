@@ -7,7 +7,6 @@
 #include <mutex>
 #include <algorithm>
 #include <ifaddrs.h>
-#include <net/if.h>
 #include <condition_variable>
 
 extern "C" {
@@ -97,17 +96,13 @@ bool NiceWrapper::initialize(std::string& error) {
     auto log_flags = (unsigned) G_LOG_LEVEL_MASK | (unsigned) G_LOG_FLAG_FATAL | (unsigned) G_LOG_FLAG_RECURSION;
     g_log_set_handler(nullptr, (GLogLevelFlags) log_flags, g_log_handler, this);
 
-    if(this->config->main_loop) {
-        this->loop = std::unique_ptr<GMainLoop, void(*)(GMainLoop*)>(g_main_loop_ref(&*this->config->main_loop), g_main_loop_unref);
-        if(!this->loop)
-            ERRORQ("Failed to reference the main loop");
-        this->own_loop = false;
-    } else {
-        this->loop = std::unique_ptr<GMainLoop, void(*)(GMainLoop*)>(g_main_loop_new(nullptr, false), g_main_loop_unref);
-        this->own_loop = true;
-        this->g_main_loop_thread = std::thread(g_main_loop_run, &*this->loop);
+    if(!this->config->main_loop) {
+        error = "missing main loop";
+        return false;
     }
-    if (!this->loop) ERRORQ("Failed to initialize GMainLoop");
+    this->loop = std::unique_ptr<GMainLoop, void(*)(GMainLoop*)>(g_main_loop_ref(&*this->config->main_loop), g_main_loop_unref);
+    if(!this->loop)
+        ERRORQ("Failed to reference the main loop");
 
     this->agent = std::unique_ptr<NiceAgent, decltype(&g_object_unref_maybe_null)>(nullptr, g_object_unref_maybe_null);
     if(this->config->ice_full_mode)
@@ -130,16 +125,16 @@ bool NiceWrapper::initialize(std::string& error) {
 
     char address_buffer[256];
 
-    for (const auto& ice_server : config->ice_servers) {
-        if (ice_server.port <= 0) {
-            LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Invalid stun port! (%i)", ice_server.port);
-            continue;
+    if(config->stun_server.has_value()) {
+        if (config->stun_server->port <= 0) {
+            LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Invalid stun port! (%i)", config->stun_server->port);
+            goto ignore_stun;
         }
 
-        int state = getaddrinfo(ice_server.host.c_str(), nullptr, &hints, &info_ptr); //FIXME: getaddrinfo async?
+        int state = getaddrinfo(config->stun_server->host.c_str(), nullptr, &hints, &info_ptr); //FIXME: getaddrinfo async?
         if(state) {
-            LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to lookup host for ice server %s:%i (State: %i)", ice_server.host.c_str(), ice_server.port, state);
-            continue;
+            LOG_ERROR(this->_logger, "NiceWrapper::initialize", "Failed to lookup host for ice server %s:%i (State: %i)", config->stun_server->host.c_str(), config->stun_server->port, state);
+            goto ignore_stun;
         }
 
         struct addrinfo *address;
@@ -148,15 +143,15 @@ bool NiceWrapper::initialize(std::string& error) {
                 continue;
 
             g_object_set(G_OBJECT(&*agent), "stun-server", address_buffer, NULL);
-            LOG_DEBUG(this->_logger, "NiceWrapper::initialize", "Set stun server to %s:%i, resolved from hostname %s", address_buffer, ice_server.port, ice_server.host.c_str());
+            LOG_DEBUG(this->_logger, "NiceWrapper::initialize", "Set stun server to %s:%i, resolved from hostname %s", address_buffer, config->stun_server->port, config->stun_server->host.c_str());
             break;
         }
         freeaddrinfo(info_ptr);
         info_ptr = nullptr;
 
-        g_object_set(G_OBJECT(&*agent), "stun-server-port", ice_server.port, NULL);
-        break; /* only one server */
+        g_object_set(G_OBJECT(&*agent), "stun-server-port", config->stun_server->port, NULL);
     }
+    ignore_stun:
 
     g_signal_connect(G_OBJECT(&*agent), "new-candidate-full", G_CALLBACK(NiceWrapper::cb_new_local_candidate), this);
     g_signal_connect(G_OBJECT(&*agent), "new-selected-pair-full", G_CALLBACK(NiceWrapper::cb_new_selected_pair), this);
@@ -251,20 +246,6 @@ void NiceWrapper::finalize() {
         lock.lock();
     }
     agent_handle.reset();
-
-    if(this->own_loop) {
-        auto cloop = std::exchange(this->loop, nullptr);
-
-        if(cloop) {
-            g_main_loop_quit(&*cloop);
-            lock.unlock();
-            if (this->g_main_loop_thread.joinable())
-                this->g_main_loop_thread.join();
-            lock.lock();
-        } else {
-            assert(!this->g_main_loop_thread.joinable());
-        }
-    }
 }
 
 bool NiceWrapper::send_data(guint stream, guint component, const pipes::buffer_view &data) {
@@ -494,7 +475,7 @@ std::deque<std::unique_ptr<LocalSdpEntry>> NiceWrapper::generate_local_sdp(bool 
             current->media = line.substr(2, line.find(' ', 2) - 2);
             current->has.media = current->media != "-";
         } else {
-            if(!current || !current->has.media) {
+            if(!current) {
                 LOG_ERROR(this->_logger, "NiceWrapper::generate_local_sdp", "SDP unexpected line! Expected m=, but got: %s", line.c_str());
                 continue;
             } else if(g_str_has_prefix(line.c_str(), "a=ice-ufrag:")) {

@@ -171,8 +171,8 @@ void pipes::SSL::continue_ssl_nolock() {
             return;
 
         case SSL_ERROR_WANT_READ:
-            if(handshake_start_timestamp + milliseconds(7500) < system_clock::now()) {
-                _callback_error(PERROR_SSL_TIMEOUT, "Handshake needs more than 7500ms");
+            if(handshake_start_timestamp + milliseconds(15000) < system_clock::now()) {
+                _callback_error(PERROR_SSL_TIMEOUT, "Handshake needs more than 15000ms");
                 this->ssl_state_ = SSLSocketState::SSL_STATE_UNDEFINED;
             }
 

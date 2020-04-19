@@ -50,7 +50,7 @@ $("#send").on('click', () => {
 });
 
 class PeerConnectionConfig {
-    open_data_channel: boolean = false;
+    open_data_channel: boolean = true;
     open_audio_channel: boolean = true;
 }
 
@@ -108,7 +108,7 @@ class PeerConnection {
 
         this.peer.onnegotiationneeded = event => {
             console.log("NEGOT NEEDED!");
-        }
+        };
         this.peer.onconnectionstatechange = event => {
             console.log("[RTC] Connection state changed. New state: %s", this.peer.connectionState);
         };
@@ -122,17 +122,18 @@ class PeerConnection {
             console.log("[RTC][ICE] Gathering state changed. New state: %s", this.peer.iceGatheringState);
         };
         this.peer.onicecandidate = (event) => {
-            console.log("[RTC][ICE][LOCAL] Got new candidate %s (%o)", event.candidate, event);
+            console.log("[RTC][ICE][LOCAL] Got new candidate %s", event.candidate, event);
             if (event) {
-                if(event.candidate)
+                if(event.candidate) {
                     this.socket.send(JSON.stringify({
                         type: 'candidate',
                         msg: event.candidate
-                    })); //.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}.local/i, "92.211.135.230");
-                else
+                    }));
+                } else {
                     this.socket.send(JSON.stringify({
                         type: 'candidate_finish'
                     }));
+                }
             }
         };
 
@@ -284,7 +285,9 @@ function connect_peer(config?: PeerConnectionConfig) : Promise<PeerConnection> {
         };
 
         let candidate_buffer = [];
-        let candidate_apply = candidate => {
+        let candidate_apply = (candidate: RTCIceCandidate) => {
+            if(candidate.type === "host") return;
+
             result.peer.addIceCandidate(candidate).then(any => {
                 console.log("[RTC][ICE][REMOTE] Sucessfully setupped candidate %o", candidate);
             }).catch(error => {
@@ -293,7 +296,7 @@ function connect_peer(config?: PeerConnectionConfig) : Promise<PeerConnection> {
         };
         result.socket.onmessage = event => {
             let data = JSON.parse(event.data);
-            if(data["type"] == "candidate") {
+            if(data["type"] == "candidate" || data["type"] === "candidate_finish") {
                 if(candidate_buffer) {
                     candidate_buffer.push(new RTCIceCandidate(data["msg"]));
                 } else candidate_apply(new RTCIceCandidate(data["msg"]));

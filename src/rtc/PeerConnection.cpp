@@ -7,23 +7,30 @@
 #include "pipes/rtc/DTLSHandler.h"
 #include "pipes/rtc/RTPPacket.h"
 #include "pipes/rtc/Protocol.h"
-#include "pipes/misc/logger.h"
 #include "json_guard.h"
 
 #include <iostream>
 #include <utility>
 #include <cassert>
 
+#include <glib-2.0/glib.h>
+
 #ifdef SDPTRANSFORM_INTERNAL
     #include <sdptransform.hpp>
+
 #else
     #include <sdptransform/sdptransform.hpp>
 #endif
 
 using namespace std;
 using namespace rtc;
+inline void g_main_loop_unref_maybe_null(gpointer ptr) {
+    if(!ptr) return;
+    g_main_loop_unref((GMainLoop*) ptr);
+}
 
-PeerConnection::PeerConnection(std::shared_ptr<Config>  config) : config(std::move(config)) { }
+PeerConnection::PeerConnection(std::shared_ptr<Config>  config) : config{std::move(config)}, event_loop{nullptr, &g_main_loop_unref_maybe_null} { }
+
 PeerConnection::~PeerConnection() {
     this->reset();
 }
@@ -48,7 +55,20 @@ void PeerConnection::reset() {
         }
     }
 
-    if(this->nice) this->nice->finalize();
+    if(this->nice)
+        this->nice->finalize();
+
+
+    auto cloop = std::exchange(this->event_loop, nullptr);
+    if(this->own_event_loop) {
+        if(cloop) {
+            g_main_loop_quit(&*cloop);
+            if (this->g_main_loop_thread.joinable())
+                this->g_main_loop_thread.join();
+        } else {
+            assert(!this->g_main_loop_thread.joinable());
+        }
+    }
 }
 
 bool PeerConnection::initialize(std::string &error) {
@@ -56,9 +76,27 @@ bool PeerConnection::initialize(std::string &error) {
         error = "Invalid config!";
         return false;
     }
+
     if(this->nice) {
         error = "invalid state! Please call reset() first!";
         return false;
+    }
+
+    this->own_event_loop = false;
+    if(this->config->nice_config->main_loop) {
+        if(this->config->event_loop != this->config->nice_config->main_loop) {
+            error = "nice config event loop must be equal to PeerConnection event loop";
+            return false;
+        }
+
+        this->event_loop.reset(g_main_loop_ref(&*this->config->event_loop));
+    } else if(this->config->event_loop) {
+        this->config->nice_config->main_loop = this->config->event_loop;
+        this->event_loop.reset(g_main_loop_ref(&*this->config->event_loop));
+    } else {
+        this->event_loop.reset(g_main_loop_new(nullptr, false));
+        this->own_event_loop = true;
+        this->g_main_loop_thread = std::thread(g_main_loop_run, &*this->event_loop);
     }
 
     shared_ptr<NiceStream> stream;
@@ -181,6 +219,8 @@ bool PeerConnection::apply_offer(std::string& error, const std::string &raw_sdp)
             {
                 auto config = std::make_shared<DTLSHandler::Config>();
                 config->logger = this->config->logger;
+                config->event_loop = g_main_loop_get_context(&*this->event_loop);
+                config->verbose_io = false;
 
                 auto dtls_stream = std::make_shared<DTLSHandler>(this->nice, nice_stream->stream_id, config);
                 if(!dtls_stream->initialize(error)) {
@@ -349,7 +389,7 @@ int PeerConnection::apply_ice_candidates(const std::deque<std::shared_ptr<rtc::I
     return success_counter;
 }
 
-void PeerConnection::remote_candidates_finished() {
+void PeerConnection::remote_candidates_finished() { //TODO: Specify the stream
     for(const auto& stream : this->nice->available_streams())
         this->nice->remote_ice_candidates_finished(stream);
 }
@@ -421,13 +461,13 @@ std::string PeerConnection::generate_answer(bool candidates) {
 
             sdp << "a=ice-ufrag:" << nice_entry->ice_ufrag << "\r\n";
             sdp << "a=ice-pwd:" << nice_entry->ice_pwd << "\r\n";
-            //if(!candidates) //We send the candidates later
             sdp << "a=ice-options:trickle\r\n";
 
-            for(const auto& candidate : nice_entry->candidates)
-                sdp << "a=candidate:" << candidate << "\r\n";
-            if(candidates)
-                sdp << "a=end-of-candidates\r\n";
+            //We're sending the candidates later
+            //for(const auto& candidate : nice_entry->candidates)
+            //    sdp << "a=candidate:" << candidate << "\r\n";
+            //if(candidates)
+            //    sdp << "a=end-of-candidates\r\n";
             break;
         }
     }

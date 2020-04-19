@@ -32,6 +32,7 @@ namespace rtc {
 				std::shared_ptr<pipes::Logger> logger;
 				std::shared_ptr<NiceWrapper::Config> nice_config;
 
+                std::shared_ptr<GMainLoop> event_loop{};
 				size_t max_data_channels = 1024;
 				bool print_parse_sdp = false;
 
@@ -81,6 +82,9 @@ namespace rtc {
 			std::shared_ptr<Config> config;
 
 			std::shared_ptr<NiceWrapper> nice;
+            std::unique_ptr<GMainLoop, void (*)(void*)> event_loop;
+            std::thread g_main_loop_thread{};
+            bool own_event_loop{false};
 
 			std::shared_mutex stream_lock{};
 			std::vector<std::shared_ptr<Channel>> streams{}; /* streams in order with the media line indexes */

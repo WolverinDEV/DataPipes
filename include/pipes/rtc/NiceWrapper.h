@@ -80,8 +80,13 @@ namespace rtc {
 			typedef std::function<void(const std::shared_ptr<NiceStream>& /* stream */, const std::vector<std::string>& /* sdps */, bool /* more candidates */)> cb_candidate;
 			typedef std::function<void(const std::shared_ptr<NiceStream>& /* stream */)> cb_failed;
 
+			struct StunServerAddress {
+			    std::string host;
+			    uint16_t port;
+			};
+
 			struct Config {
-				std::deque<RTCIceServer> ice_servers;
+			    std::optional<StunServerAddress> stun_server{};
 				std::pair<uint16_t, uint16_t> ice_port_range;
 
 				std::string ice_ufrag;
@@ -148,9 +153,7 @@ namespace rtc {
 
 			std::unique_ptr<NiceAgent, void (*)(g::pointer)> agent;
 			std::unique_ptr<GMainLoop, void (*)(GMainLoop*)> loop;
-			bool own_loop = false;
 
-			std::thread g_main_loop_thread;
 			std::recursive_mutex streams_lock;
 			std::deque<std::shared_ptr<NiceStream>> streams;
 
