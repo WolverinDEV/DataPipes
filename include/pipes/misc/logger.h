@@ -31,9 +31,9 @@ namespace pipes {
 #ifdef DEFINE_LOG_HELPERS
     #define LOG_XXX(logger, type, name, message, ...) \
 	do { \
-		 auto _logger = (logger);\
-		if(_logger) { \
-			_logger->log(pipes::Logger::type, name, message, ##__VA_ARGS__); \
+	    auto logger_instance = (logger);\
+		if(logger_instance) { \
+			logger_instance->log(pipes::Logger::type, name, message, ##__VA_ARGS__); \
 		} \
 	} while (0)
 

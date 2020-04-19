@@ -213,6 +213,8 @@ int main() {
 
         config->nice_config->main_loop = main_loop;
         config->nice_config->ice_servers.push_back({"stun.l.google.com", 19302});
+        config->nice_config->allow_ice_udp = true;
+        config->nice_config->allow_ice_tcp = false;
 
         config->logger = make_shared<pipes::Logger>();
         config->logger->callback_log = log;

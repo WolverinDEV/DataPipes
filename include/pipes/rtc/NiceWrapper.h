@@ -38,6 +38,7 @@ namespace rtc {
 	struct NiceStream {
 		typedef std::function<void(const pipes::buffer_view&)> cb_receive;
 		typedef std::function<void()> cb_ready;
+        typedef std::function<void()> cb_writeable;
 
 		std::string name{};
 
@@ -45,13 +46,11 @@ namespace rtc {
 		bool ready{false};
 		cb_receive callback_receive;
 		cb_ready callback_ready;
+        cb_writeable callback_writeable;
 
 		/* will be applied to the nice stream when gathering candidates */
-		GSList* ice_remote_candidate_list{nullptr}; /* protected with the IO lock */
 		bool remote_candidates_finished{false};
-
 		size_t ice_remote_candidate_count{0};
-        bool local_candidates_finished{false};
 
 		~NiceStream();
 	};
@@ -90,10 +89,13 @@ namespace rtc {
 
 				std::shared_ptr<GMainLoop> main_loop;
 
-				bool allow_ice_tcp = true;
-				bool allow_ice_udp = true;
+				bool allow_ice_tcp{true};
+				bool allow_ice_udp{true};
 
-				bool use_upnp = false;
+                bool ice_full_mode{true};
+                bool ice_trickle{true};
+
+				bool use_upnp{false};
 			};
 
 			explicit NiceWrapper(std::shared_ptr<Config>  /* config */);
@@ -126,14 +128,14 @@ namespace rtc {
 			static void cb_received(NiceAgent *agent, g::uint stream_id, g::uint component_id, g::uint len, g::_char *buf, g::pointer user_data);
 			static void cb_candidate_gathering_done(NiceAgent *agent, g::uint stream_id, g::pointer user_data);
 			static void cb_component_state_changed(NiceAgent *agent, g::uint stream_id, g::uint component_id, g::uint state, g::pointer user_data);
-			static void cb_new_local_candidate(NiceAgent *agent, g::uint stream_id, g::uint component_id, g::_char* foundation, g::pointer user_data);
+			static void cb_new_local_candidate(NiceAgent *agent, NiceCandidate*, g::pointer user_data);
 			static void cb_new_selected_pair(NiceAgent *agent, g::uint stream_id, g::uint component_id, NiceCandidate *lcandidate, NiceCandidate *rcandidate, g::pointer user_data);
 			static void cb_transport_writeable(NiceAgent *agent, g::uint sid, g::uint cid, g::pointer data);
 
 		protected:
 			virtual void on_data_received(g::uint /* stream */, g::uint /* component */, void * /* buffer */, size_t /* length */);
 
-			virtual void on_local_ice_candidate(g::uint /* stream */, g::uint /* component */, g::_char* /* foundation */);
+			virtual void on_local_ice_candidate(g::uint /* stream */, NiceCandidate* /* local candidate */);
 			virtual void on_gathering_done(g::uint stream_id);
 
 			virtual void on_selected_pair(g::uint /* stream */, g::uint /* component */, NiceCandidate* /* local candidate */, NiceCandidate* /* remote candidate */);
@@ -154,7 +156,5 @@ namespace rtc {
 
 			cb_candidate callback_local_candidates;
 			cb_failed callback_failed;
-
-            bool apply_remote_candidates(const std::shared_ptr<rtc::NiceStream> &stream);
 	};
 }
