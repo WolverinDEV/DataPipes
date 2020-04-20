@@ -25,43 +25,37 @@ void g_object_unref_maybe_null(gpointer ptr) {
 /* Static callbacks */ //TODO Test pointers for validation!
 void NiceWrapper::cb_received(NiceAgent *agent, guint stream_id, guint component_id, guint len, gchar *buf, gpointer user_data) {
     auto wrapper = static_cast<NiceWrapper*>(user_data);
-    assert(&*wrapper->agent == agent);
-    (void) agent;
+    if(&*wrapper->agent != agent) return; /* This could happen when the agent has been freed and now the thread is about to join us */
     wrapper->on_data_received(stream_id, component_id, buf, len);
 }
 
 void NiceWrapper::cb_candidate_gathering_done(NiceAgent *agent, guint stream_id, gpointer user_data) {
     auto wrapper = static_cast<NiceWrapper*>(user_data);
-    assert(&*wrapper->agent == agent);
-    (void) agent;
+    if(&*wrapper->agent != agent) return; /* This could happen when the agent has been freed and now the thread is about to join us */
     wrapper->on_gathering_done(stream_id);
 }
 
 void NiceWrapper::cb_component_state_changed(NiceAgent *agent, guint stream_id, guint component_id, guint state, gpointer user_data) {
     auto wrapper = static_cast<NiceWrapper*>(user_data);
-    assert(&*wrapper->agent == agent);
-    (void) agent;
+    if(&*wrapper->agent != agent) return; /* This could happen when the agent has been freed and now the thread is about to join us */
     wrapper->on_state_change(stream_id, component_id, state);
 }
 
 void NiceWrapper::cb_new_local_candidate(NiceAgent *agent, NiceCandidate* candidate, gpointer user_data) {
     auto wrapper = static_cast<NiceWrapper*>(user_data);
-    assert(&*wrapper->agent == agent);
-    (void) agent;
+    if(&*wrapper->agent != agent) return; /* This could happen when the agent has been freed and now the thread is about to join us */
     wrapper->on_local_ice_candidate(candidate->stream_id, candidate);
 }
 
 void NiceWrapper::cb_new_selected_pair(NiceAgent *agent, guint stream_id, guint component_id, NiceCandidate *lcandidate, NiceCandidate *rcandidate, gpointer user_data) {
     auto wrapper = static_cast<NiceWrapper*>(user_data);
-    assert(&*wrapper->agent == agent);
-    (void) agent;
+    if(&*wrapper->agent != agent) return; /* This could happen when the agent has been freed and now the thread is about to join us */
     wrapper->on_selected_pair(stream_id, component_id, lcandidate, rcandidate);
 }
 
 void NiceWrapper::cb_transport_writeable(NiceAgent *agent, guint sid, guint cid, gpointer user_data) {
     auto wrapper = static_cast<NiceWrapper*>(user_data);
-    assert(&*wrapper->agent == agent);
-    (void) agent;
+    if(&*wrapper->agent != agent) return; /* This could happen when the agent has been freed and now the thread is about to join us */
     wrapper->on_transport_writeable(sid, cid);
 }
 
