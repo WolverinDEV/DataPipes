@@ -1,12 +1,10 @@
 #include "pipes/sctp.h"
-#include "pipes/misc/logger.h"
 
 #include <usrsctp.h>
 #include <cstring>
 #include <iostream>
 #include <thread>
 #include <bitset>
-#include <pipes/sctp.h>
 
 using namespace std;
 using namespace pipes;

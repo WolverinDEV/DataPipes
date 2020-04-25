@@ -7,10 +7,14 @@
 #include <map>
 #include <cstdint>
 #include <sstream>
-#ifdef SRTP_VERSION_1
-    #include <srtp/srtp.h>
+#if defined(SRTP_VERSION_1)
+#include <srtp/srtp.h>
+#elif defined(SRTP_VERSION_1)
+#include <srtp2/srtp.h>
+#elif defined(SRTP_BUNDLED)
+#include <srtp.h>
 #else
-    #include <srtp2/srtp.h>
+#error "Invalid SRTP version!"
 #endif
 
 namespace pipes {
