@@ -242,8 +242,11 @@ std::deque<std::shared_ptr<HeaderExtension>> MediaChannelHandler::list_extension
 
 static bool srtp_initialized = false;
 MediaChannelHandler::MediaChannelHandler(rtc::PeerConnection *owner, rtc::NiceStreamId id, std::shared_ptr<rtc::MediaChannelHandler::Configuration> config) : Channel(owner, id), config(std::move(config)) {
-	memset(&this->remote_policy, 0, sizeof(remote_policy));
-	memset(&this->local_policy, 0, sizeof(local_policy));
+    this->remote_policy = std::make_unique<srtp_policy_t>();
+    this->local_policy = std::make_unique<srtp_policy_t>();
+
+	memset(&*this->remote_policy, 0, sizeof(srtp_policy_t));
+	memset(&*this->local_policy, 0, sizeof(srtp_policy_t));
 	if(!srtp_initialized) {
 		if(srtp_init() != srtp_err_status_ok) {
 			//FIXME error handling
@@ -329,83 +332,83 @@ void MediaChannelHandler::on_dtls_initialized(const std::shared_ptr<DTLSHandler>
 		/* Remote (inbound) */
 		switch(profile->id) {
 			case SRTP_AES128_CM_SHA1_80:
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(remote_policy.rtp));
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(remote_policy.rtcp));
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(remote_policy->rtp));
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(remote_policy->rtcp));
 				break;
 			case SRTP_AES128_CM_SHA1_32:
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(remote_policy.rtp));
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(remote_policy.rtcp));
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(remote_policy->rtp));
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(remote_policy->rtcp));
 				break;
 #ifdef HAVE_SRTP_AESGCM
 			case SRTP_AEAD_AES_256_GCM:
-                srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->remote_policy.rtp));
-                srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->remote_policy.rtcp));
+                srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->remote_policy->rtp));
+                srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->remote_policy->rtcp));
                 break;
             case SRTP_AEAD_AES_128_GCM:
-                srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->remote_policy.rtp));
-                srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->remote_policy.rtcp));
+                srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->remote_policy->rtp));
+                srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->remote_policy->rtcp));
                 break;
 #endif
 			default:
 				break;
 		}
 
-		this->remote_policy.ssrc.type = ssrc_any_inbound;
-		this->remote_policy.key = (u_char*) &remote_policy_key;
-		memcpy(this->remote_policy.key, remote_key, key_length);
-		memcpy(this->remote_policy.key + key_length, remote_salt, salt_length);
+		this->remote_policy->ssrc.type = ssrc_any_inbound;
+		this->remote_policy->key = (u_char*) &remote_policy_key;
+		memcpy(this->remote_policy->key, remote_key, key_length);
+		memcpy(this->remote_policy->key + key_length, remote_salt, salt_length);
 #if HAS_DTLS_WINDOW_SIZE
-		this->remote_policy.window_size = 128;
-        this->remote_policy.allow_repeat_tx = 0;
+		this->remote_policy->window_size = 128;
+        this->remote_policy->allow_repeat_tx = 0;
 #endif
-		this->remote_policy.next = nullptr;
+		this->remote_policy->next = nullptr;
 	}
 
 	{
 		/* Local (outbound) */
 		switch(profile->id) {
 			case SRTP_AES128_CM_SHA1_80:
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(local_policy.rtp));
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(local_policy.rtcp));
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(local_policy->rtp));
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(local_policy->rtcp));
 				break;
 			case SRTP_AES128_CM_SHA1_32:
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(local_policy.rtp));
-				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(local_policy.rtcp));
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&(local_policy->rtp));
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&(local_policy->rtcp));
 				break;
 #ifdef HAVE_SRTP_AESGCM
 			case SRTP_AEAD_AES_256_GCM:
-                srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->local_policy.rtp));
-                srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->local_policy.rtcp));
+                srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->local_policy->rtp));
+                srtp_crypto_policy_set_aes_gcm_256_16_auth(&(this->local_policy->rtcp));
                 break;
             case SRTP_AEAD_AES_128_GCM:
-                srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->local_policy.rtp));
-                srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->local_policy.rtcp));
+                srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->local_policy->rtp));
+                srtp_crypto_policy_set_aes_gcm_128_16_auth(&(this->local_policy->rtcp));
                 break;
 #endif
 			default:
 				break;
 		}
-		this->local_policy.ssrc.type = ssrc_any_outbound;
-		this->local_policy.key = (u_char*) &local_policy_key;
-		memcpy(this->local_policy.key, local_key, key_length);
-		memcpy(this->local_policy.key + key_length, local_salt, salt_length);
+		this->local_policy->ssrc.type = ssrc_any_outbound;
+		this->local_policy->key = (u_char*) &local_policy_key;
+		memcpy(this->local_policy->key, local_key, key_length);
+		memcpy(this->local_policy->key + key_length, local_salt, salt_length);
 #if HAS_DTLS_WINDOW_SIZE
-		this->local_policy.window_size = 128;
-		this->local_policy.allow_repeat_tx = 0;
+		this->local_policy->window_size = 128;
+		this->local_policy->allow_repeat_tx = 0;
 #endif
-		this->local_policy.next = nullptr;
+		this->local_policy->next = nullptr;
 	}
 
 	{
 		/* Create SRTP sessions */
-		srtp_err_status_t res = srtp_create(&(this->srtp_in), &(this->remote_policy));
+		srtp_err_status_t res = srtp_create(&(this->srtp_in), &*this->remote_policy);
 		if(res != srtp_err_status_ok) {
 			LOG_ERROR(this->config->logger, "RTPStream::srtp", "Failed to create srtp session (remote)! Code %i", res);
 			return; //FIXME error handling
 		}
 		this->srtp_in_ready = true;
 
-		res = srtp_create(&(this->srtp_out), &(this->local_policy));
+		res = srtp_create(&(this->srtp_out), &*this->local_policy);
 		if(res != srtp_err_status_ok) {
 
 			LOG_ERROR(this->config->logger, "RTPStream::srtp", "Failed to create srtp session (local)! Code %i", res);

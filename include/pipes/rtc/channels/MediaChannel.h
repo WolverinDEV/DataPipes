@@ -7,14 +7,17 @@
 #include <map>
 #include <cstdint>
 #include <sstream>
+
 #if defined(SRTP_VERSION_1)
 #include <srtp/srtp.h>
 #elif defined(SRTP_VERSION_1)
 #include <srtp2/srtp.h>
-#elif defined(SRTP_BUNDLED)
+#elif defined(SRTP_BUNDLED) && false
 #include <srtp.h>
 #else
-#error "Invalid SRTP version!"
+typedef struct srtp_ctx_t_ srtp_ctx_t;
+typedef srtp_ctx_t *srtp_t;
+struct srtp_policy_t;
 #endif
 
 namespace pipes {
@@ -156,8 +159,8 @@ namespace rtc {
 			bool srtp_in_ready{false};
 			srtp_t srtp_out{nullptr};
 			bool srtp_out_ready{false};
-			srtp_policy_t remote_policy;
-			srtp_policy_t local_policy;
+			std::unique_ptr<srtp_policy_t> remote_policy{};
+            std::unique_ptr<srtp_policy_t> local_policy{};
 
 			std::deque<std::shared_ptr<codec::Codec>> offered_codecs;
 			std::vector<std::shared_ptr<HeaderExtension>> remote_extensions;
