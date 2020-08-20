@@ -207,7 +207,7 @@ struct WSFrame {
 bool WebSocket::process_frame() {
     if(!this->current_frame) {
         auto available = this->buffer_read_bytes_available();
-        if(available < 7) return false;
+        if(available < 6) return false;
 
         this->current_frame.reset(new WSFrame{});
         {
@@ -252,6 +252,7 @@ bool WebSocket::process_frame() {
     }
     if(this->current_frame->head.opcode == 0x08) { //Disconnect!
         this->on_disconnect(this->current_frame->data.string());
+        this->current_frame.reset();
         return true;
     }
 

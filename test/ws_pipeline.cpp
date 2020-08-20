@@ -46,6 +46,10 @@ void initialize_client(const std::shared_ptr<Socket::Client>& client) {
         if(cl) ((pipes::WebSocket*) cl->data)->send(pipes::WSMessage{pipes::TEXT, buffer});
     });
 
+    ws->on_disconnect = [weak](const std::string&) {
+        std::cout << "Client web socket closed." << std::endl;
+    };
+
     client->data = ws;
 }
 
@@ -58,7 +62,12 @@ int main() {
     socket.callback_disconnect = [](const std::shared_ptr<Socket::Client>& client) {
         cout << "Client disconnected" << endl;
     };
-    socket.start(1111);
+
+    std::string error;
+    if(!socket.start(error, 1111)) {
+        std::cerr << error << std::endl;
+        return 1;
+    }
 
 
     while(true) this_thread::sleep_for(chrono::seconds(100));
