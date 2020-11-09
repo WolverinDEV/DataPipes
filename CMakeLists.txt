@@ -8,7 +8,6 @@ if(NOT WIN32)
     add_compile_options("-Wall")
 endif()
 
-option(WEBRTC_SUPPORT   "Enable/disable support for all WebRTC components (required usrsctp, nice and glib)." ON)
 option(BUILD_STATIC     "Enable/disable static build." ON)
 option(BUILD_SHARED     "Enable/disable static build." ON)
 option(BUILD_EXAMPLES   "Enable/disable the example builds." ON)

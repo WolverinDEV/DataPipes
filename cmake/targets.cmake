@@ -25,8 +25,6 @@ endfunction()
 
 # "Core" builds
 if(BUILD_STATIC OR BUILD_EXAMPLES) # The examples require DataPipes__static
-    message("BUILD DP STATIC")
-
     create_target(
             NAME DataPipes-Core-Static
             EXPORTED_NAME DataPipes::core::static
