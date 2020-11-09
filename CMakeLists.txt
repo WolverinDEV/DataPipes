@@ -13,18 +13,12 @@ option(BUILD_STATIC     "Enable/disable static build." ON)
 option(BUILD_SHARED     "Enable/disable static build." ON)
 option(BUILD_EXAMPLES   "Enable/disable the example builds." ON)
 
-set(MAJOR_VERSION 1)
-set(MINOR_VERSION 1)
+set(MAJOR_VERSION 2)
+set(MINOR_VERSION 0)
 set(PATCH_VERSION 0)
 set(PROJECT_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION})
 
 add_definitions(-DLOG_LEVEL=0)
-
-# Sctp
-find_package(UsrSCTP)
-if (UsrSCTP_FOUND)
-    set(WITH_UsrSCTP ON)
-endif ()
 
 #Crypto library (OpenSSL or BoringSSL)
 find_package(Crypto REQUIRED)
@@ -57,13 +51,6 @@ else()
 endif()
 
 include(cmake/sources.cmake)
-
-# WebRTC part
-message("WebRTC support: ${WEBRTC_SUPPORT}")
-if (WEBRTC_SUPPORT)
-    include(cmake/rtc-libraries.cmake)
-endif ()
-
 include(cmake/targets.cmake)
 
 if(BUILD_EXAMPLES)

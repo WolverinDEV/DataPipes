@@ -1,9 +1,0 @@
-[submodule "libraries/usrsctp"]
-	path = libraries/usrsctp
-	url = https://github.com/sctplab/usrsctp.git
-[submodule "libraries/sdptransform"]
-	path = libraries/sdptransform
-	url = https://github.com/ibc/libsdptransform.git
-[submodule "libraries/srtp"]
-	path = libraries/srtp
-	url = https://github.com/cisco/libsrtp.git

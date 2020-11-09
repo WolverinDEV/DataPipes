@@ -33,15 +33,6 @@ if(BUILD_STATIC OR BUILD_EXAMPLES) # The examples require DataPipes__static
             TYPE STATIC
             SOURCE_FILES ${SOURCE_FILES}
     )
-
-    if(WEBRTC_SUPPORT)
-        create_target(
-                NAME DataPipes-Rtc-Static
-                EXPORTED_NAME DataPipes::rtc::static
-                TYPE STATIC
-                SOURCE_FILES ${SOURCE_FILES} ${RTC_SOURCE_FILES}
-        )
-    endif()
 endif()
 
 if(BUILD_SHARED)
@@ -51,15 +42,6 @@ if(BUILD_SHARED)
             TYPE SHARED
             SOURCE_FILES ${SOURCE_FILES}
     )
-
-    if(WEBRTC_SUPPORT)
-        create_target(
-                NAME DataPipes-Rtc-Shared
-                EXPORTED_NAME DataPipes::rtc::shared
-                TYPE SHARED
-                SOURCE_FILES ${SOURCE_FILES} ${RTC_SOURCE_FILES}
-        )
-    endif()
 endif()
 
 install(DIRECTORY include/ DESTINATION include/)

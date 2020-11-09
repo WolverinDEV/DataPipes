@@ -42,31 +42,6 @@ if (Libevent_FOUND)
             SOURCES test/utils/socket.cpp test/ws_pipeline.cpp
             LIBRARIES  DataPipes-Rtc-Static crypto pthread libevent::core
     )
-
-    create_example(
-            NAME DataPipes-example-rtc-audio
-            SOURCES test/utils/socket.cpp test/json/jsoncpp.cpp test/rtc/rtc_test_audio.cpp test/utils/rtc_server.cpp
-            LIBRARIES  DataPipes-Rtc-Static crypto ssl pthread libevent::core libevent::pthreads opus
-    )
-
-    find_package(GLIB)
-    create_example(
-            NAME DataPipes-example-rtc-data
-            SOURCES test/utils/socket.cpp test/json/jsoncpp.cpp test/rtc/rtc_test_data.cpp test/utils/rtc_server.cpp
-            LIBRARIES  DataPipes-Rtc-Static crypto ssl pthread libevent::core libevent::pthreads
-    )
-    if(GLIB_FOUND)
-        message("Building rtc-data data with custom gio loop")
-        target_compile_definitions(DataPipes-example-rtc-data PRIVATE "HAVE_GLIB")
-        target_include_directories(DataPipes-example-rtc-data PRIVATE ${GLIB_INCLUDE_DIRS})
-        target_link_libraries(DataPipes-example-rtc-data PRIVATE ${GLIB_GOBJECT_LIBRARIES} ${GLIB_LIBRARIES})
-    endif()
-
-    create_example(
-            NAME DataPipes-example-rtc-video
-            SOURCES test/utils/socket.cpp test/json/jsoncpp.cpp test/rtc/video_utils.cpp test/rtc/rtc_test_video.cpp
-            LIBRARIES  DataPipes-Rtc-Static vpx crypto ssl pthread libevent::core
-    )
 else()
-    message("Skipping RTC examples because of missing libevent")
+    message("Skipping WS examples because of missing libevent")
 endif ()
