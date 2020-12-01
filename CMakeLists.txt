@@ -19,6 +19,42 @@ set(PROJECT_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION})
 
 add_definitions(-DLOG_LEVEL=0)
 
+# Using static library linking
+macro(configure_msvc_runtime)
+    if(MSVC)
+        # Default to statically-linked runtime.
+        if("${MSVC_RUNTIME}" STREQUAL "")
+            set(MSVC_RUNTIME "static")
+        endif()
+
+        # Set compiler options.
+        set(variables
+                CMAKE_C_FLAGS_DEBUG
+                CMAKE_C_FLAGS_MINSIZEREL
+                CMAKE_C_FLAGS_RELEASE
+                CMAKE_C_FLAGS_RELWITHDEBINFO
+                CMAKE_CXX_FLAGS_DEBUG
+                CMAKE_CXX_FLAGS_MINSIZEREL
+                CMAKE_CXX_FLAGS_RELEASE
+                CMAKE_CXX_FLAGS_RELWITHDEBINFO
+        )
+        if(${MSVC_RUNTIME} STREQUAL "static")
+            foreach(variable ${variables})
+                if(${variable} MATCHES "/MD")
+                    string(REGEX REPLACE "/MD" "/MT" ${variable} "${${variable}}")
+                endif()
+            endforeach()
+        else()
+            foreach(variable ${variables})
+                if(${variable} MATCHES "/MT")
+                    string(REGEX REPLACE "/MT" "/MD" ${variable} "${${variable}}")
+                endif()
+            endforeach()
+        endif()
+    endif()
+endmacro()
+configure_msvc_runtime()
+
 #Crypto library (OpenSSL or BoringSSL)
 find_package(Crypto REQUIRED)
 include_directories(BEFORE SYSTEM ${Crypto_INCLUDE_DIR})
