@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.15)
 project(DataPipes CXX)
 
 # Custom CMake modules
@@ -18,44 +18,6 @@ set(PATCH_VERSION 0)
 set(PROJECT_VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION})
 
 add_definitions(-DLOG_LEVEL=0)
-
-# Using static library linking
-macro(configure_msvc_runtime)
-    if(MSVC)
-        # Default to statically-linked runtime.
-        if("${MSVC_RUNTIME}" STREQUAL "")
-            set(MSVC_RUNTIME "static")
-        endif()
-
-        # Set compiler options.
-        set(variables
-                CMAKE_C_FLAGS_DEBUG
-                CMAKE_C_FLAGS_MINSIZEREL
-                CMAKE_C_FLAGS_RELEASE
-                CMAKE_C_FLAGS_RELWITHDEBINFO
-                CMAKE_CXX_FLAGS_DEBUG
-                CMAKE_CXX_FLAGS_MINSIZEREL
-                CMAKE_CXX_FLAGS_RELEASE
-                CMAKE_CXX_FLAGS_RELWITHDEBINFO
-        )
-
-        if(${MSVC_RUNTIME} STREQUAL "static")
-            foreach(variable ${variables})
-                if(${variable} MATCHES "/MD")
-                    string(REGEX REPLACE "/MD" "/MT" ${variable} "${${variable}}")
-                    string(REGEX REPLACE "/MTd" "/MT" ${variable} "${${variable}}")
-                endif()
-            endforeach()
-        else()
-            foreach(variable ${variables})
-                if(${variable} MATCHES "/MT")
-                    string(REGEX REPLACE "/MT" "/MD" ${variable} "${${variable}}")
-                endif()
-            endforeach()
-        endif()
-    endif()
-endmacro()
-configure_msvc_runtime()
 
 if(CRYPTO_TYPE STREQUAL "none")
     message("Building without crypto support")
