@@ -38,10 +38,12 @@ macro(configure_msvc_runtime)
                 CMAKE_CXX_FLAGS_RELEASE
                 CMAKE_CXX_FLAGS_RELWITHDEBINFO
         )
+
         if(${MSVC_RUNTIME} STREQUAL "static")
             foreach(variable ${variables})
                 if(${variable} MATCHES "/MD")
                     string(REGEX REPLACE "/MD" "/MT" ${variable} "${${variable}}")
+                    string(REGEX REPLACE "/MTd" "/MT" ${variable} "${${variable}}")
                 endif()
             endforeach()
         else()
